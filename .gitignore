@@ -12,3 +12,6 @@ __pycache__/
 
 # Rahasia
 .env
+
+# Kode pihak ketiga (dikloning, tidak di-commit)
+third_party/

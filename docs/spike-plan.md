@@ -10,6 +10,13 @@
 >
 > Konteks: `CLAUDE.md` dan `docs/research-paper.md`.
 
+
+> 🧪 **Uji coba awal sebelum ACC (keputusan 2026-09-25).** Lorong lab lantai 10 gedung PENS pusat,
+> dijalankan di laptop (i5-12450HX, RAM 24 GB, tanpa CUDA). Menjawab: pipeline bisa dipasang, berapa
+> foto terdaftar di peta, berapa query berhasil dilokalisasi, dan waktu per lokalisasi di CPU laptop.
+> **Tidak** menjawab akurasi di area uji resmi maupun latensi di server instansi. Gerbang G0 tetap
+> berlaku untuk spike resmi.
+
 ## 1. Pertanyaan yang dijawab spike
 
 | # | Pertanyaan | Kenapa penting |
@@ -234,3 +241,78 @@ Hanya dijalankan kalau pembimbing menyetujui (pertanyaan 6). Murah, tanpa peta.
   cara mendapat pose dari papan belum terverifikasi. YOLOv8 berlisensi AGPL-3.0, jadi cek lisensi
   detektor sebelum dipakai.
 - **Perkiraan:** beberapa hari (🟡).
+
+## 12. Hasil uji coba awal (2026-09-25)
+
+**Lingkungan.** Laptop i5-12450HX, RAM 24 GB, **tanpa CUDA**, Windows 11 native (tanpa WSL).
+Python 3.12.13 (lewat uv), PyTorch 2.14.0+cpu (8 thread), hloc 1.5 commit `c13273b`, pycolmap
+4.2.0. hloc dipasang **tanpa submodul**: keempatnya (d2net, SuperGluePretrainedNetwork,
+deep-image-retrieval, r2d2) tidak dipakai, dan SuperGlue berlisensi non-komersial.
+
+**Data.** Dataset contoh bawaan hloc (Sacré-Cœur, foto internet luar ruangan): 9 foto peta, 1 foto
+uji **yang tidak ikut peta**. **Bukan lorong gedung**, jadi hanya menguji bahwa pipeline berjalan.
+
+**Hasil pipeline** (`spike/run.py`, bawaan hloc: keypoint ALIKED tanpa batas):
+
+| Hal | Hasil |
+|---|---|
+| Foto peta terdaftar | 9/9, 2.649 titik 3D |
+| Foto uji terlokalisasi | 1/1, 1.492 inlier dari 2.333 korespondensi |
+| Ekstraksi fitur peta | 38,6 s untuk 9 foto |
+| Pencocokan peta | 433 s untuk 36 pasangan (**~12 s per pasangan**) |
+| Rekonstruksi | 7,5 s |
+| Estimasi pose | 0,3 s |
+
+**Penyebab lambat, terbukti:** konfigurasi `aliked-n16` di hloc memakai `max_num_keypoints: -1`
+(tanpa batas), rata-rata **2.815 keypoint per foto**. Biaya LightGlue naik kira-kira kuadratik
+terhadap jumlah keypoint.
+
+**Pengukuran model hangat** (`spike/bench_matching.py`, resize 1024, median):
+
+| Batas keypoint | Ekstraksi per foto | Pencocokan per pasangan | Rata-rata match |
+|---|---|---|---|
+| 512 | 3,57 s | **0,38 s** | 158 |
+| 1024 | 3,52 s | **1,06 s** | 283 |
+| 2048 | 3,68 s | **3,79 s** | 523 |
+
+**Perkiraan per lokalisasi di laptop ini** (1 ekstraksi + k pasangan + pose, tanpa retrieval
+global):
+
+| Batas keypoint | k = 5 | k = 10 |
+|---|---|---|
+| 512 | ~6 s | ~8 s |
+| 1024 | ~9 s | ~14 s |
+| tanpa batas | ~40 s ke atas | ~75 s ke atas |
+
+**Temuan dan konsekuensinya:**
+1. **Pipeline hloc berjalan native di Windows.** WSL tidak diperlukan.
+2. **Dua kenop utama latensi: batas keypoint dan k.** Bawaan hloc tidak cocok untuk CPU. `run.py`
+   sekarang memakai `--max-kp 1024` sebagai bawaan.
+3. **Ekstraksi ALIKED ~3,5 s per foto pada resize 1024 adalah biaya tetap per query.** Kenop
+   berikutnya: resize lebih kecil (misalnya 640) atau XFeat.
+4. **Lebih sedikit keypoint berarti lebih sedikit match** (158 pada 512 lawan 523 pada 2048). Apakah
+   512 atau 1024 masih cukup untuk lokalisasi di lorong **harus diukur di data lorong**, bukan
+   ditebak.
+5. ⚠️ **Server instansi (2 vCPU) kemungkinan beberapa kali lebih lambat dari laptop ini (8 thread).**
+   Angka di atas adalah batas atas kecepatan, bukan bukti untuk server.
+6. Unduhan bobot model pertama kali lambat di jaringan ini (LightGlue 45 MB ~5 menit). Bobot
+   tersimpan di cache torch, jadi hanya sekali.
+
+**Langkah berikutnya:** foto lorong lantai 10, lalu jalankan `run.py` dengan `--max-kp 512` dan
+`1024`, lalu bandingkan jumlah query yang terlokalisasi dan waktunya.
+
+### Menyiapkan lingkungan (bisa diulang)
+
+`.venv/`, `third_party/`, `data/`, dan `outputs/` tidak ada di git. Untuk membangun ulang:
+
+```bash
+uv venv --python 3.12 .venv
+uv pip install --python .venv torch torchvision --index-url https://download.pytorch.org/whl/cpu
+git clone https://github.com/cvg/Hierarchical-Localization.git third_party/Hierarchical-Localization
+git -C third_party/Hierarchical-Localization checkout c13273b
+uv pip install --python .venv -e third_party/Hierarchical-Localization
+```
+
+Tanpa `--recursive`: submodul hloc tidak dibutuhkan. Data contoh ada di
+`third_party/Hierarchical-Localization/datasets/sacre_coeur/mapping`. Bobot ALIKED dan LightGlue
+diunduh otomatis saat pertama dipakai.

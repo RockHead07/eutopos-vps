@@ -21,9 +21,13 @@ pusat, Surabaya.
 
 ## Status
 
-🔒 **Tahap perencanaan. Tidak ada pengembangan sebelum judul PA di-ACC.** Keputusan pemilik repo.
-Pengajuan judul sudah diunggah, menunggu keputusan. Sampai ACC, yang boleh dilakukan hanya menyusun
-dokumen, bertanya ke pembimbing, dan mengurus izin lokasi.
+🔒 **Pengembangan penuh menunggu judul PA di-ACC.** Pengajuan sudah diunggah, menunggu keputusan.
+
+🧪 **Pengecualian (keputusan pemilik repo, 2026-09-25): uji coba awal (dry run) boleh sebelum ACC**
+di lorong lab **lantai 10 gedung PENS pusat**. Tujuannya membuktikan pipeline hloc bisa dipasang dan
+berjalan, dan mengukur waktu lokalisasi di CPU. Hasilnya dilaporkan sebagai **uji coba awal**, bukan
+hasil spike: belum mencakup area uji resmi, belum memakai titik acuan lengkap, dan diukur di laptop
+(bukan server instansi). Kode uji coba ada di `spike/`, data di `data/` (tidak masuk git).
 
 **Langkah pertama setelah ACC: spike satu koridor** (`docs/spike-plan.md`). Spike menjawab dua hal:
 apakah akurasi ≤ 1,0 m pada ≥ 70% foto uji, dan berapa latensi per lokalisasi di server tanpa GPU.
@@ -100,6 +104,23 @@ Repo ini **publik** dan berlisensi **AGPL-3.0**.
 - **Jangan membangun ulang yang sudah ada.** COLMAP dan hloc mengerjakan SfM dan lokalisasi. Repo ini
   hanya merangkai, mengukur, dan melayankan.
 - **Tanpa em dash** di teks untuk pemilik repo.
+
+## Skill proyek
+
+Terpasang di `.claude/skills/`, sumbernya tercatat di `skills-lock.json` (perbarui dengan
+`npx skills update -p`). Aturan di `CLAUDE.md` ini **selalu menang** kalau bertentangan dengan skill.
+
+| Skill | Sumber | Pakai saat |
+|---|---|---|
+| `source-driven-development` | addyosmani/agent-skills | Menulis kode yang bergantung pada API hloc, pycolmap, FastAPI, atau PyTorch. Verifikasi ke dokumentasi resmi, lalu kutip |
+| `fastapi` | fastapi/fastapi (resmi) | Membangun layanan `/localize` dan `/health` |
+| `observability-and-instrumentation` | addyosmani/agent-skills | Mengukur latensi per tahap (metrik M7) dan mencatat kegagalan lokalisasi |
+| `multi-stage-dockerfile` | github/awesome-copilot | Membuat image Docker PyTorch CPU untuk server instansi |
+| `research-paper-writing` | Master-cai/Research-Paper-Writing-Skills | Menulis Proposal PA dan laporan: klaim harus punya bukti |
+
+Skill global yang juga relevan: `ponytail` (anti over-engineering), `engineering:architecture` (ADR),
+`superpowers:test-driven-development` dan `mattpocock-skills:tdd` (testing),
+`mattpocock-skills:research` (riset ke sumber primer).
 
 ## Peta dokumen
 
