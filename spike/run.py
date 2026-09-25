@@ -37,9 +37,7 @@ EXHAUSTIVE_MAX = 30  # di bawah ini semua pasangan dicocokkan; di atasnya pakai 
 def images_in(root: Path, sub: str) -> list[str]:
     exts = {".jpg", ".jpeg", ".png"}
     return sorted(
-        p.relative_to(root).as_posix()
-        for p in (root / sub).iterdir()
-        if p.suffix.lower() in exts
+        p.relative_to(root).as_posix() for p in (root / sub).iterdir() if p.suffix.lower() in exts
     )
 
 
@@ -59,10 +57,25 @@ def make_pairs(times, key, out, feats_global, root, queries, refs, k):
             timed(times, key, pairs_from_exhaustive.main, out, image_list=queries, ref_list=refs)
         return
     if not feats_global.exists():
-        timed(times, "global_extract_mapping", extract_features.main,
-              GLOBAL, root, image_list=refs, feature_path=feats_global)
-    timed(times, key, pairs_from_retrieval.main, feats_global, out,
-          num_matched=k, query_list=queries, db_list=refs)
+        timed(
+            times,
+            "global_extract_mapping",
+            extract_features.main,
+            GLOBAL,
+            root,
+            image_list=refs,
+            feature_path=feats_global,
+        )
+    timed(
+        times,
+        key,
+        pairs_from_retrieval.main,
+        feats_global,
+        out,
+        num_matched=k,
+        query_list=queries,
+        db_list=refs,
+    )
 
 
 def main():
@@ -73,15 +86,19 @@ def main():
     ap.add_argument("--k-loc", type=int, default=10, help="kandidat retrieval per foto uji")
     # Bawaan hloc: keypoint tanpa batas (rata2 ~2.800/foto di data demo) -> ~12 s/pasangan di CPU.
     # Lihat spike/bench_matching.py untuk ukuran waktu per batas keypoint.
-    ap.add_argument("--max-kp", type=int, default=1024, help="batas keypoint ALIKED, -1 = tanpa batas")
+    ap.add_argument(
+        "--max-kp", type=int, default=1024, help="batas keypoint ALIKED, -1 = tanpa batas"
+    )
     ap.add_argument("--resize", type=int, default=1024, help="sisi terpanjang foto saat ekstraksi")
     a = ap.parse_args()
 
     global LOCAL
-    LOCAL = {**LOCAL,
-             "output": f"{LOCAL['output']}-kp{a.max_kp}-r{a.resize}",
-             "model": {**LOCAL["model"], "max_num_keypoints": a.max_kp},
-             "preprocessing": {**LOCAL["preprocessing"], "resize_max": a.resize}}
+    LOCAL = {
+        **LOCAL,
+        "output": f"{LOCAL['output']}-kp{a.max_kp}-r{a.resize}",
+        "model": {**LOCAL["model"], "max_num_keypoints": a.max_kp},
+        "preprocessing": {**LOCAL["preprocessing"], "resize_max": a.resize},
+    }
 
     root, out = a.dataset, a.out
     out.mkdir(parents=True, exist_ok=True)
@@ -91,27 +108,73 @@ def main():
     t_map, t_q = {}, {}
 
     # 1. Peta
-    timed(t_map, "local_extract", extract_features.main,
-          LOCAL, root, image_list=refs, feature_path=feats)
+    timed(
+        t_map,
+        "local_extract",
+        extract_features.main,
+        LOCAL,
+        root,
+        image_list=refs,
+        feature_path=feats,
+    )
     make_pairs(t_map, "pairs", out / "pairs-sfm.txt", feats_global, root, refs, refs, a.k_map)
-    timed(t_map, "match", match_features.main,
-          MATCHER, out / "pairs-sfm.txt", features=feats, matches=matches)
+    timed(
+        t_map,
+        "match",
+        match_features.main,
+        MATCHER,
+        out / "pairs-sfm.txt",
+        features=feats,
+        matches=matches,
+    )
     # Satu ponsel = satu kamera (intrinsik dibagi, sesuai panduan COLMAP). Foto campuran: otomatis.
-    sizes = {(c.width, c.height) for c in (pycolmap.infer_camera_from_image(root / r) for r in refs)}
+    sizes = {
+        (c.width, c.height) for c in (pycolmap.infer_camera_from_image(root / r) for r in refs)
+    }
     mode = pycolmap.CameraMode.SINGLE if len(sizes) == 1 else pycolmap.CameraMode.AUTO
-    model = timed(t_map, "reconstruction", reconstruction.main,
-                  out / "sfm", root, out / "pairs-sfm.txt", feats, matches,
-                  camera_mode=mode, image_list=refs)
+    model = timed(
+        t_map,
+        "reconstruction",
+        reconstruction.main,
+        out / "sfm",
+        root,
+        out / "pairs-sfm.txt",
+        feats,
+        matches,
+        camera_mode=mode,
+        image_list=refs,
+    )
 
     # 2. Foto uji (diproses sekaligus; waktu tahap termasuk memuat model sekali)
     if feats_global.exists() or len(refs) > EXHAUSTIVE_MAX:
-        timed(t_q, "global_extract", extract_features.main,
-              GLOBAL, root, image_list=queries, feature_path=feats_global)
-    timed(t_q, "local_extract", extract_features.main,
-          LOCAL, root, image_list=queries, feature_path=feats)
+        timed(
+            t_q,
+            "global_extract",
+            extract_features.main,
+            GLOBAL,
+            root,
+            image_list=queries,
+            feature_path=feats_global,
+        )
+    timed(
+        t_q,
+        "local_extract",
+        extract_features.main,
+        LOCAL,
+        root,
+        image_list=queries,
+        feature_path=feats,
+    )
     make_pairs(t_q, "pairs", out / "pairs-loc.txt", feats_global, root, queries, refs, a.k_loc)
-    timed(t_q, "match", match_features.main,
-          MATCHER, out / "pairs-loc.txt", features=feats, matches=matches)
+    timed(
+        t_q,
+        "match",
+        match_features.main,
+        MATCHER,
+        out / "pairs-loc.txt",
+        features=feats,
+        matches=matches,
+    )
 
     retrieval = parse_retrieval(out / "pairs-loc.txt")
     map_cam = next(iter(model.cameras.values()))
@@ -121,18 +184,26 @@ def main():
         cam = pycolmap.infer_camera_from_image(root / q)
         if (cam.width, cam.height) == (map_cam.width, map_cam.height):
             cam = map_cam  # ponsel sama, resolusi sama: pakai intrinsik hasil kalibrasi peta
-        ids = [model.find_image_with_name(n).image_id
-               for n in retrieval.get(q, []) if model.find_image_with_name(n)]
+        ids = [
+            model.find_image_with_name(n).image_id
+            for n in retrieval.get(q, [])
+            if model.find_image_with_name(n)
+        ]
         t0 = time.perf_counter()
-        ret, log = pose_from_cluster(localizer, q, cam, ids, feats, matches) if ids else (None, {})
+        ret, _ = pose_from_cluster(localizer, q, cam, ids, feats, matches) if ids else (None, {})
         dt = round(time.perf_counter() - t0, 3)
         ok = ret is not None
         center = ret["cam_from_world"].inverse().translation.tolist() if ok else None
-        rows.append({
-            "query": q, "ok": ok, "inliers": ret["num_inliers"] if ok else 0,
-            "correspondences": len(ret["inlier_mask"]) if ok else 0,
-            "t_pose_s": dt, "center_xyz_model": center,
-        })
+        rows.append(
+            {
+                "query": q,
+                "ok": ok,
+                "inliers": ret["num_inliers"] if ok else 0,
+                "correspondences": len(ret["inlier_mask"]) if ok else 0,
+                "t_pose_s": dt,
+                "center_xyz_model": center,
+            }
+        )
 
     n_q = max(len(queries), 1)
     summary = {
@@ -145,8 +216,9 @@ def main():
         "t_query_stage_total_s": t_q,
         # ponytail: rata-rata termasuk memuat model sekali per tahap; waktu hangat asli
         # diukur nanti di layanan yang memuat model sekali saat start
-        "t_per_query_amortized_s": round(sum(t_q.values()) / n_q
-                                         + sum(r["t_pose_s"] for r in rows) / n_q, 3),
+        "t_per_query_amortized_s": round(
+            sum(t_q.values()) / n_q + sum(r["t_pose_s"] for r in rows) / n_q, 3
+        ),
         "unit_note": "posisi dalam satuan model SfM, belum meter (butuh titik acuan)",
     }
     with open(out / "results.csv", "w", newline="", encoding="utf-8") as f:

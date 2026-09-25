@@ -1,0 +1,23 @@
+version: 2
+updates:
+  # Action di workflow, dipin ke SHA commit. Dependabot memperbarui SHA dan komentar versinya.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Alat pengembangan di pyproject.toml dan uv.lock.
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      dev-tools:
+        patterns: ["*"]
