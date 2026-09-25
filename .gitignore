@@ -1,0 +1,14 @@
+# Data lapangan dan hasil: besar, dan repo ini publik
+data/
+outputs/
+
+# PDF paper: simpan lokal saja (hak cipta beragam)
+docs/papers/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Rahasia
+.env
