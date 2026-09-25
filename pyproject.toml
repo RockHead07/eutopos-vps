@@ -1,0 +1,35 @@
+[project]
+name = "eutopos-vps"
+version = "0.0.0"
+description = "Visual Positioning System lokal untuk navigasi dalam gedung"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+# Dependensi runtime (torch CPU, hloc) belum dideklarasikan di sini. Sampai layanan dibangun,
+# lingkungan spike disiapkan manual: docs/spike-plan.md bagian 12.
+dependencies = []
+
+[dependency-groups]
+# Alat yang dipakai CI dan pengembang lokal. Versi persisnya dikunci di uv.lock.
+dev = [
+    "ruff>=0.16.9",
+    "zizmor>=1.30.1",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = [".claude"]  # skill pihak ketiga, disalin apa adanya dari sumbernya
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle
+    "W",   # pycodestyle
+    "F",   # pyflakes
+    "I",   # urutan import
+    "B",   # bugbear
+    "UP",  # sintaks Python modern
+    "RUF", # aturan khusus ruff
+]

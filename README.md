@@ -27,6 +27,7 @@ Indoor Navigation Terintegrasi AI Avatar Assistant Berbasis Retrieval-Augmented 
 | [`docs/spike-plan.md`](docs/spike-plan.md) | Rencana uji kelayakan satu koridor |
 | [`docs/design-notes.md`](docs/design-notes.md) | Penyelarasan koordinat, model data, rute, dan metrik evaluasi |
 | [`docs/research-paper.md`](docs/research-paper.md) | Rujukan penelitian, lisensi, dan alasan pemilihan metode |
+| [`docs/ci-cd.md`](docs/ci-cd.md) | Pemeriksaan otomatis (CI) dan rencana deployment |
 
 ## Lisensi
 

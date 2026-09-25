@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Token bawaan tanpa izin apa pun. Setiap job meminta izin minimum yang ia butuhkan.
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  python:
+    name: Lint dan format Python
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      # --locked: gagal kalau uv.lock tidak sesuai pyproject.toml, jadi versi alat di CI sama
+      # persis dengan versi di laptop pengembang.
+      - run: uv sync --locked
+      - run: uv run --locked ruff check --output-format=github .
+      - run: uv run --locked ruff format --check .
+
+  workflows:
+    name: Audit keamanan workflow
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - run: uv sync --locked
+      - run: uv run --locked zizmor --format=github .github/
+        env:
+          # Token baca saja, supaya audit daring (misalnya action yang punya kerentanan) ikut jalan.
+          GH_TOKEN: ${{ github.token }}

@@ -1,4 +1,4 @@
-"""Ukur waktu ALIKED + LightGlue per foto dan per pasangan, model hangat, untuk beberapa batas keypoint.
+"""Ukur waktu ALIKED + LightGlue per foto dan per pasangan, model hangat, per batas keypoint.
 
     python spike/bench_matching.py data/demo/mapping --kp 512 1024 2048 -1
 
@@ -28,8 +28,10 @@ def main():
     imgs = [load_image(p, resize=a.resize) for p in paths]
     pairs = list(combinations(range(len(imgs)), 2))[: a.pairs]
     matcher = LightGlue(features="aliked").eval()
-    print(f"torch {torch.__version__}, threads {torch.get_num_threads()}, "
-          f"{len(imgs)} foto, {len(pairs)} pasangan, resize {a.resize}")
+    print(
+        f"torch {torch.__version__}, threads {torch.get_num_threads()}, "
+        f"{len(imgs)} foto, {len(pairs)} pasangan, resize {a.resize}"
+    )
 
     with torch.inference_mode():
         for kp in a.kp:
@@ -48,10 +50,12 @@ def main():
                 t_match.append(time.perf_counter() - t0)
                 n_match.append(len(out["matches"]))
             n_kp = statistics.mean(f["keypoints"].shape[1] for f in feats)
-            print(f"kp={'tanpa batas' if kp < 0 else kp:>11} | rata2 keypoint {n_kp:7.0f} | "
-                  f"ekstraksi {statistics.median(t_ext):6.2f} s/foto | "
-                  f"pencocokan {statistics.median(t_match):6.2f} s/pasangan | "
-                  f"rata2 match {statistics.mean(n_match):6.0f}")
+            print(
+                f"kp={'tanpa batas' if kp < 0 else kp:>11} | rata2 keypoint {n_kp:7.0f} | "
+                f"ekstraksi {statistics.median(t_ext):6.2f} s/foto | "
+                f"pencocokan {statistics.median(t_match):6.2f} s/pasangan | "
+                f"rata2 match {statistics.mean(n_match):6.0f}"
+            )
 
 
 if __name__ == "__main__":

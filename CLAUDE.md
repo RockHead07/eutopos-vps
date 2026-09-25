@@ -104,6 +104,8 @@ Repo ini **publik** dan berlisensi **AGPL-3.0**.
 - **Jangan membangun ulang yang sudah ada.** COLMAP dan hloc mengerjakan SfM dan lokalisasi. Repo ini
   hanya merangkai, mengukur, dan melayankan.
 - **Tanpa em dash** di teks untuk pemilik repo.
+- **Sebelum commit, jalankan pemeriksaan CI secara lokal:** `uv run ruff check .` dan
+  `uv run ruff format .` (rincian di `docs/ci-cd.md`).
 
 ## Skill proyek
 
@@ -130,4 +132,5 @@ Skill global yang juga relevan: `ponytail` (anti over-engineering), `engineering
 | `docs/spike-plan.md` | Rencana spike: data, varian, perangkat, ambang keputusan, pertanyaan untuk pembimbing |
 | `docs/design-notes.md` | Desain: dua lapis posisi, rumus penyelarasan ARCore ke gedung, sistem koordinat, model data, rute, metrik evaluasi, kontrak API |
 | `docs/research-paper.md` | Semua rujukan penelitian beserta tautan, perannya di proyek, lisensi, status verifikasi, dan kandidat cadangan |
+| `docs/ci-cd.md` | CI yang berjalan sekarang, perintah pemeriksaan lokal, rencana build dan deployment, dan pengaturan GitHub yang wajib diaktifkan |
 | `docs/figures/` | Gambar 1 (arsitektur) dan Gambar 2 (alur) dokumen pengajuan |
