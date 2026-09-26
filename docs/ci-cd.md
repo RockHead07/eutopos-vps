@@ -15,7 +15,7 @@ yang ditandai lain.
 | **Hak token minimum.** Izin bawaan `GITHUB_TOKEN` sebaiknya baca saja, dinaikkan per job hanya kalau perlu | `permissions: {}` di tingkat workflow, `contents: read` per job |
 | **Self-hosted runner hampir tidak pernah dipakai di repo publik**, karena siapa pun bisa membuka pull request yang menjalankan kode di runner itu | Repo ini publik. **Server instansi tidak boleh dijadikan runner GitHub** (lihat bagian 4) |
 | **Kredensial tidak tertinggal di runner** | `persist-credentials: false` di setiap checkout |
-| **Versi alat dikunci.** CI dan laptop memakai versi yang sama persis | Alat pengembangan di `pyproject.toml`, versinya dikunci di `uv.lock`, dan CI memakai `uv sync --locked` |
+| **Versi alat dikunci.** CI dan laptop memakai versi yang sama persis | Versi uv dipin lewat `required-version` di `pyproject.toml` (dibaca `setup-uv` di CI, ditegakkan uv lokal). Alat pengembangan dikunci di `uv.lock`, dan CI memakai `uv sync --locked` |
 | **Perintah CI bisa dijalankan lokal** | Lihat bagian 3 |
 | **Pembaruan dependensi ditunda sebentar** (cooldown), supaya rilis bermasalah sempat ditarik sebelum masuk | Dependabot `cooldown: 7 hari` |
 
@@ -50,6 +50,10 @@ uv run zizmor .github/        # audit workflow
 
 Mengubah versi alat: `uv add --dev ruff@<versi>` atau `uv lock --upgrade-package ruff`, lalu commit
 `pyproject.toml` dan `uv.lock` bersamaan.
+
+**Versi uv** dipin di `pyproject.toml` (`required-version`). uv dengan versi lain menolak berjalan
+dan menyarankan `uv self update <versi>`. ⚠️ Belum dicek apakah Dependabot ikut memperbarui pin ini. Anggap tidak, dan naikkan manual:
+ubah `required-version`, jalankan `uv self update <versi>`, lalu pastikan `uv sync --locked` lolos.
 
 `.claude/` dikecualikan dari ruff karena isinya skill pihak ketiga yang disalin apa adanya.
 
