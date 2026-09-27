@@ -31,7 +31,7 @@ from hloc.utils.parsers import parse_retrieval
 LOCAL = extract_features.confs["aliked-n16"]  # bukan SuperPoint: lisensinya non-komersial
 MATCHER = match_features.confs["aliked+lightglue"]
 GLOBAL = extract_features.confs["megaloc"]
-EXHAUSTIVE_MAX = 30  # di bawah ini semua pasangan dicocokkan; di atasnya pakai retrieval
+EXHAUSTIVE_MAX = 30  # bawaan --exhaustive-max: di bawahnya semua pasangan, di atasnya retrieval
 
 
 def images_in(root: Path, sub: str) -> list[str]:
@@ -48,9 +48,9 @@ def timed(times: dict, key: str, fn, *args, **kwargs):
     return out
 
 
-def make_pairs(times, key, out, feats_global, root, queries, refs, k):
+def make_pairs(times, key, out, feats_global, root, queries, refs, k, exhaustive_max):
     # ponytail: exhaustive untuk data kecil (demo), retrieval MegaLoc untuk data lapangan
-    if len(refs) <= EXHAUSTIVE_MAX:
+    if len(refs) <= exhaustive_max:
         if queries is refs:
             timed(times, key, pairs_from_exhaustive.main, out, image_list=refs)
         else:
@@ -72,7 +72,9 @@ def make_pairs(times, key, out, feats_global, root, queries, refs, k):
         pairs_from_retrieval.main,
         feats_global,
         out,
-        num_matched=k,
+        # torch.topk di hloc gagal kalau k melebihi jumlah kandidat. Saat memetakan, foto itu
+        # sendiri tidak dihitung sebagai kandidat.
+        num_matched=min(k, len(refs) - (1 if queries is refs else 0)),
         query_list=queries,
         db_list=refs,
     )
@@ -90,6 +92,12 @@ def main():
         "--max-kp", type=int, default=1024, help="batas keypoint ALIKED, -1 = tanpa batas"
     )
     ap.add_argument("--resize", type=int, default=1024, help="sisi terpanjang foto saat ekstraksi")
+    ap.add_argument(
+        "--exhaustive-max",
+        type=int,
+        default=EXHAUSTIVE_MAX,
+        help="jumlah foto peta maksimum untuk pencocokan semua pasangan; 0 = selalu retrieval",
+    )
     a = ap.parse_args()
 
     global LOCAL
@@ -121,7 +129,17 @@ def main():
         image_list=refs,
         feature_path=feats,
     )
-    make_pairs(t_map, "pairs", out / "pairs-sfm.txt", feats_global, root, refs, refs, a.k_map)
+    make_pairs(
+        t_map,
+        "pairs",
+        out / "pairs-sfm.txt",
+        feats_global,
+        root,
+        refs,
+        refs,
+        a.k_map,
+        a.exhaustive_max,
+    )
     timed(
         t_map,
         "match",
@@ -150,7 +168,7 @@ def main():
     )
 
     # 2. Foto uji (diproses sekaligus; waktu tahap termasuk memuat model sekali)
-    if feats_global.exists() or len(refs) > EXHAUSTIVE_MAX:
+    if feats_global.exists() or len(refs) > a.exhaustive_max:
         timed(
             t_q,
             "global_extract",
@@ -169,7 +187,17 @@ def main():
         image_list=queries,
         feature_path=feats,
     )
-    make_pairs(t_q, "pairs", out / "pairs-loc.txt", feats_global, root, queries, refs, a.k_loc)
+    make_pairs(
+        t_q,
+        "pairs",
+        out / "pairs-loc.txt",
+        feats_global,
+        root,
+        queries,
+        refs,
+        a.k_loc,
+        a.exhaustive_max,
+    )
     timed(
         t_q,
         "match",
