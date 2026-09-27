@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # Action di workflow, dipin ke SHA commit. Dependabot memperbarui SHA dan komentar versinya.
+  # Workflow actions, pinned to commit SHAs. Dependabot updates the SHA and its version comment.
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -11,7 +11,7 @@ updates:
       actions:
         patterns: ["*"]
 
-  # Alat pengembangan di pyproject.toml dan uv.lock.
+  # Development tools in pyproject.toml and uv.lock.
   - package-ecosystem: uv
     directory: /
     schedule:

@@ -23,7 +23,7 @@ yang ditandai lain.
 
 | Berkas | Isi |
 |---|---|
-| `.github/workflows/ci.yml` | Job **Lint dan format Python**: `ruff check` dan `ruff format --check`. Job **Audit keamanan workflow**: [zizmor](https://github.com/zizmorcore/zizmor) memeriksa workflow dari pola berbahaya (injeksi, token berlebih, action tidak dipin) |
+| `.github/workflows/ci.yml` | Job **Python lint and format**: `ruff check` dan `ruff format --check`. Job **Workflow security audit**: [zizmor](https://github.com/zizmorcore/zizmor) memeriksa workflow dari pola berbahaya (injeksi, token berlebih, action tidak dipin) |
 | `.github/dependabot.yml` | PR mingguan untuk SHA action dan alat di `uv.lock`, dikelompokkan jadi satu PR per ekosistem |
 | `pyproject.toml`, `uv.lock` | Konfigurasi ruff dan versi alat. **Belum** memuat dependensi runtime (torch, hloc) |
 
@@ -107,7 +107,7 @@ repo-nya tidak otomatis berlaku untuk bobotnya.
 Berkas di repo tidak bisa mengaktifkan ini. Aktifkan lewat **Settings** repo:
 
 1. **Rulesets untuk `main`**: wajib lewat pull request, dan wajib lolos status check
-   `Lint dan format Python` dan `Audit keamanan workflow`. Larang force push.
+   `Python lint and format` dan `Workflow security audit`. Larang force push.
 2. **Actions > General**: aktifkan kebijakan yang mewajibkan action dipin ke SHA penuh (disebut di
    panduan keamanan GitHub). Izin bawaan workflow: **read**.
 3. **Advanced Security**: secret scanning dan push protection, Dependabot alerts dan security
