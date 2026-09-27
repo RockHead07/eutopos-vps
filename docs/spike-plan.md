@@ -523,3 +523,41 @@ dikurangi tahap lain, jadi perkiraan.
 **Batas:** satu foto uji, data luar ruangan, CPU desktop 8 core. Server instansi hanya 2 vCPU, dan
 core-nya kemungkinan lebih lambat dari i7-10700K, jadi baris 2 thread adalah **batas bawah**, bukan
 angka server.
+
+### Protokol titik acuan untuk uji lorong lantai 10
+
+Tanpa titik acuan, posisi hasil lokalisasi hanya dalam satuan model SfM, sehingga pertanyaan
+akurasi ≤ 1,0 m tidak bisa dijawab. Protokol ini dijalankan bersamaan dengan pemotretan.
+
+**Bawa:** meteran (laser lebih baik, pita cukup), selotip kertas, spidol, ponsel yang sama dengan
+foto peta.
+
+**Menandai titik:**
+1. Pilih satu **titik asal** yang mudah ditemukan lagi, misalnya sudut pintu lab. Sumbu x sepanjang
+   lorong, sumbu y melintang lorong.
+2. Tempel sekitar **20 titik** selotip di lantai, beri label `P01` sampai `P20`.
+3. ⚠️ **Letakkan titik zig-zag dekat kedua dinding, jangan di satu garis tengah.** Titik yang segaris
+   membuat rotasi peta di sekitar garis itu tidak tentu, sehingga penyelarasan ke meter tidak
+   stabil. `eval_meter.py` memberi peringatan kalau `sebaran_titik` < 0,05.
+4. Ukur `x_m` dan `y_m` tiap titik dari titik asal, catat di `data/lantai10/titik.csv` dengan format
+   `spike/titik-acuan-contoh.csv`. Catat juga alat ukur dan perkiraan ketelitiannya.
+
+**Memotret foto uji:** berdiri dengan ujung kaki di titik, ponsel setinggi dada, lalu ambil 2 foto
+ke arah berbeda. Namai `P07_a.jpg`, `P07_b.jpg` (ID titik di depan, sebelum `_`). Simpan di
+`data/lantai10/query/`. Foto peta tetap diambil terpisah seperti bagian 4.1.
+
+**Menghitung galat:**
+
+```bash
+python spike/run.py data/lantai10 --out outputs/lantai10
+python spike/eval_meter.py outputs/lantai10/kp1024-r1024/results.csv data/lantai10/titik.csv
+```
+
+`eval_meter.py` menyelaraskan peta ke meter dengan Sim3 (`pycolmap.estimate_sim3d_robust`) dari
+pusat kamera ke titik acuan, memakai skema **leave-one-out**: galat tiap titik dihitung dari Sim3
+yang ditaksir tanpa titik itu. Keluarannya median galat, persentil 90, dan **persen foto ≤ 1,0 m**.
+Foto yang gagal dilokalisasi dihitung gagal. Galat dilaporkan 2D (bidang lantai), tinggi ponsel
+dianggap tetap (`--tinggi`, bawaan 1,3 m). Uji logikanya dengan `--self-test`.
+
+**Batas:** posisi ponsel di tangan tidak persis di atas titik (puluhan sentimeter, lihat 4.1).
+Koordinat titik acuan gedung tidak di-commit sebelum ditanyakan ke pembimbing.
