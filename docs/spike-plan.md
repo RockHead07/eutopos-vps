@@ -316,3 +316,28 @@ uv pip install --python .venv -e third_party/Hierarchical-Localization
 Tanpa `--recursive`: submodul hloc tidak dibutuhkan. Data contoh ada di
 `third_party/Hierarchical-Localization/datasets/sacre_coeur/mapping`. Bobot ALIKED dan LightGlue
 diunduh otomatis saat pertama dipakai.
+
+### Status terakhir (2026-09-27)
+
+| Hal | Status |
+|---|---|
+| Lingkungan spike di laptop | ✅ Siap: Python 3.12, PyTorch 2.14 CPU, hloc 1.5 (`c13273b`), pycolmap 4.2.0, `huggingface_hub`, `safetensors` |
+| uv | ✅ 0.12.19, cocok dengan `required-version` |
+| Pipeline pada data contoh | ✅ Berjalan (bagian 12 di atas) |
+| Bobot ALIKED dan LightGlue | ✅ Tersimpan di cache torch |
+| Bobot MegaLoc (retrieval, 915 MB) | ⏸️ **Belum terunduh.** Unduhan dihentikan pemilik repo. Repo `gmberton/MegaLoc` sudah dipercaya di torch hub (kodenya sudah dibaca: hanya torch, bobot format safetensors). Sisa unduhan parsial `.incomplete` di cache Hugging Face; lanjutkan dengan `torch.hub.load("gmberton/MegaLoc", "get_trained_model", trust_repo=True)`. **Wajib sebelum menjalankan data lorong**, karena lebih dari 30 foto peta memakai retrieval |
+| Folder foto | ✅ `data/lantai10/mapping/` dan `data/lantai10/query/`, **masih kosong** |
+| Foto lorong lantai 10 | ⏸️ Belum diambil. Panduan memotret ada di bagian 4.1 dan 4.5 |
+
+**Temuan baru:**
+- **Lisensi bobot MegaLoc: MIT** (halaman model `gberton/MegaLoc` di Hugging Face). Menutup ⚠️
+  lisensi bobot untuk MegaLoc. NetVLAD tetap ⚠️.
+- `megaloc_model.py` memuat potongan *optimal transport* dari OpenGlue (ucuapps), bukan kode
+  SuperGlue milik Magic Leap. ⚠️ Lisensi OpenGlue belum dicek.
+
+**Langkah berikutnya, berurutan:**
+1. Selesaikan unduhan MegaLoc.
+2. Pemilik repo memotret lorong lantai 10 (izin penanggung jawab lab, jam sepi).
+3. Jalankan `spike/run.py data/lantai10 --out outputs/lantai10-kp512 --max-kp 512` dan
+   `--max-kp 1024`, bandingkan foto peta terdaftar, foto uji terlokalisasi, dan waktu per tahap.
+4. Masukkan hasil dan temuan lisensi di atas lewat satu PR.
