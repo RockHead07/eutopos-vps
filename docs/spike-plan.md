@@ -325,7 +325,8 @@ diunduh otomatis saat pertama dipakai.
 | uv | ✅ 0.12.19, cocok dengan `required-version` |
 | Pipeline pada data contoh | ✅ Berjalan (bagian 12 di atas) |
 | Bobot ALIKED dan LightGlue | ✅ Tersimpan di cache torch |
-| Bobot MegaLoc (retrieval, 915 MB) | ⏸️ **Belum terunduh.** Unduhan dihentikan pemilik repo. Repo `gmberton/MegaLoc` sudah dipercaya di torch hub (kodenya sudah dibaca: hanya torch, bobot format safetensors). Sisa unduhan parsial `.incomplete` di cache Hugging Face; lanjutkan dengan `torch.hub.load("gmberton/MegaLoc", "get_trained_model", trust_repo=True)`. **Wajib sebelum menjalankan data lorong**, karena lebih dari 30 foto peta memakai retrieval |
+| Bobot MegaLoc (retrieval, 915 MB) | ✅ Terunduh di laptop dan PC lab. Pertama kali: `torch.hub.load("gmberton/MegaLoc", "get_trained_model", trust_repo=True)` supaya tidak macet di prompt interaktif |
+| Lingkungan di PC lab (RTX 3070) | ✅ Siap, CUDA aktif. Hasil pengukuran di bagian "Hasil pengukuran hangat di PC lab" |
 | Folder foto | ✅ `data/lantai10/mapping/` dan `data/lantai10/query/`, **masih kosong** |
 | Foto lorong lantai 10 | ⏸️ Belum diambil. Panduan memotret ada di bagian 4.1 dan 4.5 |
 
@@ -336,7 +337,7 @@ diunduh otomatis saat pertama dipakai.
   SuperGlue milik Magic Leap. ⚠️ Lisensi OpenGlue belum dicek.
 
 **Langkah berikutnya, berurutan:**
-1. Selesaikan unduhan MegaLoc.
+1. ~~Selesaikan unduhan MegaLoc.~~ Selesai.
 2. Pemilik repo memotret lorong lantai 10 (izin penanggung jawab lab, jam sepi).
 3. Jalankan `spike/run.py data/lantai10 --out outputs/lantai10-kp512 --max-kp 512` dan
    `--max-kp 1024`, bandingkan foto peta terdaftar, foto uji terlokalisasi, dan waktu per tahap.
@@ -427,3 +428,98 @@ perubahan kode MegaLoc di cache torch hub.
 2. **Angka yang diklaim harus dari server instansi (T3)**, diukur dengan `bench_localize.py`.
 3. Kalau laptop tetap dipakai untuk angka: tutup aplikasi lain, mode daya performa terbaik,
    tersambung listrik, dan ulangi beberapa run secara berselang-seling antar-setelan.
+
+### Pengecekan server instansi dan keputusan tempat uji (2026-09-27)
+
+Pengecekan baca-saja di server instansi (T3):
+
+| Hal | Hasil | Penilaian |
+|---|---|---|
+| CPU | 2 vCPU, model virtual generik QEMU, **ada AVX, AVX2, FMA** | ✅ PyTorch bisa memakai jalur cepatnya. Kekhawatiran "CPU generik tanpa AVX2" terbukti keliru |
+| RAM | 7,8 GB, tersedia ~5,1 GB, **swap 2,8 dari 4 GB terpakai** | ⚠️ Pernah ada tekanan memori |
+| Disk `/` | **sisa 5,6 GB (90%)** | ❌ Lingkungan spike (~3 sampai 4 GB) akan membuat disk ~96% penuh, padahal server menjalankan lebih dari 10 layanan produksi beserta basis datanya |
+| Beban | **2,21 pada 2 vCPU**, satu proses macet memakai satu core penuh | ❌ Pengukuran latensi tidak sah selama server jenuh |
+
+**Keputusan (pemilik repo, 2026-09-27): uji sementara dipindah ke PC lab dengan GPU** (i7-10700K,
+RTX 3070, RAM 32 GB), diakses dari jauh. Server instansi **belum gugur**: bisa dipakai lagi setelah
+disk dibersihkan dan beban normal, lewat koordinasi dengan pemilik server.
+
+**Konsekuensi yang wajib disampaikan ke pembimbing:** dokumen pengajuan menyebut "server instansi
+tanpa GPU". PC lab punya GPU, jadi pilihannya: ukur **CPU saja** agar klaim itu tetap bisa diuji,
+atau pakai GPU dan klaim diubah menjadi "server dengan GPU konsumen". Paling informatif: ukur
+**keduanya di mesin yang sama** (T1 dengan GPU, T2 tanpa GPU), lalu tarik spesifikasi minimum
+server untuk instansi. Hal lain soal PC lab sebagai server: Windows 10 22H2 tanpa pembaruan
+keamanan, tersambung Wi-Fi, dan harus tidak dipakai aplikasi berat saat pengukuran.
+
+### Memasang lingkungan di PC lab (Windows, GPU)
+
+Dijalankan pemilik repo lewat akses jarak jauh, di PowerShell, folder `C:\Users\<user>\eutopos-vps`.
+
+**Temuan saat memasang:**
+- PC lab: driver NVIDIA 616.92 (mendukung CUDA 13), beban CPU 2%, RAM kosong 18 GB, C: sisa 58 GB.
+- `uv` dan `python` yang terdeteksi di PATH **milik aplikasi lain ("hermes")**. Jangan dipakai
+  atau diubah. uv resmi dipasang terpisah di `%USERPROFILE%\.local\bin` dan dipanggil dengan path
+  lengkap.
+- Installer uv **jangan dibungkus** `powershell -c "irm ... | iex"` dari dalam PowerShell. Tanda
+  kutipnya hilang, `|` diproses shell luar, dan `iex` menerima keluaran profil (fastfetch). Jalankan
+  langsung `irm ... | iex`.
+- PyTorch 2.14 tersedia untuk Windows Python 3.12 di indeks `cu130` dan `cu126` (bukan `cu128`).
+
+```powershell
+irm https://astral.sh/uv/0.12.19/install.ps1 | iex
+$uv = "$env:USERPROFILE\.local\bin\uv.exe"
+cd "$env:USERPROFILE\eutopos-vps"
+& $uv venv --python 3.12 .venv
+& $uv pip install --python .venv torch==2.14.0 torchvision==0.29.0 --index-url https://download.pytorch.org/whl/cu130
+git clone https://github.com/cvg/Hierarchical-Localization.git third_party/Hierarchical-Localization
+git -C third_party/Hierarchical-Localization checkout c13273b
+& $uv pip install --python .venv -e third_party/Hierarchical-Localization huggingface_hub safetensors
+.venv\Scripts\python.exe -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+```
+
+**Mengukur di mesin yang sama:** `bench_localize.py --device cuda` untuk GPU (T1), `--device cpu`
+untuk CPU (T2). Untuk `run.py`, hloc otomatis memakai GPU kalau ada. Paksa CPU dengan
+`$env:CUDA_VISIBLE_DEVICES = ""` sebelum menjalankannya.
+
+**Bukti tambahan ketidakstabilan laptop:** setelan yang sama persis (MegaLoc 512, 8 thread, k = 5)
+terukur 10,2 s lalu 3,1 s pada hari yang sama. Angka latensi yang diklaim harus dari PC lab atau
+server, diulang, dan dicatat kondisinya.
+
+### Hasil pengukuran hangat di PC lab (2026-09-27)
+
+Data contoh (9 foto peta, 1 foto uji), peta dibangun ulang di PC lab dengan
+`run.py --exhaustive-max 0`. `bench_localize.py`: k = 5, keypoint 1024, resize ALIKED 1024,
+1 pemanasan lalu median dari 5 ulangan. CPU memakai 8 thread bawaan torch.
+
+| Perangkat | MegaLoc | Baca | MegaLoc | ALIKED | LightGlue | PnP | **Total** | Inlier |
+|---|---|---|---|---|---|---|---|---|
+| RTX 3070 (T1) | 512 | 0,022 s | 0,029 s | 0,021 s | ~0,07 s ⚠️ | 0,013 s | **0,15 s** | 406 |
+| RTX 3070 (T1) | 1024 | 0,023 s | 0,182 s | 0,021 s | ~0,07 s ⚠️ | 0,013 s | **0,31 s** | 406 |
+| i7-10700K (T2) | 512 | 0,023 s | 0,517 s | 1,358 s | 0,627 s | 0,016 s | **2,51 s** | 413 |
+| i7-10700K (T2) | 1024 | 0,022 s | 2,921 s | 1,354 s | 0,622 s | 0,013 s | **4,91 s** | 413 |
+| i7-10700K, 2 thread | 512 | 0,020 s | 1,018 s | 1,791 s | 1,217 s | 0,012 s | **4,05 s** | 413 |
+
+⚠️ Baris LightGlue tidak tampil di keluaran GPU yang ditempel. Angkanya diturunkan dari total
+dikurangi tahap lain, jadi perkiraan.
+
+**Temuan:**
+1. **Pipeline hangat di GPU sekitar 16 kali lebih cepat dari CPU desktop** (0,15 s vs 2,51 s pada
+   MegaLoc 512).
+2. **Kenop resolusi MegaLoc terkonfirmasi di mesin stabil:** 1024 ke 512 memangkas MegaLoc di CPU
+   dari 2,92 s ke 0,52 s (5,6 kali), sejalan dengan temuan laptop (~6 kali). Kandidat teratas dan
+   inlier sama.
+3. **Di CPU dengan MegaLoc 512, ALIKED menjadi tahap terlama** (1,36 s, lebih dari separuh total).
+   Kenop berikutnya: resize ALIKED (`--resize`) dan batas keypoint (`--max-kp`), diuji dengan
+   foto lorong karena keduanya bisa menurunkan akurasi.
+4. **MegaLoc 1024 di i7-10700K 2,9 s, di laptop 13 sampai 15 s.** Menguatkan bahwa angka laptop
+   tidak sah.
+5. **GPU dan CPU memberi hasil sedikit berbeda** (406 vs 413 inlier, pusat kamera bergeser ~0,02
+   satuan model). Wajar karena perbedaan aritmetika floating point antara GPU dan CPU. Akurasi
+   dibandingkan dalam meter setelah ada titik acuan, bukan dari angka ini.
+
+6. **Dibatasi 2 thread (perkiraan server 2 vCPU): 4,05 s.** MegaLoc dan LightGlue melambat ~2 kali,
+   ALIKED hanya ~1,3 kali. Dengan 2 thread, ALIKED tetap tahap terlama.
+
+**Batas:** satu foto uji, data luar ruangan, CPU desktop 8 core. Server instansi hanya 2 vCPU, dan
+core-nya kemungkinan lebih lambat dari i7-10700K, jadi baris 2 thread adalah **batas bawah**, bukan
+angka server.
