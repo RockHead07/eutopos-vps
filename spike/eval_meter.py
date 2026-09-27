@@ -11,6 +11,9 @@ Penyelarasan model ke meter memakai Sim3 (skala, rotasi, translasi) dari pusat k
 titik acuan. Skema leave-one-out: galat tiap titik dihitung dari Sim3 yang ditaksir TANPA titik itu,
 jadi tidak ada titik yang menilai dirinya sendiri. Foto yang gagal dilokalisasi dihitung gagal.
 
+Salah yakin: foto yang DIANGGAP berhasil oleh pipeline (ada pose) tapi galatnya > --salah-m. Untuk
+navigasi ini lebih berbahaya daripada gagal: aplikasi tidak tahu harus mencoba lagi.
+
 Contoh:
     python spike/eval_meter.py outputs/lantai10/kp1024-r1024/results.csv data/lantai10/titik.csv
     python spike/eval_meter.py --self-test
@@ -25,6 +28,7 @@ import numpy as np
 import pycolmap
 
 AMBANG_M = 1.0  # pertanyaan spike: galat <= 1,0 m pada >= 70% foto uji
+SALAH_M = 3.0  # bawaan --salah-m: kira-kira sudah di depan pintu atau lorong yang salah
 
 
 def point_id(query: str) -> str:
@@ -39,7 +43,7 @@ def fit(src, tgt, ransac_m):
     return ret["tgt_from_src"] if ret else None
 
 
-def evaluate(rows, gt, height_m, ransac_m):
+def evaluate(rows, gt, height_m, ransac_m, salah_m=SALAH_M):
     """rows: dict query -> pusat kamera (xyz model) atau None. gt: dict titik -> (x_m, y_m)."""
     loc = {q: c for q, c in rows.items() if c is not None and point_id(q) in gt}
     pts = sorted({point_id(q) for q in loc})
@@ -68,11 +72,12 @@ def evaluate(rows, gt, height_m, ransac_m):
             )
             if sim is not None:
                 p = sim * np.array([rows[q]], float)
-                err = float(np.linalg.norm(p[0, :2] - np.array(gt[point_id(q)])))
+                err = round(float(np.linalg.norm(p[0, :2] - np.array(gt[point_id(q)]))), 3)
         out.append({"query": q, "titik": point_id(q), "galat_m": err})
 
     errs = [r["galat_m"] for r in out]
     ok = [e for e in errs if e is not None]
+    n_salah = sum(e > salah_m for e in ok)
     summary = {
         "foto_uji": len(errs),
         "foto_dengan_galat": len(ok),
@@ -82,6 +87,7 @@ def evaluate(rows, gt, height_m, ransac_m):
         "p90_galat_m": round(float(np.percentile(ok, 90)), 3) if ok else None,
         # yang gagal dilokalisasi atau gagal diselaraskan dihitung melewati ambang
         f"persen_foto_le_{AMBANG_M}m": round(100 * sum(e <= AMBANG_M for e in ok) / len(errs), 1),
+        f"persen_salah_yakin_gt_{salah_m}m": round(100 * n_salah / len(errs), 1),
     }
     if spread < 0.05:
         summary["peringatan"] = "titik acuan hampir segaris; penyelarasan tidak stabil"
@@ -89,12 +95,14 @@ def evaluate(rows, gt, height_m, ransac_m):
 
 
 def read_results(path: Path):
-    rows = {}
+    """-> (query -> pusat kamera atau None, query -> jumlah inlier)."""
+    rows, inliers = {}, {}
     with open(path, encoding="utf-8") as f:
         for r in csv.DictReader(f):
             ok = r["ok"] == "True" and r["center_xyz_model"]
             rows[r["query"]] = json.loads(r["center_xyz_model"]) if ok else None
-    return rows
+            inliers[r["query"]] = int(r["inliers"])
+    return rows, inliers
 
 
 def read_gt(path: Path):
@@ -123,6 +131,7 @@ def self_test():
     assert s["foto_uji"] == 24 and s["foto_dengan_galat"] == 23, s
     assert s["median_galat_m"] < 0.15, s
     assert s["persen_foto_le_1.0m"] == round(100 * 22 / 24, 1), s  # 2 gagal dari 24
+    assert s["persen_salah_yakin_gt_3.0m"] == round(100 * 1 / 24, 1), s  # hanya P05_b
     line = {f"L{i}": (i * 1.0, 0.0) for i in range(5)}
     _, s2 = evaluate({f"q/L{i}_a.jpg": [i, 0, 0] for i in range(5)}, line, 1.3, 1.0)
     assert "peringatan" in s2, s2
@@ -135,6 +144,7 @@ def main():
     ap.add_argument("titik", type=Path, nargs="?", help="CSV titik acuan: titik,x_m,y_m")
     ap.add_argument("--tinggi", type=float, default=1.3, help="tinggi ponsel dari lantai (m)")
     ap.add_argument("--ransac-m", type=float, default=1.0, help="ambang inlier Sim3 (m)")
+    ap.add_argument("--salah-m", type=float, default=SALAH_M, help="galat 'salah yakin' (m)")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
     if a.self_test:
@@ -142,10 +152,14 @@ def main():
     if not (a.results and a.titik):
         ap.error("butuh results dan titik, atau --self-test")
 
-    out, summary = evaluate(read_results(a.results), read_gt(a.titik), a.tinggi, a.ransac_m)
+    rows, inliers = read_results(a.results)
+    out, summary = evaluate(rows, read_gt(a.titik), a.tinggi, a.ransac_m, a.salah_m)
+    for r in out:
+        # untuk memilih ambang inlier: foto salah yakin dengan inlier tinggi = ambang saja tak cukup
+        r["inliers"] = inliers[r["query"]]
     dst = a.results.with_name("galat_meter.csv")
     with open(dst, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=["query", "titik", "galat_m"])
+        w = csv.DictWriter(f, fieldnames=["query", "titik", "galat_m", "inliers"])
         w.writeheader()
         w.writerows(out)
     print(json.dumps(summary, indent=2))
