@@ -556,6 +556,11 @@ python spike/eval_meter.py outputs/lantai10/kp1024-r1024/results.csv data/lantai
 `eval_meter.py` menyelaraskan peta ke meter dengan Sim3 (`pycolmap.estimate_sim3d_robust`) dari
 pusat kamera ke titik acuan, memakai skema **leave-one-out**: galat tiap titik dihitung dari Sim3
 yang ditaksir tanpa titik itu. Keluarannya median galat, persentil 90, dan **persen foto ≤ 1,0 m**.
+Juga **persen salah yakin**: foto yang dianggap berhasil oleh pipeline (ada pose) tapi galatnya
+lebih dari `--salah-m` (bawaan 3 m, kira-kira sudah di depan pintu atau lorong yang salah). Untuk
+navigasi ini lebih berbahaya daripada gagal, karena aplikasi tidak tahu harus mencoba lagi. Kolom
+`inliers` di `galat_meter.csv` dipakai untuk memilih ambang inlier: kalau foto salah yakin punya
+inlier setinggi foto yang benar, ambang inlier saja tidak cukup untuk menyaringnya.
 Foto yang gagal dilokalisasi dihitung gagal. Galat dilaporkan 2D (bidang lantai), tinggi ponsel
 dianggap tetap (`--tinggi`, bawaan 1,3 m). Uji logikanya dengan `--self-test`.
 
