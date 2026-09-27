@@ -93,6 +93,10 @@ Repo ini **publik** dan berlisensi **AGPL-3.0**.
 ## Aturan git
 
 - Commit hanya kalau pemilik repo memintanya. Push hanya dengan perintah terpisah.
+- **`main` hanya lewat pull request** (keputusan pemilik repo, 2026-09-27). Ruleset `main-protection`
+  menolak push langsung dari siapa pun dan mewajibkan check `Lint dan format Python` serta
+  `Audit keamanan workflow` lolos. Alurnya: branch, push, `gh pr create`, tunggu CI hijau, lalu
+  `gh pr merge --rebase --delete-branch`. Tanpa reviewer wajib. Jangan menyalakan auto-merge.
 - **Jangan pernah mencantumkan atribusi AI** di commit atau PR: tanpa `Co-Authored-By`, tanpa footer
   "Generated with", tanpa tautan sesi. Author dan committer selalu pemilik repo.
 
