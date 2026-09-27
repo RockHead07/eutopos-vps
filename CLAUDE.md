@@ -106,10 +106,17 @@ Repo ini **publik** dan berlisensi **AGPL-3.0**.
   eksperimen. Dasar: [DORA](https://dora.dev/capabilities/trunk-based-development/) (merge ke trunk
   minimal sekali sehari, umur branch beberapa jam) dan
   [trunkbaseddevelopment.com](https://trunkbaseddevelopment.com/). PR dipertahankan walau pengembang
-  tunggal karena beberapa sesi agen bekerja di working directory yang sama, dan CI sebelum merge
-  menahan kesalahan dari sesi mana pun.
-- **Working directory dipakai bersama sesi lain.** Cek `git status` dan branch aktif sebelum mulai,
-  stage hanya berkas yang kamu ubah, dan kembali ke `main` setelah PR di-merge.
+  tunggal karena beberapa sesi agen bekerja di repo yang sama. CI hanya menahan kesalahan lint,
+  format, dan keamanan workflow (`ruff`, `zizmor`), **bukan kesalahan logika**. Perubahan kode tetap
+  harus diverifikasi dengan menjalankannya sebelum PR dibuat.
+- **Satu sesi, satu worktree.** Checkout utama dipakai beberapa sesi sekaligus, jadi **jangan
+  berpindah branch di sana**: itu memindahkan branch sesi lain. Kerjakan setiap unit di
+  [`git worktree`](https://git-scm.com/docs/git-worktree) sendiri dari `origin/main`, lalu hapus
+  worktree-nya setelah PR di-merge. Di Windows, path berkas skill di `.claude/` terlalu panjang,
+  jadi pakai `git -c core.longpaths=true worktree add ...`.
+- **Kalau terpaksa bekerja di checkout utama:** sebelum staging, periksa `git diff <berkas>`.
+  `git add <berkas>` ikut memasukkan perubahan sesi lain di berkas yang sama. Kalau ada perubahan
+  yang bukan milikmu, jangan commit berkas itu dan tanyakan ke pemilik repo.
 - **Jangan pernah mencantumkan atribusi AI** di commit atau PR: tanpa `Co-Authored-By`, tanpa footer
   "Generated with", tanpa tautan sesi. Author dan committer selalu pemilik repo.
 
