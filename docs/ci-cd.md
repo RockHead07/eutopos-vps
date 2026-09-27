@@ -42,18 +42,25 @@ diperbarui membatalkan run lama untuk PR yang sama.
 ## 3. Menjalankan pemeriksaan yang sama di laptop
 
 ```bash
-uv sync                       # memasang ruff dan zizmor sesuai uv.lock
+uv sync --inexact             # memasang ruff dan zizmor sesuai uv.lock, TANPA menghapus paket spike
 uv run ruff check .           # lint
 uv run ruff format .          # merapikan format (CI hanya memeriksa, tidak mengubah)
 uv run zizmor .github/        # audit workflow
 ```
+
+> 🚨 **Jangan menjalankan `uv sync` tanpa `--inexact` di laptop.** `uv sync` melakukan sinkronisasi
+> *exact*: paket yang tidak ada di `uv.lock` **dihapus** dari `.venv` ([dokumentasi uv](https://docs.astral.sh/uv/concepts/projects/sync/)). Torch, hloc, pycolmap, dan
+> LightGlue untuk spike dipasang manual (`docs/spike-plan.md` bagian 12) dan belum ada di `uv.lock`,
+> jadi `uv sync` biasa akan menghapus 43 paket (dicek dengan `--dry-run`, 2026-09-27). `uv run`
+> aman karena sinkronisasinya *inexact*. CI tidak terpengaruh karena runner mulai dari lingkungan
+> kosong. Masalah ini hilang di fase 1, saat dependensi runtime dideklarasikan di `pyproject.toml`.
 
 Mengubah versi alat: `uv add --dev ruff@<versi>` atau `uv lock --upgrade-package ruff`, lalu commit
 `pyproject.toml` dan `uv.lock` bersamaan.
 
 **Versi uv** dipin di `pyproject.toml` (`required-version`). uv dengan versi lain menolak berjalan
 dan menyarankan `uv self update <versi>`. ⚠️ Belum dicek apakah Dependabot ikut memperbarui pin ini. Anggap tidak, dan naikkan manual:
-ubah `required-version`, jalankan `uv self update <versi>`, lalu pastikan `uv sync --locked` lolos.
+ubah `required-version`, jalankan `uv self update <versi>`, lalu pastikan `uv sync --locked --inexact` lolos.
 
 `.claude/` dikecualikan dari ruff karena isinya skill pihak ketiga yang disalin apa adanya.
 
