@@ -112,8 +112,15 @@ Repo ini **publik** dan berlisensi **AGPL-3.0**.
 - **Satu sesi, satu worktree.** Checkout utama dipakai beberapa sesi sekaligus, jadi **jangan
   berpindah branch di sana**: itu memindahkan branch sesi lain. Kerjakan setiap unit di
   [`git worktree`](https://git-scm.com/docs/git-worktree) sendiri dari `origin/main`, lalu hapus
-  worktree-nya setelah PR di-merge. Di Windows, path berkas skill di `.claude/` terlalu panjang,
-  jadi pakai `git -c core.longpaths=true worktree add ...`.
+  worktree-nya setelah PR di-merge. **Letakkan worktree di path pendek `D:/wt/<nama>`**: path berkas
+  skill di `.claude/` sudah panjang, dan di bawah folder yang dalam (misalnya scratchpad) Windows
+  menolak membuat maupun menghapusnya ("Filename too long").
+
+  ```bash
+  git fetch && git worktree add -b <branch> D:/wt/<nama> origin/main
+  # ... kerjakan, commit, push, PR, merge ...
+  git worktree remove D:/wt/<nama> && git branch -D <branch>
+  ```
 - **Kalau terpaksa bekerja di checkout utama:** sebelum staging, periksa `git diff <berkas>`.
   `git add <berkas>` ikut memasukkan perubahan sesi lain di berkas yang sama. Kalau ada perubahan
   yang bukan milikmu, jangan commit berkas itu dan tanyakan ke pemilik repo.
