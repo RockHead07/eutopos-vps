@@ -6,12 +6,12 @@ fisik, dan tanpa layanan cloud pihak ketiga.
 
 *eu* (baik) + *topos* (tempat): tempat yang baik.
 
-Bagian dari Proyek Akhir D3 Teknik Informatika, Politeknik Elektronika Negeri Surabaya: *Platform
-Indoor Navigation Terintegrasi AI Avatar Assistant Berbasis Retrieval-Augmented Generation*.
+Dikembangkan sebagai komponen lokalisasi untuk platform navigasi dalam gedung berbasis *augmented
+reality* di lingkungan kampus.
 
 ## Status
 
-🔒 **Tahap perencanaan.** Pengembangan dimulai setelah judul Proyek Akhir disetujui.
+🧪 **Uji coba awal.** Pipeline sudah berjalan pada data contoh. Pengujian di lapangan sedang disiapkan.
 
 ## Rancangan
 
@@ -23,7 +23,7 @@ Indoor Navigation Terintegrasi AI Avatar Assistant Berbasis Retrieval-Augmented 
 
 | Berkas | Isi |
 |---|---|
-| [`docs/pa-context.md`](docs/pa-context.md) | Konteks Proyek Akhir: judul, riwayat, arahan, dan keputusan |
+| [`docs/pa-context.md`](docs/pa-context.md) | Konteks proyek: riwayat, arahan, dan keputusan |
 | [`docs/spike-plan.md`](docs/spike-plan.md) | Rencana uji kelayakan satu koridor |
 | [`docs/design-notes.md`](docs/design-notes.md) | Penyelarasan koordinat, model data, rute, dan metrik evaluasi |
 | [`docs/research-paper.md`](docs/research-paper.md) | Rujukan penelitian, lisensi, dan alasan pemilihan metode |
