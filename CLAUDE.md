@@ -97,8 +97,8 @@ Repo ini **publik** dan berlisensi **AGPL-3.0**.
 
 - Commit hanya kalau pemilik repo memintanya. Push hanya dengan perintah terpisah.
 - **`main` hanya lewat pull request** (keputusan pemilik repo, 2026-09-27). Ruleset `main-protection`
-  menolak push langsung dari siapa pun dan mewajibkan check `Lint dan format Python` serta
-  `Audit keamanan workflow` lolos. Alurnya: branch, push, `gh pr create`, tunggu CI hijau, lalu
+  menolak push langsung dari siapa pun dan mewajibkan check `Python lint and format` serta
+  `Workflow security audit` lolos. Alurnya: branch, push, `gh pr create`, tunggu CI hijau, lalu
   `gh pr merge --rebase --delete-branch`. Tanpa reviewer wajib. Jangan menyalakan auto-merge.
 - **Branch berumur pendek** (trunk-based development, keputusan pemilik repo, 2026-09-27). Satu unit
   kerja yang sudah terverifikasi = satu branch = satu PR, di-merge **hari itu juga**. Perbaikan kecil
