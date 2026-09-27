@@ -100,6 +100,16 @@ Repo ini **publik** dan berlisensi **AGPL-3.0**.
   menolak push langsung dari siapa pun dan mewajibkan check `Lint dan format Python` serta
   `Audit keamanan workflow` lolos. Alurnya: branch, push, `gh pr create`, tunggu CI hijau, lalu
   `gh pr merge --rebase --delete-branch`. Tanpa reviewer wajib. Jangan menyalakan auto-merge.
+- **Branch berumur pendek** (trunk-based development, keputusan pemilik repo, 2026-09-27). Satu unit
+  kerja yang sudah terverifikasi = satu branch = satu PR, di-merge **hari itu juga**. Perbaikan kecil
+  yang berkaitan digabung jadi satu unit. **Tidak ada branch jangka panjang** per fase atau per
+  eksperimen. Dasar: [DORA](https://dora.dev/capabilities/trunk-based-development/) (merge ke trunk
+  minimal sekali sehari, umur branch beberapa jam) dan
+  [trunkbaseddevelopment.com](https://trunkbaseddevelopment.com/). PR dipertahankan walau pengembang
+  tunggal karena beberapa sesi agen bekerja di working directory yang sama, dan CI sebelum merge
+  menahan kesalahan dari sesi mana pun.
+- **Working directory dipakai bersama sesi lain.** Cek `git status` dan branch aktif sebelum mulai,
+  stage hanya berkas yang kamu ubah, dan kembali ke `main` setelah PR di-merge.
 - **Jangan pernah mencantumkan atribusi AI** di commit atau PR: tanpa `Co-Authored-By`, tanpa footer
   "Generated with", tanpa tautan sesi. Author dan committer selalu pemilik repo.
 
