@@ -341,3 +341,40 @@ diunduh otomatis saat pertama dipakai.
 3. Jalankan `spike/run.py data/lantai10 --out outputs/lantai10-kp512 --max-kp 512` dan
    `--max-kp 1024`, bandingkan foto peta terdaftar, foto uji terlokalisasi, dan waktu per tahap.
 4. Masukkan hasil dan temuan lisensi di atas lewat satu PR.
+
+### Jalur retrieval dan biaya per query (2026-09-27)
+
+**Jalur retrieval MegaLoc terbukti berjalan.** `run.py` kini punya `--exhaustive-max` (0 = selalu
+retrieval), sehingga jalur yang biasanya baru aktif di atas 30 foto peta bisa diuji dengan data
+contoh. Hasilnya: peta 9/9 terdaftar, foto uji 1/1 terlokalisasi, 72 pasangan peta dan 9 pasangan
+query. Jumlah kandidat `k` kini dibatasi maksimal jumlah foto peta, karena `torch.topk` di hloc
+gagal kalau `k` lebih besar.
+
+**Pengukuran model hangat di laptop** (resize 1024, 8 thread):
+
+| Tahap per query | Waktu |
+|---|---|
+| Deskriptor global MegaLoc | **3,5 s** (muat model sekali: 4,2 s) |
+| Fitur lokal ALIKED | ~3,5 s |
+| Pencocokan LightGlue | 0,38 s (512 kp) atau 1,06 s (1024 kp) per pasangan |
+| Estimasi pose | 0,3 s |
+
+**Perkiraan per lokalisasi di laptop:**
+
+| Batas keypoint | k = 5 | k = 10 |
+|---|---|---|
+| 512 | ~9 s | ~11 s |
+| 1024 | ~13 s | ~18 s |
+
+**Temuan:**
+1. **Pemanggilan fungsi batch hloc punya biaya tetap beberapa detik** (memuat model dan 5 proses
+   pembantu `DataLoader`, mahal di Windows). Tahap pencocokan 9 pasangan butuh 9 sampai 11 detik
+   pada 512 maupun 1024 keypoint, padahal ukuran hangat hanya 3,4 dan 9,5 detik. **Layanan
+   `/localize` wajib memuat model sekali dan tidak memanggil fungsi batch hloc per permintaan.**
+2. **Ekstraksi fitur (MegaLoc + ALIKED) makan ~7 detik per query** sebelum pencocokan dimulai.
+   Di server instansi (2 vCPU) kemungkinan jauh lebih lambat, sehingga gerbang ≤ 10 detik berisiko.
+3. ⚠️ **Hipotesis untuk dicoba: lewati retrieval global saat koreksi berkala.** Di antara dua
+   koreksi, ARCore sudah memberi perkiraan posisi. Kandidat foto peta bisa dipilih dari kedekatan
+   posenya (hloc punya `pairs_from_poses`), sehingga ~3,5 detik MegaLoc hilang. Retrieval global
+   tetap dipakai untuk lokalisasi pertama, saat posisi belum diketahui. **Belum diuji.**
+4. Kenop lain yang belum diuji: resize lebih kecil untuk MegaLoc dan ALIKED, serta XFeat.
