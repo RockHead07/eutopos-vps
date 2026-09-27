@@ -95,15 +95,19 @@ def main():
     global LOCAL
     LOCAL = {
         **LOCAL,
-        "output": f"{LOCAL['output']}-kp{a.max_kp}-r{a.resize}",
         "model": {**LOCAL["model"], "max_num_keypoints": a.max_kp},
         "preprocessing": {**LOCAL["preprocessing"], "resize_max": a.resize},
     }
 
     root, out = a.dataset, a.out
-    out.mkdir(parents=True, exist_ok=True)
+    # hloc melewati gambar dan pasangan yang sudah ada di berkas .h5 (overwrite=False). Semua yang
+    # bergantung pada setelan fitur lokal masuk subfolder per setelan, supaya run dengan --max-kp
+    # atau --resize lain tidak diam-diam memakai fitur lama. Fitur global dan daftar pasangan
+    # tidak bergantung pada setelan itu, jadi dipakai bersama.
+    run_dir = out / f"kp{a.max_kp}-r{a.resize}"
+    run_dir.mkdir(parents=True, exist_ok=True)
     refs, queries = images_in(root, "mapping"), images_in(root, "query")
-    feats, matches = out / "features.h5", out / "matches.h5"
+    feats, matches = run_dir / "features.h5", run_dir / "matches.h5"
     feats_global = out / "global.h5"
     t_map, t_q = {}, {}
 
@@ -136,7 +140,7 @@ def main():
         t_map,
         "reconstruction",
         reconstruction.main,
-        out / "sfm",
+        run_dir / "sfm",
         root,
         out / "pairs-sfm.txt",
         feats,
@@ -207,6 +211,8 @@ def main():
 
     n_q = max(len(queries), 1)
     summary = {
+        "max_keypoints": a.max_kp,
+        "resize_max": a.resize,
         "map_images": len(refs),
         "map_registered": model.num_reg_images(),
         "map_points3D": model.num_points3D(),
@@ -221,11 +227,11 @@ def main():
         ),
         "unit_note": "posisi dalam satuan model SfM, belum meter (butuh titik acuan)",
     }
-    with open(out / "results.csv", "w", newline="", encoding="utf-8") as f:
+    with open(run_dir / "results.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()) if rows else ["query"])
         w.writeheader()
         w.writerows(rows)
-    (out / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    (run_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary, indent=2))
 
 
