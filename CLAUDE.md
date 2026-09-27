@@ -29,8 +29,10 @@ berjalan, dan mengukur waktu lokalisasi di CPU. Hasilnya dilaporkan sebagai **uj
 hasil spike: belum mencakup area uji resmi, belum memakai titik acuan lengkap, dan diukur di laptop
 (bukan server instansi). Kode uji coba ada di `spike/`, data di `data/` (tidak masuk git).
 
-**Posisi terakhir (2026-09-27):** pipeline sudah jalan di data contoh. Menunggu foto lorong lantai 10
-dan unduhan bobot MegaLoc. Rincian dan langkah berikutnya: `docs/spike-plan.md`, "Status terakhir".
+**Posisi terakhir (2026-09-28):** pipeline, pengukuran latensi hangat (`bench_localize.py`, CPU dan
+GPU), dan penilai galat meter (`eval_meter.py`) sudah jalan di data contoh, di laptop dan PC lab.
+Menunggu foto lorong lantai 10 beserta titik acuan. Rincian: `docs/spike-plan.md`, "Status terakhir"
+dan bagian-bagian hasil sesudahnya.
 
 **Langkah pertama setelah ACC: spike satu koridor** (`docs/spike-plan.md`). Spike menjawab dua hal:
 apakah akurasi ≤ 1,0 m pada ≥ 70% foto uji, dan berapa latensi per lokalisasi di server tanpa GPU.

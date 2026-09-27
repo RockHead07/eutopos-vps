@@ -27,6 +27,7 @@ from hloc import (
 )
 from hloc.localize_sfm import QueryLocalizer, pose_from_cluster
 from hloc.utils.parsers import parse_retrieval
+from tegakkan import orientation
 
 LOCAL = extract_features.confs["aliked-n16"]  # bukan SuperPoint: lisensinya non-komersial
 MATCHER = match_features.confs["aliked+lightglue"]
@@ -36,9 +37,13 @@ EXHAUSTIVE_MAX = 30  # bawaan --exhaustive-max: di bawahnya semua pasangan, di a
 
 def images_in(root: Path, sub: str) -> list[str]:
     exts = {".jpg", ".jpeg", ".png"}
-    return sorted(
-        p.relative_to(root).as_posix() for p in (root / sub).iterdir() if p.suffix.lower() in exts
-    )
+    files = [p for p in (root / sub).iterdir() if p.is_file()]
+    skipped = sorted({p.suffix.lower() or "(tanpa ekstensi)" for p in files} - exts)
+    if skipped:
+        # contoh: ponsel yang menyimpan HEIC. Set kamera ke JPEG, jangan diam-diam kehilangan foto.
+        n = sum(p.suffix.lower() not in exts for p in files)
+        print(f"PERINGATAN: {n} file di {sub}/ dilewati, ekstensi {', '.join(skipped)}")
+    return sorted(p.relative_to(root).as_posix() for p in files if p.suffix.lower() in exts)
 
 
 def timed(times: dict, key: str, fn, *args, **kwargs):
@@ -119,6 +124,14 @@ def main():
     run_dir = out / f"kp{a.max_kp}-r{a.resize}"
     run_dir.mkdir(parents=True, exist_ok=True)
     refs, queries = images_in(root, "mapping"), images_in(root, "query")
+    # hloc mengabaikan tag rotasi EXIF, jadi foto potret diproses miring 90 derajat dan
+    # menghasilkan pose salah tapi yakin. Hentikan di sini, jangan diam-diam lanjut.
+    miring = [r for r in refs + queries if orientation(root / r) != 1]
+    if miring:
+        raise SystemExit(
+            f"{len(miring)} foto punya tag rotasi EXIF (contoh: {miring[0]}). Jalankan dulu:\n"
+            f"    python spike/tegakkan.py {root} {root}-tegak"
+        )
     feats, matches = run_dir / "features.h5", run_dir / "matches.h5"
     feats_global = out / f"global-r{a.global_resize}.h5"  # per resolusi, supaya tidak tercampur
     t_map, t_q = {}, {}

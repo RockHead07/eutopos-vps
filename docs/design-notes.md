@@ -117,3 +117,8 @@ GET /health
 - **Intrinsik dikirim klien.** ARCore menyediakan intrinsik kamera per frame.
 - **Model dimuat sekali saat server menyala**, supaya setiap permintaan memakai model yang hangat.
 - **Jumlah inlier dikembalikan**, supaya klien bisa menolak koreksi yang meragukan.
+- **Foto harus tegak, dan intrinsiknya dalam orientasi yang sama dengan foto.** Frame kamera ARCore
+  selalu berorientasi sensor, apa pun posisi ponsel. ALIKED + LightGlue tidak tahan rotasi 90 derajat:
+  foto miring tetap menghasilkan pose, tapi salah (uji 2026-09-28 di `docs/spike-plan.md`). Pilihannya:
+  klien memutar foto beserta intrinsiknya sebelum mengirim, atau klien mengirim rotasi perangkat
+  (0/90/180/270) dan server yang memutar keduanya. Putuskan saat membangun layanan.

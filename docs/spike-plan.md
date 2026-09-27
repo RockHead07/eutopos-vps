@@ -56,6 +56,17 @@ mengurus izin lokasi, dan mengecek spesifikasi server instansi secara baca-saja 
 | **Query (untuk uji)** | Foto lain di **hari atau jam berbeda**, dipegang setinggi dada seperti pengguna sungguhan | Usulan **≥ 40 foto**. Dengan 40 sampel, ketidakpastian pada angka 70% sekitar ±7 poin (satu galat baku), jadi ≥ 50 lebih kokoh |
 | **Titik acuan (ground truth)** | Sekitar **20 titik** di lantai dengan koordinat diukur (meteran laser atau pita) terhadap titik asal koridor | Catat ketidakpastian alat |
 
+**Aturan memotret** (mengikuti panduan pengambilan gambar di
+[tutorial COLMAP](https://colmap.github.io/tutorial.html)):
+- **Set kamera ke JPEG** sebelum memotret (iPhone: Pengaturan, Kamera, Format, "Most Compatible").
+  `run.py` hanya membaca `.jpg`, `.jpeg`, dan `.png`, dan memberi peringatan untuk file lain.
+- **Foto peta semuanya lanskap**, zoom tetap, tanpa mode potret atau malam, supaya semua foto berbagi
+  satu intrinsik kamera.
+- **Melangkah setiap satu foto**, jangan berputar di tempat. Foto dari satu titik yang hanya berbeda
+  arah tidak memberi informasi kedalaman.
+- Setiap benda terlihat di **minimal 3 foto**. Hindari bidang polos, cahaya dari belakang objek, dan
+  permukaan yang memantul.
+
 **Sumber galat acuan yang harus dicatat:** posisi ponsel di tangan tidak persis di atas titik lantai
 (kira-kira puluhan sentimeter). Galat ini ikut terhitung, jadi laporkan sebagai batas bawah
 ketidakpastian, jangan diabaikan.
@@ -566,3 +577,27 @@ dianggap tetap (`--tinggi`, bawaan 1,3 m). Uji logikanya dengan `--self-test`.
 
 **Batas:** posisi ponsel di tangan tidak persis di atas titik (puluhan sentimeter, lihat 4.1).
 Koordinat titik acuan gedung tidak di-commit sebelum ditanyakan ke pembimbing.
+
+### Foto potret dan rotasi EXIF (2026-09-28)
+
+Ponsel menyimpan foto potret sebagai piksel mentah yang miring 90 derajat plus tag EXIF
+`Orientation`. hloc membaca foto dengan `cv2.IMREAD_IGNORE_ORIENTATION`, dan
+`pycolmap.infer_camera_from_image` juga memakai ukuran mentah, jadi intrinsik tidak tertukar. Tapi
+foto potret diproses dalam keadaan miring. Uji pada foto contoh yang disimpan ulang seperti foto
+potret ponsel (`bench_localize.py`, peta contoh):
+
+| Foto uji | Inlier | Posisi |
+|---|---|---|
+| Lanskap (EXIF 1) | 430 | benar |
+| Potret, EXIF 6, apa adanya | 14 | **salah, tapi tetap dianggap berhasil** |
+| Potret, EXIF 8, apa adanya | 8 | **salah, tapi tetap dianggap berhasil** |
+| Potret EXIF 6, setelah `tegakkan.py` | 416 | benar (selisih ~0,01 satuan model) |
+| Potret EXIF 8, setelah `tegakkan.py` | 405 | benar (selisih ~0,03 satuan model) |
+
+**Tindakan:**
+- `run.py` berhenti kalau ada foto dengan tag rotasi selain 1, dan menyebut perintah
+  `spike/tegakkan.py <dataset> <dataset>-tegak`. Skrip itu memutar piksel sesuai EXIF dan
+  mempertahankan tag EXIF lain.
+- Pose yang salah tetap keluar dengan 8 sampai 14 inlier, jadi layanan nanti butuh ambang inlier
+  minimum. Nilainya dipilih dari kolom `inliers` di `galat_meter.csv` pada data lorong.
+- Kontrak API `/localize` mewajibkan foto tegak (`docs/design-notes.md` bagian 6).
