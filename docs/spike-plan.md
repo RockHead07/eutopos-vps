@@ -350,6 +350,11 @@ contoh. Hasilnya: peta 9/9 terdaftar, foto uji 1/1 terlokalisasi, 72 pasangan pe
 query. Jumlah kandidat `k` kini dibatasi maksimal jumlah foto peta, karena `torch.topk` di hloc
 gagal kalau `k` lebih besar.
 
+> ⚠️ **Koreksi (2026-09-27, sore):** angka MegaLoc **3,5 s** dan tabel perkiraan di bawah **tidak bisa
+> direproduksi**. Dengan kode yang sama, MegaLoc resize 1024 kemudian terukur 13 sampai 15 s. Kecepatan
+> laptop terbukti naik turun 2 sampai 4 kali antar-run (lihat "Pengukuran hangat satu proses"), jadi
+> angka absolut di bagian ini **jangan dikutip**.
+
 **Pengukuran model hangat di laptop** (resize 1024, 8 thread):
 
 | Tahap per query | Waktu |
@@ -378,3 +383,47 @@ gagal kalau `k` lebih besar.
    posenya (hloc punya `pairs_from_poses`), sehingga ~3,5 detik MegaLoc hilang. Retrieval global
    tetap dipakai untuk lokalisasi pertama, saat posisi belum diketahui. **Belum diuji.**
 4. Kenop lain yang belum diuji: resize lebih kecil untuk MegaLoc dan ALIKED, serta XFeat.
+
+### Pengukuran hangat satu proses (2026-09-27)
+
+`spike/bench_localize.py` memuat semua model dan data peta **sekali**, lalu mengukur tiap foto uji
+per tahap (baca, MegaLoc, retrieval, ALIKED, LightGlue ke k kandidat, PnP), seperti layanan
+`/localize` nanti. Korespondensi 2D-3D mengikuti `pose_from_cluster` hloc, tapi di memori. Hasil
+pada data contoh (1 foto uji, k = 5, keypoint 1024): **terlokalisasi, 402 inlier**, sama untuk
+kedua resolusi MegaLoc.
+
+**Temuan 1: resolusi MegaLoc adalah kenop terbesar.** MegaLoc berbasis ViT dengan patch 14 piksel,
+jadi foto 1020x765 menjadi ~3.900 token dan biaya attention naik kuadratik. Diukur berdekatan waktu:
+
+| Resolusi MegaLoc | Waktu per foto (percobaan 1) | Percobaan 2 | 5 kandidat teratas |
+|---|---|---|---|
+| 1024 | 13,3 s | 15,0 s | [3, 8, 6, 0, 5] |
+| 640 | 3,8 s | | sama |
+| 512 | **2,3 s** | **2,4 s** | **sama** |
+
+Satu foto uji dan data luar ruangan saja, jadi **harus diuji ulang dengan foto lorong**, termasuk
+apakah kandidat dan akurasi tetap sama. `run.py` dan `bench_localize.py` kini punya
+`--global-resize`, dan deskriptor global disimpan per resolusi (`global-r<R>.h5`) supaya tidak
+tercampur, bug yang sama jenisnya dengan PR #4.
+
+**Temuan 2: kecepatan laptop tidak stabil, jadi angka absolut dari laptop tidak sah.** Empat run
+berurutan (k = 5, keypoint 1024):
+
+| MegaLoc | Thread | MegaLoc | ALIKED | LightGlue | Total |
+|---|---|---|---|---|---|
+| 512 | 8 | 2,43 s | 3,51 s | 4,10 s | 10,2 s |
+| 512 | 2 | 4,19 s | 5,79 s | 7,53 s | 17,6 s |
+| 1024 | 8 | 14,99 s | 3,89 s | 4,00 s | 23,0 s |
+| 1024 | 2 | 7,46 s | 1,94 s | 1,38 s | 10,8 s ⚠️ |
+
+Run terakhir lebih cepat dari run 8 thread di **semua** tahap, termasuk ALIKED dan LightGlue yang
+setelannya tidak berubah. Laptop berbagi CPU dengan aplikasi lain (beban latar 23 sampai 44%, CPU
+hibrida P-core dan E-core, skema daya Balanced). Yang sudah dikesampingkan untuk selisih MegaLoc:
+praproses (identik dengan hloc), pycolmap/OpenMP, pembatasan daya CPU, bilangan denormal, dan
+perubahan kode MegaLoc di cache torch hub.
+
+**Konsekuensi:**
+1. Yang boleh dipakai dari laptop hanya **perbandingan relatif yang diukur berdekatan waktu**.
+2. **Angka yang diklaim harus dari server instansi (T3)**, diukur dengan `bench_localize.py`.
+3. Kalau laptop tetap dipakai untuk angka: tutup aplikasi lain, mode daya performa terbaik,
+   tersambung listrik, dan ulangi beberapa run secara berselang-seling antar-setelan.

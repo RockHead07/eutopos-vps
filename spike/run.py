@@ -92,6 +92,9 @@ def main():
         "--max-kp", type=int, default=1024, help="batas keypoint ALIKED, -1 = tanpa batas"
     )
     ap.add_argument("--resize", type=int, default=1024, help="sisi terpanjang foto saat ekstraksi")
+    # MegaLoc berbasis ViT (patch 14): biaya naik kuadratik terhadap jumlah token. Di data contoh,
+    # 512 hampir 6x lebih cepat dari 1024 dengan kandidat teratas yang sama (docs/spike-plan.md).
+    ap.add_argument("--global-resize", type=int, default=1024, help="sisi terpanjang untuk MegaLoc")
     ap.add_argument(
         "--exhaustive-max",
         type=int,
@@ -100,7 +103,8 @@ def main():
     )
     a = ap.parse_args()
 
-    global LOCAL
+    global LOCAL, GLOBAL
+    GLOBAL = {**GLOBAL, "preprocessing": {**GLOBAL["preprocessing"], "resize_max": a.global_resize}}
     LOCAL = {
         **LOCAL,
         "model": {**LOCAL["model"], "max_num_keypoints": a.max_kp},
@@ -116,7 +120,7 @@ def main():
     run_dir.mkdir(parents=True, exist_ok=True)
     refs, queries = images_in(root, "mapping"), images_in(root, "query")
     feats, matches = run_dir / "features.h5", run_dir / "matches.h5"
-    feats_global = out / "global.h5"
+    feats_global = out / f"global-r{a.global_resize}.h5"  # per resolusi, supaya tidak tercampur
     t_map, t_q = {}, {}
 
     # 1. Peta
