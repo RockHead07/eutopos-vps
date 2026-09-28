@@ -25,7 +25,7 @@ from hloc import (
     pairs_from_retrieval,
     reconstruction,
 )
-from hloc.localize_sfm import QueryLocalizer, pose_from_cluster
+from hloc.localize_sfm import QueryLocalizer, do_covisibility_clustering, pose_from_cluster
 from hloc.utils.parsers import parse_retrieval
 from tegakkan import orientation
 
@@ -106,6 +106,9 @@ def main():
         default=EXHAUSTIVE_MAX,
         help="jumlah foto peta maksimum untuk pencocokan semua pasangan; 0 = selalu retrieval",
     )
+    # Pipeline resmi hloc mematikannya. Varian uji untuk area yang tampak mirip (pintu seragam):
+    # kandidat dikelompokkan per area yang saling terlihat, PnP per kelompok, inlier terbanyak.
+    ap.add_argument("--covis", action="store_true", help="covisibility clustering saat lokalisasi")
     a = ap.parse_args()
 
     global LOCAL, GLOBAL
@@ -239,7 +242,13 @@ def main():
             if model.find_image_with_name(n)
         ]
         t0 = time.perf_counter()
-        ret, _ = pose_from_cluster(localizer, q, cam, ids, feats, matches) if ids else (None, {})
+        ret = None
+        for cluster in (
+            (do_covisibility_clustering(ids, model) if a.covis else [ids]) if ids else []
+        ):
+            r, _ = pose_from_cluster(localizer, q, cam, cluster, feats, matches)
+            if r is not None and (ret is None or r["num_inliers"] > ret["num_inliers"]):
+                ret = r
         dt = round(time.perf_counter() - t0, 3)
         ok = ret is not None
         center = ret["cam_from_world"].inverse().translation.tolist() if ok else None
@@ -258,6 +267,7 @@ def main():
     summary = {
         "max_keypoints": a.max_kp,
         "resize_max": a.resize,
+        "covisibility_clustering": a.covis,
         "map_images": len(refs),
         "map_registered": model.num_reg_images(),
         "map_points3D": model.num_points3D(),
@@ -272,11 +282,12 @@ def main():
         ),
         "unit_note": "posisi dalam satuan model SfM, belum meter (butuh titik acuan)",
     }
-    with open(run_dir / "results.csv", "w", newline="", encoding="utf-8") as f:
+    sfx = "-covis" if a.covis else ""  # varian lokalisasi, peta dan fitur sama
+    with open(run_dir / f"results{sfx}.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()) if rows else ["query"])
         w.writeheader()
         w.writerows(rows)
-    (run_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    (run_dir / f"summary{sfx}.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary, indent=2))
 
 

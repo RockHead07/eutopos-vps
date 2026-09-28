@@ -75,6 +75,17 @@ def evaluate(rows, gt, height_m, ransac_m, salah_m=SALAH_M):
                 err = round(float(np.linalg.norm(p[0, :2] - np.array(gt[point_id(q)]))), 3)
         out.append({"query": q, "titik": point_id(q), "galat_m": err})
 
+    # Satu Sim3 dari SEMUA titik: disimpan sebagai align.json (peta ke meter). Sisa per foto yang
+    # menonjol biasanya berarti salah ukur atau salah nama file, bukan kesalahan VPS.
+    names = list(loc)
+    src = np.array([loc[k] for k in names], float)
+    sim_all = fit(src, np.array([target(k) for k in names], float), ransac_m)
+    sisa = (
+        np.linalg.norm((sim_all * src)[:, :2] - np.array([gt[point_id(k)] for k in names]), axis=1)
+        if sim_all is not None
+        else None
+    )
+
     errs = [r["galat_m"] for r in out]
     ok = [e for e in errs if e is not None]
     n_salah = sum(e > salah_m for e in ok)
@@ -85,13 +96,19 @@ def evaluate(rows, gt, height_m, ransac_m, salah_m=SALAH_M):
         "sebaran_titik": round(spread, 3),
         "median_galat_m": round(float(np.median(ok)), 3) if ok else None,
         "p90_galat_m": round(float(np.percentile(ok, 90)), 3) if ok else None,
+        # RMSE dan persen <= 2 m: sejajar dengan pelaporan Kim & Shin (2025)
+        "rmse_galat_m": round(float(np.sqrt(np.mean(np.square(ok)))), 3) if ok else None,
         # yang gagal dilokalisasi atau gagal diselaraskan dihitung melewati ambang
         f"persen_foto_le_{AMBANG_M}m": round(100 * sum(e <= AMBANG_M for e in ok) / len(errs), 1),
+        "persen_foto_le_2.0m": round(100 * sum(e <= 2.0 for e in ok) / len(errs), 1),
         f"persen_salah_yakin_gt_{salah_m}m": round(100 * n_salah / len(errs), 1),
+        "sisa_median_m": round(float(np.median(sisa)), 3) if sisa is not None else None,
+        "sisa_maks_m": round(float(sisa.max()), 3) if sisa is not None else None,
+        "sisa_terbesar": names[int(sisa.argmax())] if sisa is not None else None,
     }
     if spread < 0.05:
         summary["peringatan"] = "titik acuan hampir segaris; penyelarasan tidak stabil"
-    return out, summary
+    return out, summary, sim_all
 
 
 def read_results(path: Path):
@@ -127,13 +144,18 @@ def self_test():
     rows["query/P03_b.jpg"] = None  # gagal lokalisasi
     far = model_from_world * np.array([[50.0, 50, 1.3]])
     rows["query/P05_b.jpg"] = far[0].tolist()  # lokalisasi salah besar
-    _, s = evaluate(rows, gt, 1.3, 1.0)
+    _, s, sim = evaluate(rows, gt, 1.3, 1.0)
     assert s["foto_uji"] == 24 and s["foto_dengan_galat"] == 23, s
     assert s["median_galat_m"] < 0.15, s
     assert s["persen_foto_le_1.0m"] == round(100 * 22 / 24, 1), s  # 2 gagal dari 24
+    assert s["persen_foto_le_2.0m"] == s["persen_foto_le_1.0m"], s
     assert s["persen_salah_yakin_gt_3.0m"] == round(100 * 1 / 24, 1), s  # hanya P05_b
+    assert s["rmse_galat_m"] > 10 * s["median_galat_m"], s  # RMSE peka pada satu salah besar
+    assert s["sisa_median_m"] < 0.1, s  # derau 5 cm
+    assert s["sisa_terbesar"] == "query/P05_b.jpg", s  # outlier tertangkap
+    assert abs(sim.scale - 4.0) < 0.05, sim  # Sim3 semua titik = kebalikan model_from_world
     line = {f"L{i}": (i * 1.0, 0.0) for i in range(5)}
-    _, s2 = evaluate({f"q/L{i}_a.jpg": [i, 0, 0] for i in range(5)}, line, 1.3, 1.0)
+    _, s2, _ = evaluate({f"q/L{i}_a.jpg": [i, 0, 0] for i in range(5)}, line, 1.3, 1.0)
     assert "peringatan" in s2, s2
     print("self-test OK", json.dumps(s))
 
@@ -153,11 +175,25 @@ def main():
         ap.error("butuh results dan titik, atau --self-test")
 
     rows, inliers = read_results(a.results)
-    out, summary = evaluate(rows, read_gt(a.titik), a.tinggi, a.ransac_m, a.salah_m)
+    out, summary, sim = evaluate(rows, read_gt(a.titik), a.tinggi, a.ransac_m, a.salah_m)
+    if sim is not None:
+        align = {
+            "meter_from_model": {
+                "skala": float(sim.scale),
+                "rotasi_xyzw": sim.rotation.quat.tolist(),
+                "translasi": sim.translation.tolist(),
+            },
+            "tinggi_ponsel_m": a.tinggi,
+            "titik_acuan": summary["titik_acuan_terpakai"],
+            "sisa_median_m": summary["sisa_median_m"],
+        }
+        # results.csv -> align.json, results-covis.csv -> align-covis.json
+        dst_align = a.results.with_name(a.results.stem.replace("results", "align") + ".json")
+        dst_align.write_text(json.dumps(align, indent=2), encoding="utf-8")
     for r in out:
         # untuk memilih ambang inlier: foto salah yakin dengan inlier tinggi = ambang saja tak cukup
         r["inliers"] = inliers[r["query"]]
-    dst = a.results.with_name("galat_meter.csv")
+    dst = a.results.with_name(a.results.name.replace("results", "galat_meter"))
     with open(dst, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=["query", "titik", "galat_m", "inliers"])
         w.writeheader()
