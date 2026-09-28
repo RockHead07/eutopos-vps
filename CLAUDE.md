@@ -163,7 +163,7 @@ Skill global yang juga relevan: `ponytail` (anti over-engineering), `engineering
 |---|---|
 | `docs/pa-context.md` | Konteks PA: judul final dan riwayatnya, arahan pembimbing, isi dokumen pengajuan, isu Proposal PA, keputusan, pelajaran, dan yang masih terbuka |
 | `docs/spike-plan.md` | Rencana spike: data, varian, perangkat, ambang keputusan, pertanyaan untuk pembimbing |
-| `docs/runbook-uji-lorong.md` | Panduan kerja lapangan uji lorong lantai 10: persiapan, jadwal, cara memotret, formulir, perintah setelahnya |
+| `docs/runbook-uji-lorong.md` | Panduan kerja lapangan uji lantai 10: persiapan, jadwal, cara merekam video peta (jalur ular dua arah), titik acuan, formulir, perintah setelahnya |
 | `docs/design-notes.md` | Desain: dua lapis posisi, rumus penyelarasan ARCore ke gedung, sistem koordinat, model data, rute, metrik evaluasi, kontrak API |
 | `docs/research-paper.md` | Semua rujukan penelitian beserta tautan, perannya di proyek, lisensi, status verifikasi, dan kandidat cadangan |
 | `docs/ci-cd.md` | CI yang berjalan sekarang, perintah pemeriksaan lokal, rencana build dan deployment, dan pengaturan GitHub yang wajib diaktifkan |
