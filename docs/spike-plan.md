@@ -66,6 +66,11 @@ mengurus izin lokasi, dan mengecek spesifikasi server instansi secara baca-saja 
   arah tidak memberi informasi kedalaman.
 - Setiap benda terlihat di **minimal 3 foto**. Hindari bidang polos, cahaya dari belakang objek, dan
   permukaan yang memantul.
+- **Video boleh dipakai untuk foto peta** (tutorial COLMAP: jarangkan frame-nya).
+  `spike/ekstrak_frame.py` mengambil ±2 frame per detik, frame tertajam per jendela (variansi
+  Laplacian). Syarat: **stabilisasi video dimatikan**, karena stabilisasi elektronik membengkokkan
+  tiap frame secara berbeda sehingga intrinsik kamera tidak lagi sama. Belum diuji dengan video ponsel
+  sungguhan (format HEVC, metadata rotasi): diuji lewat gladi kamar.
 
 **Sumber galat acuan yang harus dicatat:** posisi ponsel di tangan tidak persis di atas titik lantai
 (kira-kira puluhan sentimeter). Galat ini ikut terhitung, jadi laporkan sebagai batas bawah
