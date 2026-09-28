@@ -606,3 +606,45 @@ potret ponsel (`bench_localize.py`, peta contoh):
 - Pose yang salah tetap keluar dengan 8 sampai 14 inlier, jadi layanan nanti butuh ambang inlier
   minimum. Nilainya dipilih dari kolom `inliers` di `galat_meter.csv` pada data lorong.
 - Kontrak API `/localize` mewajibkan foto tegak (`docs/design-notes.md` bagian 6).
+
+### Audit best practice dan padanan Kim & Shin (2026-09-29)
+
+**Pipeline dibandingkan dengan praktik hloc (commit `c13273b`):**
+
+| Aspek | Status |
+|---|---|
+| Retrieval, pencocokan lokal ke titik 3D, PnP + RANSAC | ✅ Kerangka standar hloc |
+| ALIKED + LightGlue, MegaLoc | ✅ Setara SuperPoint + SuperGlue, lisensi bersih |
+| Peta satu kamera, panduan capture COLMAP, video dijarangkan | ✅ |
+| Skala meter dari titik acuan, leave-one-out | ✅ |
+| Foto potret | ✅ Ditegakkan dulu (`tegakkan.py`) |
+| Intrinsik foto uji | 🟡 Peta dari frame video dan foto uji dari mode foto berbeda ukuran, jadi intrinsik foto uji selalu ditaksir dari EXIF-nya. Dicek dengan data lapangan |
+| Galat orientasi | ❌ Belum diukur. Benchmark standar (visuallocalization.net) mengukur posisi dan rotasi. Butuh protokol foto dengan arah diketahui |
+| Covisibility clustering | 🟡 Pipeline resmi hloc mematikannya. Tersedia sebagai varian `run.py --covis` untuk area yang tampak mirip |
+| Jumlah kandidat retrieval | 🟡 k = 10 di `run.py`, pipeline resmi 10 sampai 50. Varian uji kalau perlu |
+
+**`eval_meter.py` kini juga melaporkan** RMSE dan persen ≤ 2 m (sejajar pelaporan Kim & Shin), sisa
+penyelarasan (median, maksimum, dan foto dengan sisa terbesar untuk menangkap salah ukur atau salah
+nama), dan menyimpan Sim3 semua titik ke `align.json` (bagian "paket peta").
+
+**Padanan paper Kim & Shin (2025) di rancangan eutopos:**
+
+| Kim & Shin | eutopos | Status |
+|---|---|---|
+| Posisi awal absolut dari sidik medan magnet (k-NN) | VPS dari foto | ✅ Inti repo |
+| Pelacakan langkah (PDR dari IMU) | ARCore (visual + inersia) | ✅ Direncanakan |
+| Titik kalibrasi di dekat tangga dan lift | Koreksi berkala VPS | ✅ Konsep sama |
+| Deteksi lantai dari barometer | Belum ada | ❌ Relevan untuk gedung bertingkat |
+
+Ground truth Kim & Shin tidak dijelaskan di paper. eutopos memakai titik terukur dengan skema
+leave-one-out.
+
+**Ide setelah ACC (belum diuji):**
+- **Mempersempit pencarian dengan sensor:** lantai dari barometer dan posisi kira-kira dari ARCore,
+  lalu retrieval hanya di sekitar posisi itu (`pairs_from_poses` di hloc). Hasil InLoc di README hloc:
+  varian "temporal" lebih baik di semua ambang. Obat paling langsung untuk area yang tampak mirip.
+- **Aplikasi capture dengan pose ARCore**, seperti layanan VPS komersial: skala langsung dalam meter
+  dan pasangan foto dari pose. Menjawab isu Proposal PA soal pemetaan ulang oleh instansi.
+- **Pelacakan tanpa kamera** (sensor ponsel di latar belakang, gaya Kim & Shin) untuk skenario
+  multiuser seperti melacak posisi dosen. VPS saja tidak cukup karena butuh kamera aktif. Menunggu
+  konfirmasi pembimbing soal cakupan dan persetujuan orang yang dilacak.
