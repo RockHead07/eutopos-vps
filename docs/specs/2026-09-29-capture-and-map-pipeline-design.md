@@ -184,3 +184,41 @@ eutopos-mobile/           ← satu project Unity
 masing-masing hanya boleh bergantung pada `Shared`, tidak saling bergantung. Dengan begitu kedua aplikasi
 tetap bisa dipisah menjadi dua project kalau suatu saat dibutuhkan, tanpa membongkar kode. Dua aplikasi
 dibangun dari scene dan ID aplikasi berbeda (mekanisme build diverifikasi, bagian 8 nomor 7).
+
+## 11. Layanan `/localize` tahap 1 (PR 1)
+
+Target tahap: kerangka server (b), dikerjakan dalam dua PR. **PR 1** adalah inti layanan, **PR 2**
+menambah Docker Compose dan PostgreSQL (tabel `area` dan `map_version`).
+
+| Endpoint | Masukan | Keluaran |
+|---|---|---|
+| `POST /localize` | Foto (multipart), opsional `fx, fy, cx, cy` untuk foto yang sudah tegak | `status` (`ok` atau `failed`), `inliers`, `correspondences`, `intrinsics_source` (`client`, `map`, `exif`), `pose_model`, `pose_building` (kalau `align.json` ada), `t_s` per tahap |
+| `GET /health` | Tidak ada | `status`, `map_images`, `device`, `aligned` |
+
+**Perilaku:**
+- Model dan peta dimuat sekali saat server menyala (`lifespan`).
+- Foto ditegakkan sesuai EXIF sebelum diproses (pelajaran spike: foto potret miring = pose salah).
+- Intrinsik: dari klien kalau dikirim lengkap, dari kalibrasi peta kalau resolusinya sama, selain itu
+  taksiran EXIF. Sumbernya dicatat di respons.
+- Di bawah `EUTOPOS_MIN_INLIERS` (bawaan 50) statusnya `failed`. Nilai ini disetel dengan data
+  lapangan.
+- Tidak memakai `hloc.localize_sfm.main()`.
+- Satu lokalisasi dalam satu waktu (kunci global). Perangkat diatur `EUTOPOS_DEVICE`.
+- Batas unggahan 20 MB.
+
+**Berkas:** `server/localizer.py` (satu-satunya pemilik logika lokalisasi, juga dipakai
+`spike/bench_localize.py` supaya yang diukur adalah kode yang dilayankan), `server/photo.py` (dekode,
+tegakkan, intrinsik EXIF), `server/app.py` (rute FastAPI). Konfigurasi lewat variabel lingkungan
+(`EUTOPOS_MAP_DIR` dan lainnya, lihat `server/app.py`). Menjalankan: `fastapi dev` dari akar repo.
+
+**Verifikasi PR 1 (laptop, data contoh):**
+- `pytest`: 15 uji lolos. Penegakan EXIF sama dengan `PIL.ImageOps.exif_transpose` untuk kedelapan
+  nilai orientasi; foto uji dikenali; foto potret (EXIF 6) tetap terlokalisasi setelah ditegakkan;
+  derau acak berstatus `failed`; intrinsik tidak lengkap ditolak (422); berkas bukan gambar ditolak
+  (400). Uji yang butuh peta hanya jalan kalau `EUTOPOS_MAP_DIR` dan `EUTOPOS_TEST_QUERY` diset.
+- `bench_localize.py` sebelum dan sesudah logika dipindah ke `server/localizer.py`: 402 inlier, 570
+  korespondensi, pusat kamera sama persis.
+- Lewat HTTP (uvicorn lokal): overhead sekitar 0,3 s di atas waktu lokalisasi. Angka absolut laptop
+  tidak dipakai untuk klaim.
+
+**Tidak masuk PR 1:** database, Docker, unggahan capture, pemilihan peta, autentikasi.
