@@ -174,6 +174,7 @@ Gambar 2, dan istilah "(Spike Testing)". Rapikan di Proposal PA.
 | **Spike satu koridor lebih dulu** | Semua bagian lain bergantung pada VPS | `docs/spike-plan.md` |
 | **Capture: ponsel + meteran untuk spike** | Kamera peta harus mirip kamera query. GoPro MAX dan iPhone LiDAR jadi pembanding opsional | `docs/spike-plan.md` bagian 4.5 |
 | **Perangkat lunak yang dibangun: perangkai alur, bukan mesin SfM** | COLMAP dan hloc sudah ada | Bagian 9 |
+| **Pengembangan dimulai sebelum ACC** (2026-09-29) | Judul di PENS biasanya di-ACC dengan penyesuaian arah, dan judul tidak mengunci teknologi. Penghalang yang lebih penting adalah hasil spike | `CLAUDE.md` bagian Status |
 | **Repo terpisah** | Stack beda, kontribusi pribadi jelas, dan proyek tim tetap memakai VPS komersial | Bagian 9 |
 
 ## 9. Hasil brainstorming lain
