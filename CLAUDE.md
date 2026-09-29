@@ -167,6 +167,6 @@ Skill global yang juga relevan: `ponytail` (anti over-engineering), `engineering
 | `docs/design-notes.md` | Desain: dua lapis posisi, rumus penyelarasan ARCore ke gedung, sistem koordinat, model data, rute, metrik evaluasi, kontrak API |
 | `docs/research-paper.md` | Semua rujukan penelitian beserta tautan, perannya di proyek, lisensi, status verifikasi, dan kandidat cadangan |
 | `docs/multi-map-localization-research.md` | Riset memilih peta area untuk foto uji dan mengelola banyak peta area: praktik riset dan industri, prinsip, rekomendasi bertahap |
-| `docs/specs/2026-09-29-capture-and-map-pipeline-design.md` | Spesifikasi aplikasi capture dan pipeline peta (setelah ACC): komponen, tech stack, alur data, model peta, privasi, tahapan, hal yang harus dibuktikan, keputusan terbuka |
+| `docs/specs/2026-09-29-capture-and-map-pipeline-design.md` | Spesifikasi aplikasi capture dan pipeline peta (setelah ACC): komponen, tech stack, alur data, model peta, privasi, tahapan, hal yang harus dibuktikan, keputusan terbuka, struktur repo (`eutopos-vps` dan `eutopos-mobile`) |
 | `docs/ci-cd.md` | CI yang berjalan sekarang, perintah pemeriksaan lokal, rencana build dan deployment, dan pengaturan GitHub yang wajib diaktifkan |
 | `docs/figures/` | Gambar 1 (arsitektur) dan Gambar 2 (alur) dokumen pengajuan |

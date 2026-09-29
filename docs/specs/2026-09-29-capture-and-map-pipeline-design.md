@@ -127,3 +127,59 @@ peta teratas, bukan melaporkan gagal (hloc `c13273b`, baris 205 sampai 207).
 2. Tempat halaman persetujuan: bagian dashboard anchoring tool (usulan) atau terpisah.
 3. Server permanen setelah PC lab.
 4. Cara login: akun lokal sederhana atau SSO kampus.
+5. **Visibilitas repo `eutopos-mobile`** (publik atau privat). Bergantung pada izin tim untuk kode
+   turunan DARSI (avatar, lip sync, TTS, klien RAG), karena kode itu milik proyek tim dan sedang dalam
+   proses paten. Nama repo sudah diputuskan (bagian 10).
+
+## 10. Struktur repo
+
+**Prinsip:** repo dipisah menurut satuan yang di-deploy dan batas kepemilikan atau lisensi, bukan menurut
+bahasa pemrograman. Repo dibuat **setelah ACC**.
+
+| Repo | Isi | Visibilitas |
+|---|---|---|
+| `eutopos-vps` (sudah ada) | Server (API, pekerja, pipeline peta), dashboard web, dokumen | Publik, AGPL-3.0 |
+| `eutopos-mobile` (baru) | Satu project Unity dengan dua aplikasi: **eutopos Mapper** (capture) dan aplikasi navigasi PA | Keputusan terbuka nomor 5 |
+
+Nama `eutopos-mobile` dipilih supaya hubungannya dengan `eutopos-vps` langsung terbaca. Nama alternatif
+yang sempat diusulkan: `hodos` (Yunani: jalan). Nama repo tidak menyebut DARSI.
+
+**Dashboard tetap di `eutopos-vps`** karena ia antarmuka admin server itu sendiri: di-deploy bersama
+(hasil *static export* disajikan FastAPI), kontraknya berubah bersama API dalam satu PR, dan tidak berisi
+kode turunan DARSI.
+
+### 10.1 `eutopos-vps`
+
+```text
+eutopos-vps/
+├── server/               ← layanan Python (menggantikan spike/ setelah ACC)
+│   ├── api/              ← rute FastAPI: /localize, /health, sesi capture dan unggah, peta, POI, akun
+│   ├── pipeline/         ← langkah pekerja: samarkan, bangun peta, selaraskan, cek kualitas, terbitkan
+│   ├── worker.py         ← pengambil pekerjaan dari tabel antrean (SKIP LOCKED)
+│   ├── storage.py        ← antarmuka simpan, ambil, hapus (folder disk sekarang)
+│   └── db/               ← model dan migrasi PostgreSQL
+├── dashboard/            ← Next.js static export + Leaflet: persetujuan peta, anchoring POI
+├── deploy/               ← docker-compose.yml dan Dockerfile (PostgreSQL, API, pekerja)
+├── spike/                ← eksperimen spike, tetap disimpan sebagai rujukan pengukuran
+├── tests/
+└── docs/
+```
+
+### 10.2 `eutopos-mobile`
+
+```text
+eutopos-mobile/           ← satu project Unity
+├── Assets/
+│   ├── Shared/           ← sesi ARCore, kerangka koordinat (T_sesi←gedung), klien API eutopos, akun
+│   ├── Capture/          ← eutopos Mapper: pemilih foto kunci, cek buram, peta cakupan, sesi unggah
+│   └── Navigation/       ← aplikasi navigasi: loop lokalisasi berkala, rute, POI, avatar, klien RAG
+├── Packages/
+├── ProjectSettings/
+├── docs/
+└── .gitattributes        ← Git LFS untuk aset biner (model 3D, tekstur, audio)
+```
+
+**Batas antar-folder ditegakkan dengan Assembly Definition**, satu per folder: `Capture` dan `Navigation`
+masing-masing hanya boleh bergantung pada `Shared`, tidak saling bergantung. Dengan begitu kedua aplikasi
+tetap bisa dipisah menjadi dua project kalau suatu saat dibutuhkan, tanpa membongkar kode. Dua aplikasi
+dibangun dari scene dan ID aplikasi berbeda (mekanisme build diverifikasi, bagian 8 nomor 7).
