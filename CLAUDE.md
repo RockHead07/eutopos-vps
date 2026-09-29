@@ -166,5 +166,6 @@ Skill global yang juga relevan: `ponytail` (anti over-engineering), `engineering
 | `docs/field-test-runbook.md` | Panduan kerja lapangan uji lantai 10: persiapan, jadwal, cara merekam video peta (jalur ular dua arah), titik acuan, formulir, perintah setelahnya |
 | `docs/design-notes.md` | Desain: dua lapis posisi, rumus penyelarasan ARCore ke gedung, sistem koordinat, model data, rute, metrik evaluasi, kontrak API |
 | `docs/research-paper.md` | Semua rujukan penelitian beserta tautan, perannya di proyek, lisensi, status verifikasi, dan kandidat cadangan |
+| `docs/multi-map-localization-research.md` | Riset memilih peta area untuk foto uji dan mengelola banyak peta area: praktik riset dan industri, prinsip, rekomendasi bertahap |
 | `docs/ci-cd.md` | CI yang berjalan sekarang, perintah pemeriksaan lokal, rencana build dan deployment, dan pengaturan GitHub yang wajib diaktifkan |
 | `docs/figures/` | Gambar 1 (arsitektur) dan Gambar 2 (alur) dokumen pengajuan |
