@@ -24,6 +24,7 @@ import h5py
 import numpy as np
 import pycolmap
 import torch
+from env_info import env
 from hloc import extract_features, extractors, match_features, matchers
 from hloc.extract_features import resize_image
 from hloc.localize_sfm import QueryLocalizer
@@ -213,6 +214,7 @@ def main():
         "t_load_models_s": round(t_models, 2),
         "t_load_map_s": round(t_map, 2),
         "queries": results,
+        "env": env(),
     }
     print(json.dumps(summary, indent=2))
 

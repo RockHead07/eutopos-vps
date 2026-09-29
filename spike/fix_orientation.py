@@ -7,8 +7,8 @@ dan ALIKED + LightGlue tidak tahan rotasi 90 derajat: hasilnya pose yang salah t
 Tag EXIF lain (termasuk focal length untuk intrinsik awal) dipertahankan.
 
 Contoh:
-    python spike/tegakkan.py data/gladi-kamar data/gladi-kamar-tegak
-    python spike/run.py data/gladi-kamar-tegak --out outputs/gladi-kamar
+    python spike/fix_orientation.py data/room-rehearsal data/room-rehearsal-upright
+    python spike/run.py data/room-rehearsal-upright --out outputs/room-rehearsal
 """
 
 import argparse

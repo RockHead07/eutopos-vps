@@ -10,8 +10,8 @@ membengkokkan tiap frame secara berbeda, sehingga intrinsik kamera tidak lagi sa
 frame), HDR video mati, berjalan pelan.
 
 Contoh (satu video per putaran):
-    python spike/ekstrak_frame.py putaran1.mp4 putaran2.mp4 --out data/lantai10/mapping
-    python spike/ekstrak_frame.py --self-test
+    python spike/extract_frames.py video1.mp4 video2.mp4 --out data/floor10/mapping
+    python spike/extract_frames.py --self-test
 """
 
 import argparse
