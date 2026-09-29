@@ -5,7 +5,7 @@ depan lab dan lorong yang tersambung), **Selasa 29 September 2026**. Dasarnya `d
 (bagian 4.1, aturan memotret, dan protokol titik acuan). Kalau ada yang bertentangan,
 `spike-plan.md` yang berlaku.
 
-**Keluaran hari ini:** 2 video peta per area, 40 foto uji di 20 titik terukur, dan `titik.csv`.
+**Keluaran hari ini:** 2 video peta per area, 40 foto uji di 20 titik terukur, dan `reference_points.csv`.
 Semuanya disimpan di luar git.
 
 **Keputusan yang dipakai (2026-09-28):**
@@ -70,7 +70,7 @@ Semuanya disimpan di luar git.
 **Lorong** diperlakukan sama: Video 1 pergi di satu sisi lorong, Video 2 pulang di sisi lain. Di
 lorong, Video 2 **wajib**, karena tanpa itu lorong hanya terlihat dari satu arah.
 
-Frame dipilih nanti oleh `spike/ekstrak_frame.py` (±2 frame per detik, yang paling tajam).
+Frame dipilih nanti oleh `spike/extract_frames.py` (±2 frame per detik, yang paling tajam).
 
 **Cara B, foto satu per satu (cadangan).** Dipakai kalau video bermasalah, misalnya stabilisasi tidak
 bisa dimatikan atau gladi kamar dengan video gagal. Jalurnya sama, tapi **satu foto setiap satu
@@ -104,25 +104,25 @@ Total: 20 titik x 2 = **40 foto uji**.
 1. **Salin semua video dan foto** ke laptop dan buat cadangan ke folder Google Drive pribadi.
 2. **Susun folder** (di luar git):
    ```text
-   data/lantai10/
+   data/floor10/
    ├── video1.mp4, video2.mp4   ← video peta (nama bebas)
-   ├── mapping/                 ← dibiarkan kosong, diisi ekstrak_frame.py
+   ├── mapping/                 ← dibiarkan kosong, diisi extract_frames.py
    ├── query/                   ← foto uji: P01_a.jpg, P01_b.jpg, ...; foto label dibuang
-   └── titik.csv                ← dari formulir: titik,x_m,y_m
+   └── reference_points.csv                ← dari formulir: point,x_m,y_m
    ```
-3. Salin `data/lantai10` ke PC lab, lalu jalankan di `C:\Users\<user>\eutopos-vps`:
+3. Salin `data/floor10` ke PC lab, lalu jalankan di `C:\Users\<user>\eutopos-vps`:
    ```powershell
    git switch main; git pull
-   .venv\Scripts\python.exe spike\ekstrak_frame.py data\lantai10\video1.mp4 data\lantai10\video2.mp4 --out data\lantai10\mapping
-   .venv\Scripts\python.exe spike\tegakkan.py data\lantai10 data\lantai10-tegak
-   .venv\Scripts\python.exe spike\run.py data\lantai10-tegak --out outputs\lantai10 --global-resize 512
-   .venv\Scripts\python.exe spike\eval_meter.py outputs\lantai10\kp1024-r1024\results.csv data\lantai10-tegak\titik.csv
-   .venv\Scripts\python.exe spike\bench_localize.py data\lantai10-tegak --map outputs\lantai10 --global-resize 512 --device cuda
-   .venv\Scripts\python.exe spike\bench_localize.py data\lantai10-tegak --map outputs\lantai10 --global-resize 512 --device cpu --threads 2
+   .venv\Scripts\python.exe spike\extract_frames.py data\floor10\video1.mp4 data\floor10\video2.mp4 --out data\floor10\mapping
+   .venv\Scripts\python.exe spike\fix_orientation.py data\floor10 data\floor10-upright
+   .venv\Scripts\python.exe spike\run.py data\floor10-upright --out outputs\floor10 --global-resize 512
+   .venv\Scripts\python.exe spike\eval_meter.py outputs\floor10\kp1024-r1024\results.csv data\floor10-upright\reference_points.csv
+   .venv\Scripts\python.exe spike\bench_localize.py data\floor10-upright --map outputs\floor10 --global-resize 512 --device cuda
+   .venv\Scripts\python.exe spike\bench_localize.py data\floor10-upright --map outputs\floor10 --global-resize 512 --device cpu --threads 2
    ```
-   Kalau memakai cara B (foto), lewati baris `ekstrak_frame.py` dan taruh fotonya langsung di
+   Kalau memakai cara B (foto), lewati baris `extract_frames.py` dan taruh fotonya langsung di
    `mapping/`.
-4. Tempel keluaran `ekstrak_frame.py` dan ringkasan JSON dari keempat perintah terakhir ke sesi.
+4. Tempel keluaran `extract_frames.py` dan ringkasan JSON dari keempat perintah terakhir ke sesi.
    Varian lain (keypoint 512, resize ALIKED lebih kecil) dijalankan setelah hasil pertama dibaca.
 
 **Tanda hari ini berhasil** (bukan ambang spike, hanya tanda datanya layak dipakai):
@@ -143,7 +143,7 @@ Total: 20 titik x 2 = **40 foto uji**.
 
 ## Privasi
 
-- Video, foto gedung, `titik.csv`, dan koordinat titik **tidak pernah masuk git**. Folder `data/`
+- Video, foto gedung, `reference_points.csv`, dan koordinat titik **tidak pernah masuk git**. Folder `data/`
   sudah di-gitignore.
 - Foto yang memuat wajah orang tidak dipakai di laporan tanpa disamarkan.
 

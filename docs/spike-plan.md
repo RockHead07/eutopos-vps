@@ -67,7 +67,7 @@ mengurus izin lokasi, dan mengecek spesifikasi server instansi secara baca-saja 
 - Setiap benda terlihat di **minimal 3 foto**. Hindari bidang polos, cahaya dari belakang objek, dan
   permukaan yang memantul.
 - **Video boleh dipakai untuk foto peta** (tutorial COLMAP: jarangkan frame-nya).
-  `spike/ekstrak_frame.py` mengambil ±2 frame per detik, frame tertajam per jendela (variansi
+  `spike/extract_frames.py` mengambil ±2 frame per detik, frame tertajam per jendela (variansi
   Laplacian). Syarat: **stabilisasi video dimatikan**, karena stabilisasi elektronik membengkokkan
   tiap frame secara berbeda sehingga intrinsik kamera tidak lagi sama. Belum diuji dengan video ponsel
   sungguhan (format HEVC, metadata rotasi): diuji lewat gladi kamar.
@@ -343,7 +343,7 @@ diunduh otomatis saat pertama dipakai.
 | Bobot ALIKED dan LightGlue | ✅ Tersimpan di cache torch |
 | Bobot MegaLoc (retrieval, 915 MB) | ✅ Terunduh di laptop dan PC lab. Pertama kali: `torch.hub.load("gmberton/MegaLoc", "get_trained_model", trust_repo=True)` supaya tidak macet di prompt interaktif |
 | Lingkungan di PC lab (RTX 3070) | ✅ Siap, CUDA aktif. Hasil pengukuran di bagian "Hasil pengukuran hangat di PC lab" |
-| Folder foto | ✅ `data/lantai10/mapping/` dan `data/lantai10/query/`, **masih kosong** |
+| Folder foto | ✅ `data/floor10/mapping/` dan `data/floor10/query/`, **masih kosong** |
 | Foto lorong lantai 10 | ⏸️ Belum diambil. Panduan memotret ada di bagian 4.1 dan 4.5 |
 
 **Temuan baru:**
@@ -355,7 +355,7 @@ diunduh otomatis saat pertama dipakai.
 **Langkah berikutnya, berurutan:**
 1. ~~Selesaikan unduhan MegaLoc.~~ Selesai.
 2. Pemilik repo memotret lorong lantai 10 (izin penanggung jawab lab, jam sepi).
-3. Jalankan `spike/run.py data/lantai10 --out outputs/lantai10-kp512 --max-kp 512` dan
+3. Jalankan `spike/run.py data/floor10 --out outputs/floor10-kp512 --max-kp 512` dan
    `--max-kp 1024`, bandingkan foto peta terdaftar, foto uji terlokalisasi, dan waktu per tahap.
 4. Masukkan hasil dan temuan lisensi di atas lewat satu PR.
 
@@ -554,31 +554,31 @@ foto peta.
 2. Tempel sekitar **20 titik** selotip di lantai, beri label `P01` sampai `P20`.
 3. ⚠️ **Letakkan titik zig-zag dekat kedua dinding, jangan di satu garis tengah.** Titik yang segaris
    membuat rotasi peta di sekitar garis itu tidak tentu, sehingga penyelarasan ke meter tidak
-   stabil. `eval_meter.py` memberi peringatan kalau `sebaran_titik` < 0,05.
-4. Ukur `x_m` dan `y_m` tiap titik dari titik asal, catat di `data/lantai10/titik.csv` dengan format
-   `spike/titik-acuan-contoh.csv`. Catat juga alat ukur dan perkiraan ketelitiannya.
+   stabil. `eval_meter.py` memberi peringatan kalau `point_spread` < 0,05.
+4. Ukur `x_m` dan `y_m` tiap titik dari titik asal, catat di `data/floor10/reference_points.csv` dengan format
+   `spike/reference-points-example.csv`. Catat juga alat ukur dan perkiraan ketelitiannya.
 
 **Memotret foto uji:** berdiri dengan ujung kaki di titik, ponsel setinggi dada, lalu ambil 2 foto
 ke arah berbeda. Namai `P07_a.jpg`, `P07_b.jpg` (ID titik di depan, sebelum `_`). Simpan di
-`data/lantai10/query/`. Foto peta tetap diambil terpisah seperti bagian 4.1.
+`data/floor10/query/`. Foto peta tetap diambil terpisah seperti bagian 4.1.
 
 **Menghitung galat:**
 
 ```bash
-python spike/run.py data/lantai10 --out outputs/lantai10
-python spike/eval_meter.py outputs/lantai10/kp1024-r1024/results.csv data/lantai10/titik.csv
+python spike/run.py data/floor10 --out outputs/floor10
+python spike/eval_meter.py outputs/floor10/kp1024-r1024/results.csv data/floor10/reference_points.csv
 ```
 
 `eval_meter.py` menyelaraskan peta ke meter dengan Sim3 (`pycolmap.estimate_sim3d_robust`) dari
 pusat kamera ke titik acuan, memakai skema **leave-one-out**: galat tiap titik dihitung dari Sim3
 yang ditaksir tanpa titik itu. Keluarannya median galat, persentil 90, dan **persen foto ≤ 1,0 m**.
 Juga **persen salah yakin**: foto yang dianggap berhasil oleh pipeline (ada pose) tapi galatnya
-lebih dari `--salah-m` (bawaan 3 m, kira-kira sudah di depan pintu atau lorong yang salah). Untuk
+lebih dari `--wrong-m` (bawaan 3 m, kira-kira sudah di depan pintu atau lorong yang salah). Untuk
 navigasi ini lebih berbahaya daripada gagal, karena aplikasi tidak tahu harus mencoba lagi. Kolom
-`inliers` di `galat_meter.csv` dipakai untuk memilih ambang inlier: kalau foto salah yakin punya
+`inliers` di `errors_m.csv` dipakai untuk memilih ambang inlier: kalau foto salah yakin punya
 inlier setinggi foto yang benar, ambang inlier saja tidak cukup untuk menyaringnya.
 Foto yang gagal dilokalisasi dihitung gagal. Galat dilaporkan 2D (bidang lantai), tinggi ponsel
-dianggap tetap (`--tinggi`, bawaan 1,3 m). Uji logikanya dengan `--self-test`.
+dianggap tetap (`--height`, bawaan 1,3 m). Uji logikanya dengan `--self-test`.
 
 **Batas:** posisi ponsel di tangan tidak persis di atas titik (puluhan sentimeter, lihat 4.1).
 Koordinat titik acuan gedung tidak di-commit sebelum ditanyakan ke pembimbing.
@@ -596,15 +596,15 @@ potret ponsel (`bench_localize.py`, peta contoh):
 | Lanskap (EXIF 1) | 430 | benar |
 | Potret, EXIF 6, apa adanya | 14 | **salah, tapi tetap dianggap berhasil** |
 | Potret, EXIF 8, apa adanya | 8 | **salah, tapi tetap dianggap berhasil** |
-| Potret EXIF 6, setelah `tegakkan.py` | 416 | benar (selisih ~0,01 satuan model) |
-| Potret EXIF 8, setelah `tegakkan.py` | 405 | benar (selisih ~0,03 satuan model) |
+| Potret EXIF 6, setelah `fix_orientation.py` | 416 | benar (selisih ~0,01 satuan model) |
+| Potret EXIF 8, setelah `fix_orientation.py` | 405 | benar (selisih ~0,03 satuan model) |
 
 **Tindakan:**
 - `run.py` berhenti kalau ada foto dengan tag rotasi selain 1, dan menyebut perintah
-  `spike/tegakkan.py <dataset> <dataset>-tegak`. Skrip itu memutar piksel sesuai EXIF dan
+  `spike/fix_orientation.py <dataset> <dataset>-upright`. Skrip itu memutar piksel sesuai EXIF dan
   mempertahankan tag EXIF lain.
 - Pose yang salah tetap keluar dengan 8 sampai 14 inlier, jadi layanan nanti butuh ambang inlier
-  minimum. Nilainya dipilih dari kolom `inliers` di `galat_meter.csv` pada data lorong.
+  minimum. Nilainya dipilih dari kolom `inliers` di `errors_m.csv` pada data lorong.
 - Kontrak API `/localize` mewajibkan foto tegak (`docs/design-notes.md` bagian 6).
 
 ### Audit best practice dan padanan Kim & Shin (2026-09-29)
@@ -617,7 +617,7 @@ potret ponsel (`bench_localize.py`, peta contoh):
 | ALIKED + LightGlue, MegaLoc | ✅ Setara SuperPoint + SuperGlue, lisensi bersih |
 | Peta satu kamera, panduan capture COLMAP, video dijarangkan | ✅ |
 | Skala meter dari titik acuan, leave-one-out | ✅ |
-| Foto potret | ✅ Ditegakkan dulu (`tegakkan.py`) |
+| Foto potret | ✅ Ditegakkan dulu (`fix_orientation.py`) |
 | Intrinsik foto uji | 🟡 Peta dari frame video dan foto uji dari mode foto berbeda ukuran, jadi intrinsik foto uji selalu ditaksir dari EXIF-nya. Dicek dengan data lapangan |
 | Galat orientasi | ❌ Belum diukur. Benchmark standar (visuallocalization.net) mengukur posisi dan rotasi. Butuh protokol foto dengan arah diketahui |
 | Covisibility clustering | 🟡 Pipeline resmi hloc mematikannya. Tersedia sebagai varian `run.py --covis` untuk area yang tampak mirip |
@@ -646,5 +646,29 @@ leave-one-out.
 - **Aplikasi capture dengan pose ARCore**, seperti layanan VPS komersial: skala langsung dalam meter
   dan pasangan foto dari pose. Menjawab isu Proposal PA soal pemetaan ulang oleh instansi.
 - **Pelacakan tanpa kamera** (sensor ponsel di latar belakang, gaya Kim & Shin) untuk skenario
-  multiuser seperti melacak posisi dosen. VPS saja tidak cukup karena butuh kamera aktif. Menunggu
-  konfirmasi pembimbing soal cakupan dan persetujuan orang yang dilacak.
+  multiuser seperti melacak posisi dosen. VPS saja tidak cukup karena butuh kamera aktif.
+  **Di luar cakupan PA** (arahan pembimbing, 2026-09-29): ide ini untuk hackathon, hanya dicatat.
+  Kalau dikerjakan, orang yang dilacak harus menyetujuinya.
+
+### Kenop latensi CPU: resolusi ALIKED dan jumlah keypoint (PC lab, 2026-09-29)
+
+`bench_localize.py`, CPU 2 thread (perkiraan server 2 vCPU), MegaLoc 512, k = 5, median 5 ulangan,
+data contoh (1 foto uji). Setiap setelan membangun peta SfM-nya sendiri.
+
+| Keypoint | Resolusi ALIKED | ALIKED | LightGlue | Total | Inlier |
+|---|---|---|---|---|---|
+| 1024 | 1024 | 1,81 s | 1,22 s | **4,10 s** | 413 |
+| 512 | 1024 | 1,75 s | 0,44 s | **3,22 s** | 252 |
+| 1024 | 640 | 0,74 s | 1,75 s | **3,52 s** | 503 |
+| 512 | 640 | 0,69 s | 0,53 s | **2,24 s** | 236 |
+
+**Temuan:**
+1. Resolusi mengatur waktu ALIKED (1,8 ke 0,7 s). Jumlah keypoint mengatur waktu LightGlue.
+2. **Keypoint 512 + resolusi 640 memangkas total 45%** (4,10 ke 2,24 s), dengan 236 inlier.
+3. Anomali: keypoint 1024 di resolusi 640 membuat LightGlue lebih lambat (1,75 s vs 1,22 s).
+   ⚠️ Dugaan: LightGlue menyesuaikan kedalaman dengan kesulitan pasangan, dan fitur dari gambar
+   beresolusi rendah lebih sulit dicocokkan. Belum dibuktikan.
+
+**Batas:** `center_xyz_model` **tidak bisa dibandingkan antar-setelan**, karena tiap peta SfM punya
+skala, rotasi, dan titik asal sendiri. Akurasi dibandingkan lewat `eval_meter.py` dengan titik acuan.
+Kandidat untuk data lapangan: 512/640 melawan 1024/1024.

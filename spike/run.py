@@ -5,7 +5,7 @@ Struktur data yang diharapkan:
     <dataset>/query/*.jpg     foto uji yang dilokalisasi
 
 Contoh:
-    python spike/run.py data/lantai10 --out outputs/lantai10
+    python spike/run.py data/floor10 --out outputs/floor10
 
 Mengikuti alur notebook resmi hloc (demo.ipynb, commit c13273b):
 extract_features -> pairs -> match_features -> reconstruction -> QueryLocalizer + pose_from_cluster.
@@ -18,6 +18,8 @@ import time
 from pathlib import Path
 
 import pycolmap
+from env_info import env
+from fix_orientation import orientation
 from hloc import (
     extract_features,
     match_features,
@@ -27,7 +29,6 @@ from hloc import (
 )
 from hloc.localize_sfm import QueryLocalizer, do_covisibility_clustering, pose_from_cluster
 from hloc.utils.parsers import parse_retrieval
-from tegakkan import orientation
 
 LOCAL = extract_features.confs["aliked-n16"]  # bukan SuperPoint: lisensinya non-komersial
 MATCHER = match_features.confs["aliked+lightglue"]
@@ -133,7 +134,7 @@ def main():
     if miring:
         raise SystemExit(
             f"{len(miring)} foto punya tag rotasi EXIF (contoh: {miring[0]}). Jalankan dulu:\n"
-            f"    python spike/tegakkan.py {root} {root}-tegak"
+            f"    python spike/fix_orientation.py {root} {root}-upright"
         )
     feats, matches = run_dir / "features.h5", run_dir / "matches.h5"
     feats_global = out / f"global-r{a.global_resize}.h5"  # per resolusi, supaya tidak tercampur
@@ -281,6 +282,7 @@ def main():
             sum(t_q.values()) / n_q + sum(r["t_pose_s"] for r in rows) / n_q, 3
         ),
         "unit_note": "posisi dalam satuan model SfM, belum meter (butuh titik acuan)",
+        "env": env(),
     }
     sfx = "-covis" if a.covis else ""  # varian lokalisasi, peta dan fitur sama
     with open(run_dir / f"results{sfx}.csv", "w", newline="", encoding="utf-8") as f:
