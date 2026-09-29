@@ -1,8 +1,9 @@
 # Spesifikasi: Aplikasi Capture dan Pipeline Peta
 
-**Status:** rancangan, hasil brainstorming 2026-09-29. **Tidak ada implementasi sebelum judul PA di-ACC
-dan spike membuktikan VPS layak** (`docs/spike-plan.md`). Dokumen ini menetapkan arah supaya pekerjaan
-setelah ACC tidak mulai dari nol dan tidak perlu dibongkar ulang.
+**Status:** rancangan, hasil brainstorming 2026-09-29. Pengembangan boleh dimulai sebelum ACC
+(keputusan pemilik repo, 2026-09-29), dengan penghalang per pekerjaan di `CLAUDE.md` bagian Status:
+bagian yang bergantung pada metode lokalisasi menunggu hasil spike (`docs/spike-plan.md`), dan
+aplikasi capture menunggu keputusan terbuka nomor 1.
 
 Rujukan: `docs/multi-map-localization-research.md` (pemilihan peta dan pengelolaan banyak peta),
 `docs/design-notes.md` (koordinat, model data, kontrak API), `docs/pa-context.md` (arahan pembimbing).
@@ -97,7 +98,7 @@ peta teratas, bukan melaporkan gagal (hloc `c13273b`, baris 205 sampai 207).
 | Tahap | Kapan | Isi |
 |---|---|---|
 | 0. Spike | Sekarang | Membuktikan VPS di lantai 10 dengan kamera bawaan ponsel + `extract_frames.py` |
-| 1. PA | Setelah ACC dan spike lolos | Layanan `/localize` satu area, aplikasi navigasi, anchoring tool. **Aplikasi capture: lihat keputusan terbuka nomor 1** |
+| 1. PA | Mulai sekarang untuk bagian yang tidak bergantung hasil spike, sisanya setelah spike lolos | Layanan `/localize` satu area, aplikasi navigasi, anchoring tool. **Aplikasi capture: lihat keputusan terbuka nomor 1** |
 | 2. Setelah PA | Kalau diteruskan | Aplikasi capture penuh, penyamaran otomatis, alur persetujuan, banyak area, pemilihan peta dengan petunjuk ARCore |
 | 3. Skala gedung | Jangka panjang | Banyak lantai (barometer), filter Wi-Fi kalau terbukti perlu, pemetaan ulang dipicu laju gagal per area |
 
@@ -134,7 +135,7 @@ peta teratas, bukan melaporkan gagal (hloc `c13273b`, baris 205 sampai 207).
 ## 10. Struktur repo
 
 **Prinsip:** repo dipisah menurut satuan yang di-deploy dan batas kepemilikan atau lisensi, bukan menurut
-bahasa pemrograman. Repo dibuat **setelah ACC**.
+bahasa pemrograman. Repo `eutopos-mobile` dibuat saat pekerjaan aplikasi dimulai.
 
 | Repo | Isi | Visibilitas |
 |---|---|---|
@@ -152,7 +153,7 @@ kode turunan DARSI.
 
 ```text
 eutopos-vps/
-├── server/               ← layanan Python (menggantikan spike/ setelah ACC)
+├── server/               ← layanan Python (dibangun dari kode spike/)
 │   ├── api/              ← rute FastAPI: /localize, /health, sesi capture dan unggah, peta, POI, akun
 │   ├── pipeline/         ← langkah pekerja: samarkan, bangun peta, selaraskan, cek kualitas, terbitkan
 │   ├── worker.py         ← pengambil pekerjaan dari tabel antrean (SKIP LOCKED)

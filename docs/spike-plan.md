@@ -1,9 +1,9 @@
 # Rencana Spike: Lokalisasi Visual Satu Koridor
 
-> 🔒 **STATUS: RENCANA. TIDAK DIEKSEKUSI sebelum judul PA di-ACC.** Keputusan pemilik repo, 2026-09-20:
-> tidak ada pengembangan sebelum ACC. Dokumen ini hanya menyusun apa yang akan dikerjakan,
-> apa yang diukur, dan kapan hasilnya dianggap lolos. Tidak ada kode, unduhan model, atau
-> pengukuran yang dijalankan untuk menyusunnya.
+> **STATUS: dieksekusi.** Keputusan 2026-09-20 (tidak ada pengembangan sebelum ACC) dicabut pemilik
+> repo pada 2026-09-29, diganti penghalang per pekerjaan di `CLAUDE.md` bagian Status. Dokumen ini
+> menyusun apa yang dikerjakan, apa yang diukur, dan kapan hasilnya dianggap lolos, lalu mencatat
+> hasil uji coba di bagian 12 dan seterusnya.
 >
 > Semua **angka ambang, jumlah foto, dan estimasi waktu** di bawah adalah **usulan penyusun**
 > (bukan dari sumber). Yang belum disepakati pembimbing ditandai 🟡.
@@ -35,16 +35,15 @@ mengurangi drift ARCore" butuh klien, jadi baru setelah spike ini lolos.
 
 Semua harus terpenuhi:
 
-- [ ] **Judul di-ACC** (MIS).
+- [x] ~~**Judul di-ACC** (MIS).~~ Tidak lagi menjadi syarat (keputusan pemilik repo, 2026-09-29).
 - [ ] **Izin memotret dan memindai** koridor terpilih (lewat pembimbing). Tentukan koridor dan jamnya.
 - [ ] **Jawaban pembimbing** untuk pertanyaan di bagian 9.
 - [ ] **Disk kosong yang cukup.** Disk C: PC lab sisa sekitar 56 GiB (88% terpakai), pakai disk lain.
 - [ ] **Jadwal PC lab dan server instansi** supaya tidak bentrok dengan pemakai lain (RAM PC lab sedang
       terpakai 13 GiB, server instansi berbagi dengan layanan lain).
 
-**Yang boleh dilakukan sebelum ACC** (bukan pengembangan): mengajukan pertanyaan ke pembimbing,
-mengurus izin lokasi, dan mengecek spesifikasi server instansi secara baca-saja (`nproc`, `lscpu`,
-`free -h`). Tidak ada yang lain.
+Sejak 2026-09-29, pengembangan tidak lagi menunggu ACC. Syarat lain di atas tetap berlaku untuk spike
+resmi.
 
 ## 4. Rancangan
 
@@ -639,7 +638,7 @@ nama), dan menyimpan Sim3 semua titik ke `align.json` (bagian "paket peta").
 Ground truth Kim & Shin tidak dijelaskan di paper. eutopos memakai titik terukur dengan skema
 leave-one-out.
 
-**Ide setelah ACC (belum diuji):**
+**Ide lanjutan (belum diuji):**
 - **Mempersempit pencarian dengan sensor:** lantai dari barometer dan posisi kira-kira dari ARCore,
   lalu retrieval hanya di sekitar posisi itu (`pairs_from_poses` di hloc). Hasil InLoc di README hloc:
   varian "temporal" lebih baik di semua ambang. Obat paling langsung untuk area yang tampak mirip.

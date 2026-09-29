@@ -21,22 +21,30 @@ pusat, Surabaya.
 
 ## Status
 
-🔒 **Pengembangan penuh menunggu judul PA di-ACC.** Pengajuan sudah diunggah, menunggu keputusan.
+🔓 **Pengembangan boleh dimulai sebelum ACC** (keputusan pemilik repo, 2026-09-29). Alasannya: di PENS
+judul biasanya di-ACC dengan sedikit penyesuaian arah, dan judul PA sengaja tidak mengunci teknologi.
+Penghalang yang lebih penting adalah **hasil spike**, jadi setiap pekerjaan diberi penghalang sendiri:
 
-🧪 **Pengecualian (keputusan pemilik repo, 2026-09-25): uji coba awal (dry run) boleh sebelum ACC**
-di lorong lab **lantai 10 gedung PENS pusat**. Tujuannya membuktikan pipeline hloc bisa dipasang dan
-berjalan, dan mengukur waktu lokalisasi di CPU. Hasilnya dilaporkan sebagai **uji coba awal**, bukan
-hasil spike: belum mencakup area uji resmi, belum memakai titik acuan lengkap, dan diukur di laptop
-(bukan server instansi). Kode uji coba ada di `spike/`, data di `data/` (tidak masuk git).
+| Pekerjaan | Mulai sekarang? | Alasan |
+|---|---|---|
+| Data lapangan untuk spike | ✅ Prioritas utama | Satu-satunya yang menjawab apakah VPS jalan di lorong PENS |
+| Kerangka server (`server/`: FastAPI `/localize` dan `/health`, Docker Compose, PostgreSQL) | ✅ Ya | Kontrak API dan infrastruktur tetap dipakai apa pun metode lokalisasinya |
+| Dashboard anchoring tool (POI di denah) | ✅ Ya | Dijanjikan di pengajuan, tidak bergantung hasil VPS |
+| Aplikasi navigasi (`eutopos-mobile`, `Shared` dan `Navigation`) | 🟡 Bagian dasar | Sesi ARCore, klien API, POI. Loop koreksi VPS menunggu hasil spike |
+| Aplikasi capture (eutopos Mapper) | ⏸️ Tunggu | Keputusan terbuka nomor 1 di spesifikasi: masuk cakupan PA atau tidak, diputuskan bersama pembimbing |
+
+Riwayat: 2026-09-20 tidak ada pengembangan sebelum ACC; 2026-09-25 pengecualian uji coba awal di
+lantai 10; 2026-09-29 dicabut dengan penghalang per pekerjaan di atas. Pengajuan judul masih menunggu
+ACC. Kode uji coba ada di `spike/`, data di `data/` (tidak masuk git).
 
 **Posisi terakhir (2026-09-28):** pipeline, pengukuran latensi hangat (`bench_localize.py`, CPU dan
 GPU), dan penilai galat meter (`eval_meter.py`) sudah jalan di data contoh, di laptop dan PC lab.
 Menunggu foto lorong lantai 10 beserta titik acuan. Rincian: `docs/spike-plan.md`, "Status terakhir"
 dan bagian-bagian hasil sesudahnya.
 
-**Langkah pertama setelah ACC: spike satu koridor** (`docs/spike-plan.md`). Spike menjawab dua hal:
-apakah akurasi ≤ 1,0 m pada ≥ 70% foto uji, dan berapa latensi per lokalisasi di server tanpa GPU.
-Semua pekerjaan lain menunggu jawaban itu.
+**Prioritas tetap spike satu koridor** (`docs/spike-plan.md`). Spike menjawab dua hal: apakah akurasi
+≤ 1,0 m pada ≥ 70% foto uji, dan berapa latensi per lokalisasi di server tanpa GPU. Pekerjaan yang
+bergantung pada metode lokalisasi menunggu jawaban itu (tabel di atas).
 
 ## Posisi dalam platform PA
 
@@ -167,6 +175,6 @@ Skill global yang juga relevan: `ponytail` (anti over-engineering), `engineering
 | `docs/design-notes.md` | Desain: dua lapis posisi, rumus penyelarasan ARCore ke gedung, sistem koordinat, model data, rute, metrik evaluasi, kontrak API |
 | `docs/research-paper.md` | Semua rujukan penelitian beserta tautan, perannya di proyek, lisensi, status verifikasi, dan kandidat cadangan |
 | `docs/multi-map-localization-research.md` | Riset memilih peta area untuk foto uji dan mengelola banyak peta area: praktik riset dan industri, prinsip, rekomendasi bertahap |
-| `docs/specs/2026-09-29-capture-and-map-pipeline-design.md` | Spesifikasi aplikasi capture dan pipeline peta (setelah ACC): komponen, tech stack, alur data, model peta, privasi, tahapan, hal yang harus dibuktikan, keputusan terbuka, struktur repo (`eutopos-vps` dan `eutopos-mobile`) |
+| `docs/specs/2026-09-29-capture-and-map-pipeline-design.md` | Spesifikasi aplikasi capture dan pipeline peta: komponen, tech stack, alur data, model peta, privasi, tahapan, hal yang harus dibuktikan, keputusan terbuka, struktur repo (`eutopos-vps` dan `eutopos-mobile`) |
 | `docs/ci-cd.md` | CI yang berjalan sekarang, perintah pemeriksaan lokal, rencana build dan deployment, dan pengaturan GitHub yang wajib diaktifkan |
 | `docs/figures/` | Gambar 1 (arsitektur) dan Gambar 2 (alur) dokumen pengajuan |
