@@ -295,7 +295,7 @@ bagian lain.
 
 - [ ] Keputusan ACC judul.
 - [ ] Gedung dan koridor uji, serta izin memotret.
-- [ ] Pertanyaan untuk pembimbing (`docs/spike-plan.md` bagian 9).
+- [ ] Pertanyaan untuk pembimbing (`docs/spike-plan.md` bagian 9). Dirangkum jadi agenda di `docs/supervision-plan.md`.
 - [ ] Makna "anchoring tool untuk titik tujuan". Tafsiran saat ini: dashboard web untuk menandai POI
       di denah.
 - [ ] Apakah ada aturan HKI kampus atau rencana paten tim yang bertabrakan dengan lisensi terbuka.
