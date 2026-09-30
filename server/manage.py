@@ -8,10 +8,13 @@ Setelah menerbitkan versi baru, muat ulang layanan: docker compose restart api
 """
 
 import argparse
+import os
+from pathlib import Path
 
 from sqlmodel import Session, select
 
 from server.db import MapVersion, engine_from_env, publish, register
+from server.map_layout import missing_files
 
 
 def main():
@@ -29,6 +32,18 @@ def main():
 
     with Session(engine_from_env()) as s:
         if a.cmd == "register":
+            # Setelan sama dengan layanan (server/app.py): diperiksa persis berkas yang dimuat.
+            missing = missing_files(
+                Path(a.path),
+                int(os.environ.get("EUTOPOS_MAX_KP", 1024)),
+                int(os.environ.get("EUTOPOS_RESIZE", 1024)),
+                int(os.environ.get("EUTOPOS_GLOBAL_RESIZE", 512)),
+            )
+            if missing:
+                raise SystemExit(
+                    "peta tidak lengkap, tidak didaftarkan. Berkas yang tidak ada:\n  "
+                    + "\n  ".join(map(str, missing))
+                )
             v = register(s, a.area_id, a.name, a.path)
             if a.publish:
                 v = publish(s, v.id)
