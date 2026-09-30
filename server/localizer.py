@@ -27,6 +27,10 @@ from hloc.utils.base_model import dynamic_load
 
 from server.map_layout import missing_files
 
+# ponytail: ambang awal. Di spike, pose salah punya 6 sampai 14 inlier dan pose benar ratusan.
+# Setel ulang dengan kolom inliers di errors_m.csv dari data lapangan.
+MIN_INLIERS = 50
+
 MEGALOC = extract_features.confs["megaloc"]
 ALIKED = extract_features.confs["aliked-n16"]
 LIGHTGLUE = match_features.confs["aliked+lightglue"]

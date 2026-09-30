@@ -14,6 +14,7 @@ extract_features -> pairs -> match_features -> reconstruction -> QueryLocalizer 
 import argparse
 import csv
 import json
+import re
 import time
 from pathlib import Path
 
@@ -86,6 +87,27 @@ def make_pairs(times, key, out, feats_global, root, queries, refs, k, exhaustive
     )
 
 
+def add_sequential_pairs(pairs_path: Path, refs: list[str], n: int):
+    """Tambahkan pasangan frame berurutan (i dengan i+1..i+n) dari video yang sama.
+
+    Setara sequential matching COLMAP untuk video. Retrieval saja bisa melewatkan tetangga
+    langsung di tikungan yang buram, dan peta pecah jadi beberapa potongan.
+    """
+    by_video: dict[str, list[str]] = {}
+    for r in refs:  # refs sudah terurut nama, nama frame = <video>_<nomor>.jpg
+        by_video.setdefault(re.sub(r"_\d+$", "", Path(r).stem), []).append(r)
+    extra = [
+        f"{frames[i]} {frames[j]}"
+        for frames in by_video.values()
+        for i in range(len(frames))
+        for j in range(i + 1, min(i + n + 1, len(frames)))
+    ]
+    # Pasangan ganda atau terbalik tidak masalah, hloc membuangnya saat mencocokkan dan mengimpor.
+    # Baris kosong tidak boleh ada: import_matches hloc memecah setiap baris jadi dua nama.
+    lines = pairs_path.read_text(encoding="utf-8").splitlines() + extra
+    pairs_path.write_text("\n".join(p for p in lines if p.strip()), encoding="utf-8")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("dataset", type=Path)
@@ -110,6 +132,12 @@ def main():
     # Pipeline resmi hloc mematikannya. Varian uji untuk area yang tampak mirip (pintu seragam):
     # kandidat dikelompokkan per area yang saling terlihat, PnP per kelompok, inlier terbanyak.
     ap.add_argument("--covis", action="store_true", help="covisibility clustering saat lokalisasi")
+    ap.add_argument(
+        "--seq",
+        type=int,
+        default=0,
+        help="frame video: tambah pasangan dengan N frame berikutnya (0 = mati). Pakai --out lain",
+    )
     a = ap.parse_args()
 
     global LOCAL, GLOBAL
@@ -161,6 +189,8 @@ def main():
         a.k_map,
         a.exhaustive_max,
     )
+    if a.seq:
+        add_sequential_pairs(out / "pairs-sfm.txt", refs, a.seq)
     timed(
         t_map,
         "match",
@@ -269,6 +299,7 @@ def main():
         "max_keypoints": a.max_kp,
         "resize_max": a.resize,
         "covisibility_clustering": a.covis,
+        "sequential_pairs": a.seq,
         "map_images": len(refs),
         "map_registered": model.num_reg_images(),
         "map_points3D": model.num_points3D(),
