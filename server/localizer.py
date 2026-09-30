@@ -25,6 +25,8 @@ from hloc.extract_features import resize_image
 from hloc.localize_sfm import QueryLocalizer
 from hloc.utils.base_model import dynamic_load
 
+from server.map_layout import missing_files
+
 MEGALOC = extract_features.confs["megaloc"]
 ALIKED = extract_features.confs["aliked-n16"]
 LIGHTGLUE = match_features.confs["aliked+lightglue"]
@@ -77,6 +79,9 @@ class Localizer:
         self.resize, self.global_resize, self.k = resize, global_resize, k
         self.min_inliers = min_inliers
         aliked = {**ALIKED, "model": {**ALIKED["model"], "max_num_keypoints": max_kp}}
+        # Periksa peta dulu: pesan yang jelas, dan tidak membuang waktu memuat model.
+        if missing := missing_files(map_dir, max_kp, resize, global_resize):
+            raise FileNotFoundError(f"peta tidak lengkap di {map_dir}: {[str(p) for p in missing]}")
 
         t0 = time.perf_counter()
         _trust_megaloc_hub_repo()

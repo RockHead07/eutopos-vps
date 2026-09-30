@@ -105,3 +105,14 @@ def test_migration_cli_runs_like_the_container(tmp_path):
         [alembic, "-c", str(ini), "upgrade", "head"], cwd=tmp_path, env=env, capture_output=True
     )
     assert r.returncode == 0, r.stderr.decode(errors="replace")
+
+
+def test_missing_map_files(tmp_path):
+    from server.map_layout import missing_files, required_files
+
+    assert len(missing_files(tmp_path, 1024, 1024, 512)) == 4  # folder kosong
+    for p in required_files(tmp_path, 1024, 1024, 512):
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.touch()
+    assert missing_files(tmp_path, 1024, 1024, 512) == []
+    assert missing_files(tmp_path, 512, 640, 512)  # setelan lain butuh folder lain

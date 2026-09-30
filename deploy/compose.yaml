@@ -34,7 +34,14 @@ services:
       EUTOPOS_THREADS: ${EUTOPOS_THREADS:-0}
       EUTOPOS_GLOBAL_RESIZE: ${EUTOPOS_GLOBAL_RESIZE:-512}
     volumes:
-      - ${EUTOPOS_MAPS_DIR:?isi EUTOPOS_MAPS_DIR di deploy/.env}:/maps:ro
+      # Bind panjang dengan create_host_path: false: kalau EUTOPOS_MAPS_DIR salah, compose menolak
+      # menyala. Bentuk pendek diam-diam membuat folder kosong, dan layanan gagal memuat peta.
+      - type: bind
+        source: ${EUTOPOS_MAPS_DIR:?isi EUTOPOS_MAPS_DIR di deploy/.env}
+        target: /maps
+        read_only: true
+        bind:
+          create_host_path: false
       - cache:/cache
     ports:
       - "${EUTOPOS_PORT:-8000}:8000"
