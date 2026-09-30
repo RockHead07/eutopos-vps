@@ -33,13 +33,10 @@ from pydantic import BaseModel
 from sqlmodel import Session
 
 from server.db import active_version, engine_from_env
-from server.localizer import Localizer
+from server.localizer import MIN_INLIERS, Localizer
 from server.photo import decode_upright, exif_camera, pinhole
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
-# ponytail: ambang awal. Di spike, pose salah punya 8 sampai 14 inlier dan pose benar ratusan.
-# Setel ulang dengan kolom inliers di errors_m.csv dari data lapangan.
-MIN_INLIERS = 50
 
 
 def _env_int(name: str, default: int) -> int:
