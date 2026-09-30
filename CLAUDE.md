@@ -37,10 +37,15 @@ Riwayat: 2026-09-20 tidak ada pengembangan sebelum ACC; 2026-09-25 pengecualian 
 lantai 10; 2026-09-29 dicabut dengan penghalang per pekerjaan di atas. Pengajuan judul masih menunggu
 ACC. Kode uji coba ada di `spike/`, data di `data/` (tidak masuk git).
 
-**Posisi terakhir (2026-09-28):** pipeline, pengukuran latensi hangat (`bench_localize.py`, CPU dan
-GPU), dan penilai galat meter (`eval_meter.py`) sudah jalan di data contoh, di laptop dan PC lab.
-Menunggu foto lorong lantai 10 beserta titik acuan. Rincian: `docs/spike-plan.md`, "Status terakhir"
-dan bagian-bagian hasil sesudahnya.
+**Posisi terakhir (2026-09-30):**
+- Spike: pipeline, pengukuran latensi hangat, dan penilai galat meter jalan di data contoh (laptop dan
+  PC lab). **Foto lorong lantai 10 beserta titik acuan belum ada.** Rincian: `docs/spike-plan.md`.
+- Layanan: `server/` (FastAPI `/localize`, `/health`) sudah di `main` (PR #23). Docker Compose +
+  PostgreSQL (versi peta per area) ada di branch `feat/compose-postgres`: build dan layanan sehat di
+  PC lab dengan peta demo, **uji `/localize` lewat container belum dikonfirmasi**, PR belum dibuat.
+- PC lab sudah jadi host: WSL2 Ubuntu 24.04, Docker Engine, NVIDIA Container Toolkit, GPU terlihat
+  dari dalam container (`deploy/README.md`).
+- Rancangan setelahnya: `docs/specs/2026-09-29-capture-and-map-pipeline-design.md`.
 
 **Prioritas tetap spike satu koridor** (`docs/spike-plan.md`). Spike menjawab dua hal: apakah akurasi
 ≤ 1,0 m pada ≥ 70% foto uji, dan berapa latensi per lokalisasi di server tanpa GPU. Pekerjaan yang

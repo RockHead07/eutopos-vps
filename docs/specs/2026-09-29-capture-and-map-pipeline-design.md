@@ -239,3 +239,11 @@ tegakkan, intrinsik EXIF), `server/app.py` (rute FastAPI). Konfigurasi lewat var
 - **MegaLoc lewat torch hub** ditandai tepercaya di kode, karena bawaan torch meminta konfirmasi y/N
   interaktif yang membuat container macet.
 - Panduan host dan menjalankan: `deploy/README.md`.
+
+**Status verifikasi PR 2 (2026-09-30, PC lab):**
+- ✅ Build image (PyTorch CPU, hloc, dependensi dari `uv.lock`) sekitar 9 menit pertama kali, beberapa
+  detik kalau hanya kode yang berubah.
+- ✅ Migrasi Alembic ke PostgreSQL, `/health` = `no_map` tanpa peta, `register ... --publish` berhasil.
+- ✅ Layanan memuat peta demo dan sehat (healthcheck 200) setelah empat perbaikan di
+  `deploy/README.md` bagian 3.
+- ⏳ `POST /localize` lewat container dengan peta demo: belum dikonfirmasi. PR dibuat setelah lolos.

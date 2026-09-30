@@ -105,3 +105,20 @@ docker compose -f compose.yaml -f compose.gpu.yaml up -d --build
 
 Bobot model (MegaLoc 915 MB, ALIKED, LightGlue) diunduh saat pertama menyala dan disimpan di volume
 `cache`, jadi tidak diunduh ulang saat container dibuat ulang.
+
+## 3. Jebakan saat pertama menjalankan layanan (PC lab, 2026-09-30)
+
+Semua sudah diperbaiki di kode atau konfigurasi. Dicatat supaya tidak diulang saat memindah server.
+
+| Gejala | Penyebab | Perbaikan |
+|---|---|---|
+| Container API terus restart, log kosong di awal | `alembic` tidak menemukan paket `server` (folder kerja tidak masuk `sys.path`). Uji pytest tidak menangkap karena pytest menambah path sendiri | `prepend_sys_path = %(here)s/..` dan `path_separator = os` di `server/alembic.ini`. Uji `test_migration_cli_runs_like_the_container` menjalankan perintah `alembic` persis seperti container |
+| `RuntimeError: Missing dependencies: huggingface_hub, safetensors` | Kode MegaLoc di torch hub mensyaratkan keduanya. Di lingkungan spike keduanya dipasang manual, tidak pernah tercatat di `pyproject.toml` | Dideklarasikan di `pyproject.toml` dan `uv.lock` |
+| (Tidak sempat terjadi) layanan macet menunggu jawaban y/N | `torch.hub.load` bawaan bertanya "percaya repo ini?" untuk MegaLoc | `server/localizer.py` menandai `gmberton_MegaLoc` tepercaya secara eksplisit |
+| `files do not exist at "/maps/demo/kp1024-r1024/sfm"` | `EUTOPOS_MAPS_DIR` di `.env` masih contoh `/home/USER/...`. Bind bentuk pendek diam-diam membuat folder kosong milik root sebagai `/maps` | `compose.yaml` memakai bind panjang dengan `create_host_path: false` (compose menolak menyala). `server.manage register` dan `Localizer` memeriksa berkas peta lebih dulu dan menyebut berkas yang tidak ada |
+
+**Cara memeriksa isi yang terlihat dari dalam container** tanpa menjalankan layanan:
+
+```bash
+docker compose run --rm --no-deps --entrypoint ls api -la /maps
+```
