@@ -39,10 +39,15 @@ ACC. Kode uji coba ada di `spike/`, data di `data/` (tidak masuk git).
 
 **Posisi terakhir (2026-09-30):**
 - Spike: pipeline, pengukuran latensi hangat, dan penilai galat meter jalan di data contoh (laptop dan
-  PC lab). **Foto lorong lantai 10 beserta titik acuan belum ada.** Rincian: `docs/spike-plan.md`.
-- Layanan: `server/` (FastAPI `/localize`, `/health`) sudah di `main` (PR #23). Docker Compose +
-  PostgreSQL (versi peta per area) ada di branch `feat/compose-postgres`: build dan layanan sehat di
-  PC lab dengan peta demo, **uji `/localize` lewat container belum dikonfirmasi**, PR belum dibuat.
+  PC lab). Rincian: `docs/spike-plan.md`.
+- Uji video lantai 10 pertama (tanpa titik acuan): peta pecah jadi 3 potongan karena belokan cepat
+  dan kamera menghadap dinding polos saat putar balik. 20/46 query diterima (≥ 50 inlier), tidak ada
+  pose salah yang lolos ambang. **Perlu rekam ulang** dengan aturan belok baru di runbook, sekalian
+  titik acuan meter. Percobaan `run.py --seq` (pasangan berurutan) pada frame yang sama menunggu
+  hasil PC lab. Rincian: `docs/spike-plan.md` bagian "Uji video lantai 10".
+- Layanan: `server/` (FastAPI `/localize`, `/health`) dan Docker Compose + PostgreSQL (versi peta per
+  area) sudah di `main` (PR #23, #24). `/localize` lewat container terverifikasi di PC lab dengan peta
+  demo: 405 inlier, 1,94 s CPU.
 - PC lab sudah jadi host: WSL2 Ubuntu 24.04, Docker Engine, NVIDIA Container Toolkit, GPU terlihat
   dari dalam container (`deploy/README.md`).
 - Rancangan setelahnya: `docs/specs/2026-09-29-capture-and-map-pipeline-design.md`.

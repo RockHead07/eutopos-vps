@@ -671,3 +671,69 @@ data contoh (1 foto uji). Setiap setelan membangun peta SfM-nya sendiri.
 **Batas:** `center_xyz_model` **tidak bisa dibandingkan antar-setelan**, karena tiap peta SfM punya
 skala, rotasi, dan titik asal sendiri. Akurasi dibandingkan lewat `eval_meter.py` dengan titik acuan.
 Kandidat untuk data lapangan: 512/640 melawan 1024/1024.
+
+### Uji video lantai 10, percobaan pertama (PC lab, 2026-09-30)
+
+**Data:** dua video jalur ular (±90 s, 2560x1440 lanskap, tanpa rotasi, stabilisasi mati), area lobi
+lift dan aula lantai 10. **Tanpa titik acuan**, jadi yang diukur hanya keterhubungan peta dan
+kewajaran pose, belum meter. Peta dari Video 1 (berangkat) pada 2 fps = 181 frame. Query dari
+Video 2 (pulang, arah sebaliknya) pada 0,5 fps = 46 frame. Frame dari video yang sama dengan peta
+tidak dipakai sebagai query, karena hasilnya pasti bagus tapi tidak jujur.
+
+**Perintah:**
+```powershell
+.venv\Scripts\python.exe spike\run.py data\floor10-v1 --out outputs\floor10-v1 --global-resize 512
+.venv\Scripts\python.exe spike\inspect_map.py outputs\floor10-v1\kp1024-r1024
+```
+
+| Ukuran | Hasil |
+|---|---|
+| Waktu bangun peta (GPU) | ±3,5 menit: ekstraksi 27 s, pencocokan 85 s, rekonstruksi 89 s |
+| Potongan peta | **3 terpisah**: 87, 63, 25 frame (175 dari 181). `run.py` hanya memakai yang terbesar |
+| Kualitas potongan utama | galat reproyeksi 1,32 px, panjang jejak rata-rata 12,3 frame |
+| Query terlokalisasi (`run.py`, tanpa ambang) | 26/46 |
+| **Query diterima layanan (≥ 50 inlier)** | **20/46 (43%)** |
+
+**Rentang frame per potongan** (nomor frame / 2 = detik ke- di Video 1):
+
+| Potongan | Frame | Keterangan |
+|---|---|---|
+| utama | 0-73, 168-180 | awal dan akhir jalur menyambung (area yang sama terlihat lagi) |
+| 1 | 97-158 (+169) | aula |
+| 2 | 74-98 | lobi lift dekat jendela kaca |
+| tidak masuk mana pun | 159-167 | |
+
+**Penyebab putus (frame dibuka satu per satu):**
+
+| Titik putus | Detik | Yang terjadi |
+|---|---|---|
+| 73 → 74 | ±37 | Belok dari lorong ke lobi lift: putaran cepat, ditambah cahaya berubah dari lorong ke jendela kaca terang. Frame 73-75 buram (ketajaman 15 sampai 37, frame baik >100) |
+| 98 → 99 | ±49 | Berbalik dari jendela ke aula: frame 97-98 gelap karena eksposur masih menyesuaikan, frame 99 buram |
+| 156 → 167 | 78 sampai 84 | **Kamera menghadap dinding putih polos dari dekat ±5 detik** saat putar balik jalur ular (ketajaman 5 sampai 11). Tidak ada fitur sama sekali |
+
+**Query terhadap potongan utama:**
+- Query 0-16 lolos dengan 71 sampai 388 inlier. Lompatan antar-query 1 sampai 9 langkah peta, wajar:
+  satu query = 2 s, satu langkah peta = 0,5 s, jadi sekitar 4 langkah per query.
+- Query 43-45 lolos lagi (302 sampai 560 inlier).
+- Query 20-42 gagal atau lemah: areanya ada di potongan lain, bukan di potongan utama.
+- **Tiga pose meloncat jauh** (query 21, 23, 38: 60 sampai 116 langkah) dengan **6, 6, dan 9 inlier**.
+  Semuanya di bawah ambang 50, jadi layanan menolaknya. Tidak ada pose salah-yakin yang lolos, dan
+  ambang 50 terbukti berguna. Konsisten dengan temuan EXIF (pose salah 8 sampai 14 inlier).
+
+**Kesimpulan:**
+1. **Akar masalah ada di cara merekam, bukan pipeline.** Dinding polos dari dekat tidak bisa ditolong
+   oleh pipeline apa pun. Aturan rekam baru masuk ke `docs/field-test-runbook.md` bagian 3.
+2. Lokalisasi berperilaku benar di area yang terpetakan, dan ambang inlier menyaring pose yang salah.
+3. Ekstraksi ulang 4 fps tidak bisa dicoba karena video mentah tidak ada lagi di laptop. Frame 2 fps
+   tetap ada.
+
+**Percobaan lanjutan tanpa merekam ulang: pasangan berurutan (`--seq`).** Retrieval saja bisa
+melewatkan tetangga langsung di tikungan yang buram. `run.py --seq N` menambahkan pasangan setiap
+frame dengan N frame sesudahnya dari video yang sama, padanan *sequential matching* COLMAP yang
+dianjurkan untuk input video. Belum dijamin menyambung tikungan di detik 37 dan 49, karena seluruh
+tikungan buram.
+```powershell
+.venv\Scripts\python.exe spike\run.py data\floor10-v1 --out outputs\floor10-v1-seq10 --global-resize 512 --seq 10
+.venv\Scripts\python.exe spike\inspect_map.py outputs\floor10-v1-seq10\kp1024-r1024
+```
+⏳ Hasil belum ada.

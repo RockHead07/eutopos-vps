@@ -63,6 +63,16 @@ Semuanya disimpan di luar git.
    jangan hanya pergelangan tangan.
 4. Sampai di ujung, berhenti merekam.
 
+**Aturan belok dan putar balik** (dari uji 2026-09-30: peta pecah jadi 3 potongan tepat di titik-titik
+ini, rincian di `docs/spike-plan.md`):
+- **Putar balik 2 sampai 3 m sebelum dinding.** Jangan berjalan sampai dekat tembok. Berputar sambil
+  kamera tetap menghadap ruangan.
+- **Belok pelan:** sekitar 90° dalam 3 sampai 4 detik. Kalau terasa terlalu lambat, berarti sudah benar.
+- **Jangan arahkan kamera ke dinding polos** lebih dari sekejap. Frame dinding putih tidak punya fitur,
+  dan peta putus di sana. Arahkan ke bagian yang ada pintu, papan, lift, atau panel.
+- **Masuk atau keluar area jendela kaca: diam 1 sampai 2 detik** supaya eksposur kamera sempat
+  menyesuaikan. Tanpa jeda, frame di perpindahan terang-gelap jadi gelap atau buram.
+
 **Video 2**
 1. Dari tempat Video 1 berakhir, tekan rekam.
 2. **Ulangi jalur yang sama ke arah sebaliknya** sampai kembali ke jalan masuk, lalu berhenti.
@@ -83,6 +93,7 @@ langkah** (±0,5 m), lanskap, jangan berputar di tempat.
 ### 4. Cek cepat sebelum pulang (5 menit)
 
 - [ ] Kedua video terekam utuh. Putar acak beberapa detik: tidak buram, tidak gelap.
+- [ ] Putar bagian belokan dan putar balik: tidak ada detik yang hanya berisi dinding polos.
 - [ ] **Selotip jangan dicopot**, masih dipakai sore.
 
 ## Siang atau sore (±13.00 sampai 15.00): foto uji
@@ -102,6 +113,8 @@ Total: 20 titik x 2 = **40 foto uji**.
 ## Setelah dari lapangan
 
 1. **Salin semua video dan foto** ke laptop dan buat cadangan ke folder Google Drive pribadi.
+   **Salin, jangan pindahkan (cut):** video mentah di laptop dipakai lagi kalau frame perlu
+   diekstrak ulang dengan setelan lain (2026-09-30: video hilang dari laptop, ekstraksi 4 fps batal).
 2. **Susun folder** (di luar git):
    ```text
    data/floor10/
@@ -116,6 +129,7 @@ Total: 20 titik x 2 = **40 foto uji**.
    .venv\Scripts\python.exe spike\extract_frames.py data\floor10\video1.mp4 data\floor10\video2.mp4 --out data\floor10\mapping
    .venv\Scripts\python.exe spike\fix_orientation.py data\floor10 data\floor10-upright
    .venv\Scripts\python.exe spike\run.py data\floor10-upright --out outputs\floor10 --global-resize 512
+   .venv\Scripts\python.exe spike\inspect_map.py outputs\floor10\kp1024-r1024
    .venv\Scripts\python.exe spike\eval_meter.py outputs\floor10\kp1024-r1024\results.csv data\floor10-upright\reference_points.csv
    .venv\Scripts\python.exe spike\bench_localize.py data\floor10-upright --map outputs\floor10 --global-resize 512 --device cuda
    .venv\Scripts\python.exe spike\bench_localize.py data\floor10-upright --map outputs\floor10 --global-resize 512 --device cpu --threads 2
@@ -127,6 +141,8 @@ Total: 20 titik x 2 = **40 foto uji**.
 
 **Tanda hari ini berhasil** (bukan ambang spike, hanya tanda datanya layak dipakai):
 - `map_registered` ≥ 90% dari jumlah frame peta.
+- `inspect_map.py` hanya menampilkan potongan "utama". Potongan lain berarti peta putus: buka frame di
+  nomor putusnya (nomor / 2 = detik ke-).
 - `eval_meter.py` berjalan tanpa peringatan titik segaris.
 
 ## Kalau ada masalah di lapangan
@@ -136,6 +152,7 @@ Total: 20 titik x 2 = **40 foto uji**.
 | Area ramai | Tunggu, atau kerjakan bagian yang sepi dulu. Jangan merekam dengan orang di tengah bingkai |
 | Baterai atau memori hampir habis | Powerbank. Pindahkan video ke laptop di tengah sesi |
 | Video buram di beberapa bagian | Rekam ulang video itu dengan jalan lebih pelan |
+| Peta pecah jadi beberapa potongan | Biasanya belokan terlalu cepat atau kamera menghadap dinding polos. Rekam ulang bagian itu mengikuti aturan belok |
 | Stabilisasi video tidak bisa dimatikan | Pakai cara B (foto satu per satu) |
 | Salah catat ukuran | Ukur ulang titik itu. Selotip masih terpasang sampai sore |
 | Lupa urutan foto uji | Foto label titik yang diambil sebelum tiap pasangan dipakai sebagai penanda |
