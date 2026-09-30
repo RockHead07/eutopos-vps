@@ -1,0 +1,6 @@
+# Konteks build hanya butuh pyproject.toml, uv.lock, dan server/.
+*
+!pyproject.toml
+!uv.lock
+!server/
+server/**/__pycache__
