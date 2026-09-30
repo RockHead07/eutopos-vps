@@ -35,6 +35,22 @@ def half(x):
     return x.astype(np.float16).astype(np.float32)
 
 
+def _trust_megaloc_hub_repo():
+    """Tandai repo torch hub gmberton/MegaLoc sebagai tepercaya.
+
+    hloc memuat MegaLoc lewat torch.hub.load tanpa trust_repo. Bawaan torch ("check") bertanya y/N
+    secara interaktif untuk repo yang belum tepercaya, dan di container itu membuat layanan macet.
+    Kode repo itu sudah dibaca (hanya torch, bobot safetensors, docs/spike-plan.md), jadi ditandai
+    tepercaya secara eksplisit, dengan cara yang sama seperti torch mencatatnya."""
+    hub = Path(torch.hub.get_dir())
+    hub.mkdir(parents=True, exist_ok=True)
+    trusted = hub / "trusted_list"
+    names = trusted.read_text(encoding="utf-8").split() if trusted.exists() else []
+    if "gmberton_MegaLoc" not in names:
+        with trusted.open("a", encoding="utf-8") as f:
+            f.write("gmberton_MegaLoc\n")
+
+
 @dataclass
 class Result:
     ok: bool
@@ -63,6 +79,7 @@ class Localizer:
         aliked = {**ALIKED, "model": {**ALIKED["model"], "max_num_keypoints": max_kp}}
 
         t0 = time.perf_counter()
+        _trust_megaloc_hub_repo()
         self.megaloc = self._load(extractors, MEGALOC)
         self.aliked = self._load(extractors, aliked)
         self.lightglue = self._load(matchers, LIGHTGLUE)

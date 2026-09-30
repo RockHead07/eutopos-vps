@@ -222,3 +222,20 @@ tegakkan, intrinsik EXIF), `server/app.py` (rute FastAPI). Konfigurasi lewat var
   tidak dipakai untuk klaim.
 
 **Tidak masuk PR 1:** database, Docker, unggahan capture, pemilihan peta, autentikasi.
+
+## 12. Docker Compose dan PostgreSQL (PR 2)
+
+- **`deploy/compose.yaml`:** PostgreSQL 17 (tanpa port ke luar) dan API. `deploy/compose.gpu.yaml`
+  menambah GPU. Worker menyusul bersama antrean pekerjaan.
+- **`deploy/Dockerfile`:** multi-stage, uv 0.12.19, PyTorch 2.14 CPU (atau CUDA lewat build arg),
+  hloc `c13273b`, dependensi dari `uv.lock`, pengguna non-root, healthcheck. Bobot model di volume.
+- **Model data** (`server/db.py`, migrasi Alembic `server/migrations`): `area` dan `map_version`
+  (status candidate, published, rejected, retired). **Paling banyak satu versi `published` per area**,
+  dijaga indeks unik parsial di database, bukan hanya di kode.
+- **Layanan:** dengan `DATABASE_URL`, memuat versi aktif area `EUTOPOS_AREA`. Tanpa versi aktif, layanan
+  tetap menyala (`/health` = `no_map`, `/localize` = 503). Respons membawa `area_id` dan `map_version`.
+  Tanpa `DATABASE_URL`, perilaku PR 1 (`EUTOPOS_MAP_DIR`) tetap.
+- **`server/manage.py`:** `register`, `publish`, `list` versi peta.
+- **MegaLoc lewat torch hub** ditandai tepercaya di kode, karena bawaan torch meminta konfirmasi y/N
+  interaktif yang membuat container macet.
+- Panduan host dan menjalankan: `deploy/README.md`.

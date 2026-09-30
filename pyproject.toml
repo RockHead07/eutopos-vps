@@ -7,7 +7,10 @@ requires-python = ">=3.12,<3.13"
 # Dependensi runtime torch dan hloc belum dideklarasikan di sini (varian CPU atau CUDA dan commit
 # hloc dipasang manual, docs/spike-plan.md bagian 12). FastAPI untuk server/ sudah dideklarasikan.
 dependencies = [
+    "alembic>=1.20.0",
     "fastapi[standard]>=0.141.1",
+    "psycopg[binary]>=3.3.6",
+    "sqlmodel>=0.0.47",
 ]
 
 [dependency-groups]

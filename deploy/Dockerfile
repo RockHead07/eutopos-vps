@@ -1,0 +1,54 @@
+# syntax=docker/dockerfile:1
+# Image layanan eutopos (FastAPI + hloc). Dibangun dari akar repo: lihat deploy/compose.yaml.
+# Bawaan PyTorch CPU (klaim latensi diukur tanpa GPU). Varian GPU: deploy/compose.gpu.yaml.
+
+ARG PYTHON_IMAGE=python:3.12.14-slim-bookworm
+
+FROM ghcr.io/astral-sh/uv:0.12.19 AS uv
+
+# ---- builder: pasang semua dependensi ke /opt/venv ----
+FROM ${PYTHON_IMAGE} AS builder
+COPY --from=uv /uv /usr/local/bin/uv
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git \
+ && rm -rf /var/lib/apt/lists/*
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
+RUN uv venv /opt/venv
+
+# 1. PyTorch paling jarang berubah dan paling besar, jadi lapisan pertama.
+ARG TORCH_INDEX=https://download.pytorch.org/whl/cpu
+RUN uv pip install --python /opt/venv torch==2.14.0 torchvision==0.29.0 --index-url ${TORCH_INDEX}
+
+# 2. hloc dipin ke commit yang sama dengan spike (docs/spike-plan.md).
+ARG HLOC_COMMIT=c13273bd0ecc2917a35910fd843712a1c6243193
+RUN git clone https://github.com/cvg/Hierarchical-Localization.git /tmp/hloc \
+ && git -C /tmp/hloc checkout ${HLOC_COMMIT} \
+ && uv pip install --python /opt/venv /tmp/hloc \
+ && rm -rf /tmp/hloc
+
+# 3. Dependensi layanan, versinya dari uv.lock.
+COPY pyproject.toml uv.lock /src/
+RUN cd /src \
+ && uv export --frozen --no-dev --no-emit-project --no-hashes -o /tmp/requirements.txt \
+ && uv pip install --python /opt/venv -r /tmp/requirements.txt
+
+# ---- runtime: hanya venv, kode layanan, dan pustaka sistem yang dibutuhkan OpenCV ----
+FROM ${PYTHON_IMAGE} AS runtime
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --create-home --uid 1000 eutopos \
+ && mkdir -p /cache && chown eutopos:eutopos /cache
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH \
+    PYTHONUNBUFFERED=1 \
+    TORCH_HOME=/cache/torch \
+    HF_HOME=/cache/huggingface
+WORKDIR /app
+COPY --chown=eutopos:eutopos server ./server
+USER eutopos
+EXPOSE 8000
+# Memuat model dan peta butuh waktu, jadi start-period panjang.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=300s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=4)"
+CMD ["sh", "-c", "alembic -c server/alembic.ini upgrade head && uvicorn server.app:app --host 0.0.0.0 --port 8000"]
