@@ -10,6 +10,7 @@ Tanpa titik acuan meter pun, dua hal ini sudah terlihat:
 
 Contoh:
     python spike/inspect_map.py outputs/floor10-v1/kp1024-r1024
+    python spike/inspect_map.py outputs/floor10-v1/kp1024-r1024 --html outputs/floor10-v1/map.html
     python spike/inspect_map.py --self-test
 """
 
@@ -51,6 +52,7 @@ def centers(model) -> dict[int, np.ndarray]:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("run_dir", type=Path, nargs="?", help="folder kp*-r* keluaran run.py")
+    ap.add_argument("--html", type=Path, help="simpan tampilan 3D peta utama dan posisi query")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
     if a.self_test:
@@ -65,9 +67,12 @@ def main():
         (d.name, d) for d in sorted((sfm / "models").iterdir()) if (d / "images.bin").exists()
     ]
     print("== potongan peta (nomor frame) ==")
-    step = None
+    step = main_model = None
     for label, d in parts:
-        c = centers(pycolmap.Reconstruction(d))
+        model = pycolmap.Reconstruction(d)
+        if label == "utama":
+            main_model = model
+        c = centers(model)
         ids = sorted(c)
         steps = [np.linalg.norm(c[j] - c[i]) for i, j in itertools.pairwise(ids) if j == i + 1]
         med = float(np.median(steps)) if steps else float("nan")
@@ -75,7 +80,7 @@ def main():
         print(f"{label}: {len(ids)} frame, rentang {ranges(ids)}, langkah median {med:.3f}")
 
     print(f"\n== query terhadap peta utama (layanan menolak di bawah {MIN_INLIERS} inlier) ==")
-    prev, accepted, rows = None, 0, 0
+    prev, accepted, rows, located = None, 0, 0, []
     with open(a.run_dir / "results.csv", encoding="utf-8") as f:
         for r in csv.DictReader(f):
             rows += 1
@@ -89,7 +94,42 @@ def main():
             mark = "" if inl >= MIN_INLIERS else "  ditolak"
             print(f"{n:4d}  inlier {inl:4d}/{int(r['correspondences']):4d}{jump}{mark}")
             prev = (n, c)
+            located.append((n, c, inl))
     print(f"\nditerima layanan: {accepted}/{rows} query")
+    if a.html:
+        save_html(a.html, main_model, located)
+
+
+def save_html(path: Path, model, located):
+    # Potongan lain punya kerangka koordinat sendiri, jadi hanya potongan utama yang digambar.
+    import plotly.graph_objects as go
+    from hloc.utils import viz_3d
+
+    fig = viz_3d.init_figure()
+    viz_3d.plot_reconstruction(fig, model, color="rgba(60,110,255,0.5)", name="peta utama")
+    for name, color, keep in [
+        (f"query diterima (>= {MIN_INLIERS} inlier)", "rgb(20,160,60)", True),
+        ("query ditolak", "rgb(230,90,20)", False),
+    ]:
+        sel = [(n, c, inl) for n, c, inl in located if (inl >= MIN_INLIERS) == keep]
+        if not sel:
+            continue
+        xyz = np.array([c for _, c, _ in sel])
+        fig.add_trace(
+            go.Scatter3d(
+                x=xyz[:, 0],
+                y=xyz[:, 1],
+                z=xyz[:, 2],
+                mode="markers+text",
+                text=[str(n) for n, _, _ in sel],
+                hovertext=[f"query {n}: {inl} inlier" for n, _, inl in sel],
+                marker={"size": 5, "color": color},
+                name=name,
+            )
+        )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.write_html(path)  # plotly.js ikut di dalam berkas, bisa dibuka tanpa internet
+    print(f"tampilan 3D: {path}")
 
 
 if __name__ == "__main__":
