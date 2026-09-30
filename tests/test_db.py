@@ -86,3 +86,22 @@ def test_service_starts_without_active_map(tmp_path, monkeypatch):
         assert health["status"] == "no_map" and health["map_images"] == 0
         r = client.post("/localize", files={"image": ("q.png", buf.getvalue(), "image/png")})
         assert r.status_code == 503
+
+
+def test_migration_cli_runs_like_the_container(tmp_path):
+    """Container menjalankan perintah alembic (bukan pytest), jadi paket server harus bisa diimpor
+    tanpa bantuan pythonpath pytest. Uji ini sempat hilang dan container gagal menyala."""
+    import os
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    alembic = shutil.which("alembic")
+    assert alembic, "perintah alembic tidak ditemukan"
+    ini = Path(__file__).resolve().parents[1] / "server" / "alembic.ini"
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    env["DATABASE_URL"] = f"sqlite:///{tmp_path / 'cli.db'}"
+    r = subprocess.run(
+        [alembic, "-c", str(ini), "upgrade", "head"], cwd=tmp_path, env=env, capture_output=True
+    )
+    assert r.returncode == 0, r.stderr.decode(errors="replace")
