@@ -16,7 +16,7 @@ masih terbuka.**
 | Pembimbing 1 | Sritrusta Sukaridhoto |
 | Pembimbing 2 | Evianita Dewi Fajrianti |
 | Lokasi uji | Gedung PENS pusat, Surabaya |
-| Pengajuan judul | Diunggah ke MIS sebelum tenggat 18 September 2026. **Menunggu ACC** |
+| Pengajuan judul | Diunggah ke MIS sebelum tenggat 18 September 2026. **Diterima 30 September 2026**, judul dan kedua pembimbing sama dengan usulan |
 | Seminar proposal | 15 Desember 2026. **Proposal PA adalah dokumen terpisah** dari pengajuan judul |
 
 ## 2. Judul final (dikunci 15 September 2026)
@@ -293,7 +293,7 @@ bagian lain.
 
 ## 12. Yang masih terbuka
 
-- [ ] Keputusan ACC judul.
+- [x] ~~Keputusan ACC judul.~~ Diterima di MIS 2026-09-30.
 - [ ] Gedung dan koridor uji, serta izin memotret.
 - [ ] Pertanyaan untuk pembimbing (`docs/spike-plan.md` bagian 9).
 - [ ] Makna "anchoring tool untuk titik tujuan". Tafsiran saat ini: dashboard web untuk menandai POI

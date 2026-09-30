@@ -21,9 +21,9 @@ pusat, Surabaya.
 
 ## Status
 
-🔓 **Pengembangan boleh dimulai sebelum ACC** (keputusan pemilik repo, 2026-09-29). Alasannya: di PENS
-judul biasanya di-ACC dengan sedikit penyesuaian arah, dan judul PA sengaja tidak mengunci teknologi.
-Penghalang yang lebih penting adalah **hasil spike**, jadi setiap pekerjaan diberi penghalang sendiri:
+✅ **Judul PA diterima di MIS (2026-09-30)**, tanpa perubahan judul, dengan kedua pembimbing seperti
+usulan. Tahap berikutnya: seminar proposal (15 Desember 2026), lalu seminar hasil. Penghalang yang
+tersisa adalah **hasil spike**, jadi setiap pekerjaan tetap diberi penghalang sendiri:
 
 | Pekerjaan | Mulai sekarang? | Alasan |
 |---|---|---|
@@ -34,8 +34,8 @@ Penghalang yang lebih penting adalah **hasil spike**, jadi setiap pekerjaan dibe
 | Aplikasi capture (eutopos Mapper) | ⏸️ Tunggu | Keputusan terbuka nomor 1 di spesifikasi: masuk cakupan PA atau tidak, diputuskan bersama pembimbing |
 
 Riwayat: 2026-09-20 tidak ada pengembangan sebelum ACC; 2026-09-25 pengecualian uji coba awal di
-lantai 10; 2026-09-29 dicabut dengan penghalang per pekerjaan di atas. Pengajuan judul masih menunggu
-ACC. Kode uji coba ada di `spike/`, data di `data/` (tidak masuk git).
+lantai 10; 2026-09-29 dicabut dengan penghalang per pekerjaan di atas; 2026-09-30 judul diterima.
+Kode uji coba ada di `spike/`, data di `data/` (tidak masuk git).
 
 **Posisi terakhir (2026-09-30):**
 - Spike: pipeline, pengukuran latensi hangat, dan penilai galat meter jalan di data contoh (laptop dan
