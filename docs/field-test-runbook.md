@@ -20,7 +20,7 @@ Semuanya disimpan di luar git.
 
 - [ ] Ajak **satu teman** untuk pagi (memegang ujung meteran dan mencatat). Sore bisa sendiri.
 - [ ] Tanyakan ke lab apakah ada **meteran laser**. Kalau tidak ada, bawa meteran pita ≥ 5 m.
-- [ ] Minta **denah lantai 10** ke pengelola gedung atau lab (dipakai setelah ACC, tapi prosesnya lama).
+- [ ] Minta **denah lantai 10** ke pengelola gedung atau lab (dipakai untuk anchoring dan penyelarasan peta, prosesnya lama).
 - [ ] Ponsel:
   - [ ] Baterai penuh, bawa powerbank. Kosongkan memori untuk beberapa video 4K dan ±60 foto.
   - [ ] **Video:** stabilisasi video **dimatikan**, HDR video mati, 1080p atau 4K, 30 fps, lensa 1x.

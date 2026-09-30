@@ -1,7 +1,7 @@
 # Spesifikasi: Aplikasi Capture dan Pipeline Peta
 
-**Status:** rancangan, hasil brainstorming 2026-09-29. Pengembangan boleh dimulai sebelum ACC
-(keputusan pemilik repo, 2026-09-29), dengan penghalang per pekerjaan di `CLAUDE.md` bagian Status:
+**Status:** rancangan, hasil brainstorming 2026-09-29. Judul PA diterima 2026-09-30. Pengembangan
+berjalan dengan penghalang per pekerjaan di `CLAUDE.md` bagian Status:
 bagian yang bergantung pada metode lokalisasi menunggu hasil spike (`docs/spike-plan.md`), dan
 aplikasi capture menunggu keputusan terbuka nomor 1.
 

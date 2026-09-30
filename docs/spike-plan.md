@@ -35,7 +35,7 @@ mengurangi drift ARCore" butuh klien, jadi baru setelah spike ini lolos.
 
 Semua harus terpenuhi:
 
-- [x] ~~**Judul di-ACC** (MIS).~~ Tidak lagi menjadi syarat (keputusan pemilik repo, 2026-09-29).
+- [x] **Judul di-ACC** (MIS). Diterima 2026-09-30. Sejak 2026-09-29 sudah tidak menjadi syarat.
 - [ ] **Izin memotret dan memindai** koridor terpilih (lewat pembimbing). Tentukan koridor dan jamnya.
 - [ ] **Jawaban pembimbing** untuk pertanyaan di bagian 9.
 - [ ] **Disk kosong yang cukup.** Disk C: PC lab sisa sekitar 56 GiB (88% terpakai), pakai disk lain.
