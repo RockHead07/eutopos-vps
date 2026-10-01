@@ -5,6 +5,7 @@ antrean ini disebut di dokumentasi PostgreSQL untuk SELECT ... FOR UPDATE.
 """
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 from sqlmodel import Session, select
 
@@ -15,9 +16,10 @@ ERROR_MAX = 4000  # cukup untuk 50 baris log terakhir
 
 
 def _save(session: Session, job: MapJob) -> None:
+    # Tanpa refresh: refresh membuka transaksi baru yang tertahan selama subprocess berjam-jam
+    # di pekerja ("idle in transaction" di PostgreSQL). Sesi biasa memuat ulang atribut sendiri.
     session.add(job)
     session.commit()
-    session.refresh(job)
 
 
 def create_job(
@@ -33,6 +35,10 @@ def create_job(
         raise ValueError(f"peran video tidak dikenal: {sorted(unknown)}, pakai peta atau uji")
     if not any(v["role"] == "peta" for v in videos):
         raise ValueError("butuh minimal satu video berperan peta")
+    # Frame dinamai <nama video>_<nomor>.jpg: dua video bernama sama saling menimpa frame.
+    stems = [Path(v["path"]).stem for v in videos if Path(v["path"]).suffix]
+    if dup := sorted({s for s in stems if stems.count(s) > 1}):
+        raise ValueError(f"nama video kembar {dup}, ganti nama salah satunya")
     if session.get(Area, area_id) is None:
         session.add(Area(id=area_id, name=area_name))
     job = MapJob(area_id=area_id, created_by=created_by, status=status, videos=videos)

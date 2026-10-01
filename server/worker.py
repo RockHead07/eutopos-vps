@@ -34,10 +34,19 @@ DATA, MAPS = Path("/data"), Path("/maps")  # jalur di dalam container (deploy/co
 MIN_FREE_BYTES = 20 * 1024**3
 POLL_S = 5
 LOG_LINES = 50
+# ponytail: satu batas untuk semua tahap. Peta lantai 10 (181 frame) selesai ±3,5 menit di GPU;
+# batas ini hanya mencegah proses macet menahan satu-satunya antrean selamanya.
+STAGE_TIMEOUT_S = 6 * 3600
 
 
 class StageError(RuntimeError):
     pass
+
+
+def worker_session(engine) -> Session:
+    """Sesi pekerja: atribut tidak kedaluwarsa setelah commit, jadi membaca job tidak membuka
+    transaksi baru yang tertahan selama subprocess berjalan."""
+    return Session(engine, expire_on_commit=False)
 
 
 def run(argv: list[str], log: Path) -> None:
@@ -45,9 +54,12 @@ def run(argv: list[str], log: Path) -> None:
     with open(log, "a", encoding="utf-8") as f:
         f.write("$ " + " ".join(argv) + "\n")
         f.flush()
-        code = subprocess.run(argv, stdout=f, stderr=subprocess.STDOUT).returncode
-    if code:
-        raise StageError(f"perintah gagal (kode {code}): {Path(argv[1]).name}")
+        try:
+            proc = subprocess.run(argv, stdout=f, stderr=subprocess.STDOUT, timeout=STAGE_TIMEOUT_S)
+        except subprocess.TimeoutExpired as e:
+            raise StageError(f"perintah melewati {STAGE_TIMEOUT_S} s: {Path(argv[1]).name}") from e
+    if proc.returncode:
+        raise StageError(f"perintah gagal (kode {proc.returncode}): {Path(argv[1]).name}")
 
 
 def log_tail(log: Path) -> str:
@@ -77,10 +89,10 @@ def process(
     job_dir = data / "jobs" / str(job.id)
     dataset, log = job_dir / "dataset", job_dir / "log.txt"
     map_dir = maps / job.area_id / f"job-{job.id}"
-    job_dir.mkdir(parents=True, exist_ok=True)
     try:
         jobs.set_stage(session, job, "extract")
-        if free_bytes(data) < MIN_FREE_BYTES:
+        job_dir.mkdir(parents=True, exist_ok=True)  # di dalam try: folder tak bisa ditulis = gagal
+        if min(free_bytes(data), free_bytes(maps)) < MIN_FREE_BYTES:
             raise StageError("ruang disk kurang dari 20 GB, pekerjaan tidak dimulai")
         if missing := missing_inputs(job.videos):
             raise StageError(f"berkas masukan tidak ditemukan: {', '.join(missing)}")
@@ -108,7 +120,9 @@ def process(
         jobs.finish(session, job, version.id, summary)
     except Exception as e:  # pekerjaan gagal, pekerja tetap hidup untuk pekerjaan berikutnya
         session.rollback()
-        jobs.fail(session, job, f"{e}\n{log_tail(log)}".strip())
+        msg = str(e)[: jobs.ERROR_MAX // 2]  # pesan utama selalu utuh di awal
+        tail = log_tail(log)[-(jobs.ERROR_MAX - len(msg) - 1) :]
+        jobs.fail(session, job, f"{msg}\n{tail}".strip())
 
 
 def main() -> None:
@@ -118,12 +132,12 @@ def main() -> None:
     # subprocess tanpa masukan gagal. Jangan bergantung pada api yang kebetulan sudah menandainya.
     trust_megaloc_hub_repo()
     engine = engine_from_env()
-    with Session(engine) as s:
+    with worker_session(engine) as s:
         if n := jobs.recover_stale(s):
             print(f"{n} pekerjaan tertinggal ditandai gagal", flush=True)
     print("pekerja siap", flush=True)
     while True:
-        with Session(engine) as s:
+        with worker_session(engine) as s:
             job = jobs.claim_next(s)
             if job is None:
                 time.sleep(POLL_S)

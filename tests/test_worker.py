@@ -80,6 +80,8 @@ def test_build_command_matches_service_settings(tmp_path):
     for flag, value in [("--max-kp", "1024"), ("--resize", "1024"), ("--global-resize", "512")]:
         assert cmd[cmd.index(flag) + 1] == value
     assert cmd[cmd.index("--seq") + 1] == "10"
+    # retrieval selalu, supaya global-r512.h5 ada juga untuk peta kecil (<= 30 frame)
+    assert cmd[cmd.index("--exhaustive-max") + 1] == "0"
 
 
 def test_process_success_registers_candidate_and_spares_cli_files(session, tmp_path):
@@ -144,3 +146,25 @@ def test_megaloc_hub_repo_is_trusted_once(tmp_path, monkeypatch):
     trust_megaloc_hub_repo()
     trusted = (tmp_path / "hub" / "trusted_list").read_text(encoding="utf-8").split()
     assert trusted == ["gmberton_MegaLoc"]
+
+
+def test_error_keeps_message_when_log_is_long(session, tmp_path):
+    data, maps, _, _, videos = make_inputs(tmp_path)
+    job = queued(session, videos)
+    log = data / "jobs" / str(job.id) / "log.txt"
+    log.parent.mkdir(parents=True)
+    log.write_text("".join("x" * 120 + "\n" for _ in range(60)), encoding="utf-8")
+    runner = fake_runner([], fail_on="run.py")
+    worker.process(session, job, data, maps, runner=runner, free_bytes=lambda p: 10**12)
+    assert job.error.startswith("perintah gagal (kode 1): run.py")
+    assert len(job.error) <= jobs.ERROR_MAX
+
+
+def test_worker_session_holds_no_transaction_during_stage(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'w.db'}")
+    SQLModel.metadata.create_all(engine)
+    with worker.worker_session(engine) as s:
+        job = queued(s, [{"path": str(tmp_path), "role": "peta"}])
+        jobs.set_stage(s, job, "build")
+        assert not s.in_transaction()  # subprocess berjam-jam tidak boleh menahan transaksi
+        assert job.stage == "build"

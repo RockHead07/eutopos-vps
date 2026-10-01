@@ -55,6 +55,7 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
     command: ["python", "-m", "server.worker"]
+    init: true  # SIGTERM diteruskan, compose stop tidak menunggu 10 s lalu SIGKILL
     environment:
       DATABASE_URL: postgresql+psycopg://eutopos:${POSTGRES_PASSWORD}@db:5432/eutopos
     volumes:
@@ -73,8 +74,10 @@ services:
     healthcheck:
       disable: true  # healthcheck image memeriksa HTTP :8000, pekerja tidak melayani HTTP
     depends_on:
+      # Bukan service_healthy: kalau api gagal memuat peta aktif, pekerja tetap harus bisa membangun
+      # peta pengganti. Kalau migrasi belum selesai, pekerja gagal lalu diulang oleh restart.
       api:
-        condition: service_healthy  # migrasi Alembic dijalankan api saat menyala
+        condition: service_started
     restart: unless-stopped
 
 volumes:

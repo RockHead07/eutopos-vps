@@ -53,6 +53,10 @@ def build_command(dataset: Path, map_dir: Path) -> list[str]:
         str(GLOBAL_RESIZE),
         "--seq",
         str(SEQ),
+        # Selalu retrieval: di bawah 30 frame run.py memakai semua pasangan dan tidak menulis
+        # global-r512.h5, padahal layanan membutuhkannya.
+        "--exhaustive-max",
+        "0",
     ]
 
 
