@@ -71,3 +71,31 @@ def test_recover_stale_fails_running_jobs(session):
 def test_publish_records_who(session):
     v = register(session, "floor10", "L10", "/maps/v1")
     assert publish(session, v.id, by="a@x.id").published_by == "a@x.id"
+
+
+def test_manage_job_queues_and_lists(tmp_path, monkeypatch, capsys):
+    from server import manage
+
+    url = f"sqlite:///{tmp_path / 'm.db'}"
+    SQLModel.metadata.create_all(create_engine(url))
+    monkeypatch.setenv("DATABASE_URL", url)
+    frames = tmp_path / "mapping"
+    frames.mkdir()
+    monkeypatch.setattr("sys.argv", ["manage", "job", "floor10", "Lantai 10", "--map", str(frames)])
+    manage.main()
+    assert "pekerjaan 1 diantrekan" in capsys.readouterr().out
+    monkeypatch.setattr("sys.argv", ["manage", "jobs"])
+    manage.main()
+    listing = capsys.readouterr().out
+    assert "floor10" in listing and "queued" in listing
+
+
+def test_manage_job_rejects_missing_path(tmp_path, monkeypatch):
+    from server import manage
+
+    url = f"sqlite:///{tmp_path / 'm.db'}"
+    SQLModel.metadata.create_all(create_engine(url))
+    monkeypatch.setenv("DATABASE_URL", url)
+    monkeypatch.setattr("sys.argv", ["manage", "job", "floor10", "L10", "--map", "/tidak/ada"])
+    with pytest.raises(SystemExit, match="tidak ditemukan"):
+        manage.main()
