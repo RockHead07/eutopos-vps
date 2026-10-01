@@ -229,9 +229,7 @@ def upgrade():
         sa.Column("videos", sa.JSON(), nullable=False),
         sa.Column("summary", sa.JSON(), nullable=True),
         sa.Column("error", sa.String(), nullable=True),
-        sa.Column(
-            "map_version_id", sa.Integer(), sa.ForeignKey("map_version.id"), nullable=True
-        ),
+        sa.Column("map_version_id", sa.Integer(), sa.ForeignKey("map_version.id"), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
