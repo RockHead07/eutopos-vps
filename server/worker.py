@@ -7,10 +7,12 @@ mendaftarkan hasilnya sebagai versi kandidat. Satu pekerja, satu pekerjaan dalam
 """
 
 import json
+import re
 import shutil
 import subprocess
 import time
 from collections.abc import Callable
+from datetime import timedelta
 from pathlib import Path
 
 from sqlmodel import Session
@@ -31,6 +33,8 @@ from server.pipeline import (
 )
 
 DATA, MAPS = Path("/data"), Path("/maps")  # jalur di dalam container (deploy/compose.yaml)
+UPLOAD_MAX_AGE = timedelta(hours=24)
+UPLOAD_ID = re.compile(r"^[A-Za-z0-9-]+$")  # pola ID buatan server, tanpa / atau ..
 MIN_FREE_BYTES = 20 * 1024**3
 POLL_S = 5
 LOG_LINES = 50
@@ -68,6 +72,14 @@ def log_tail(log: Path) -> str:
     return "\n".join(log.read_text(encoding="utf-8", errors="replace").splitlines()[-LOG_LINES:])
 
 
+def delete_upload_files(upload_ids: list[str], uploads: Path) -> None:
+    """Hapus berkas tusd (data dan .info) untuk ID yang polanya sah. Berkas lain tidak disentuh."""
+    for uid in upload_ids:
+        if UPLOAD_ID.match(uid):
+            for p in (uploads / uid, uploads / f"{uid}.info"):
+                p.unlink(missing_ok=True)
+
+
 def delete_uploaded_videos(videos: list[dict], uploads: Path) -> None:
     """Video mentah dari unggahan website dihapus setelah frame diekstrak (privasi). Berkas yang
     diberikan lewat CLI berada di luar folder uploads dan tidak pernah disentuh."""
@@ -75,7 +87,7 @@ def delete_uploaded_videos(videos: list[dict], uploads: Path) -> None:
     for v in videos:
         p = Path(v["path"]).resolve()
         if p.is_file() and p.is_relative_to(root):
-            p.unlink()
+            delete_upload_files([p.name], uploads)
 
 
 def process(
@@ -140,6 +152,9 @@ def main() -> None:
         with worker_session(engine) as s:
             job = jobs.claim_next(s)
             if job is None:
+                for stale in jobs.expire_uploading(s, UPLOAD_MAX_AGE):
+                    ids = [v["upload_id"] for v in stale.videos if v.get("upload_id")]
+                    delete_upload_files(ids, DATA / "uploads")
                 time.sleep(POLL_S)
                 continue
             print(f"pekerjaan {job.id} ({job.area_id}) mulai", flush=True)
