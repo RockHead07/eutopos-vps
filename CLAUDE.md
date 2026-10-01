@@ -40,11 +40,11 @@ Kode uji coba ada di `spike/`, data di `data/` (tidak masuk git).
 **Posisi terakhir (2026-09-30):**
 - Spike: pipeline, pengukuran latensi hangat, dan penilai galat meter jalan di data contoh (laptop dan
   PC lab). Rincian: `docs/spike-plan.md`.
-- Uji video lantai 10 pertama (tanpa titik acuan): peta pecah jadi 3 potongan karena belokan cepat
-  dan kamera menghadap dinding polos saat putar balik. 20/46 query diterima (≥ 50 inlier), tidak ada
-  pose salah yang lolos ambang. **Perlu rekam ulang** dengan aturan belok baru di runbook, sekalian
-  titik acuan meter. Percobaan `run.py --seq` (pasangan berurutan) pada frame yang sama menunggu
-  hasil PC lab. Rincian: `docs/spike-plan.md` bagian "Uji video lantai 10".
+- Uji video lantai 10 (tanpa titik acuan): jalur ular (2026-09-30) membuat peta pecah 3 potongan,
+  20/46 query diterima. **Jalur keliling menghadap ke dalam (2026-10-01): 401/402 frame dalam satu
+  peta, 36/46 query dari hari lain diterima (≥ 50 inlier)**, tidak ada pose janggal yang lolos ambang.
+  Pola keliling jadi pola rekam utama di runbook. **Belum ada akurasi meter:** rekam dengan pola ini
+  sekaligus titik acuan. Rincian: `docs/spike-plan.md` bagian "Uji video lantai 10".
 - Layanan: `server/` (FastAPI `/localize`, `/health`), Docker Compose + PostgreSQL (versi peta per
   area), dan **antrean bangun peta** (`map_job`, pekerja GPU, `python -m server.manage job`).
   `/localize` lewat container terverifikasi di PC lab dengan peta demo: 405 inlier, 1,94 s CPU.

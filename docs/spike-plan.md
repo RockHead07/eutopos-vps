@@ -749,4 +749,52 @@ tikungan buram.
 .venv\Scripts\python.exe spike\run.py data\floor10-v1 --out outputs\floor10-v1-seq10 --global-resize 512 --seq 10
 .venv\Scripts\python.exe spike\inspect_map.py outputs\floor10-v1-seq10\kp1024-r1024
 ```
-⏳ Hasil belum ada.
+⏳ Belum dijalankan terpisah pada rekaman lama. Pekerja bangun peta selalu memakai `--seq 10`, jadi
+efeknya ikut di uji kedua di bawah, tetapi tidak dipisahkan dari efek pola rekam yang baru.
+
+### Uji video lantai 10, percobaan kedua: jalur keliling menghadap ke dalam (PC lab, 2026-10-01)
+
+**Pola rekam baru (dari pemilik repo):** satu video, berjalan mengelilingi tepi ruangan lobi dan
+aula sampai kembali ke titik awal, **punggung ke dinding, kamera menghadap ke tengah ruangan**
+(pilar, pintu di seberang, lift, jendela). 202 s, 2560x1440 lanskap tanpa rotasi, ponsel dan
+resolusi sama dengan uji pertama. Diekstrak di laptop 2 fps: 402 frame, 203 MB (video 1,26 GB),
+tidak ada frame yang jauh lebih buram dari median. Frame 0 dan 400 menunjukkan lift yang sama: jalur
+tertutup.
+
+**Dijalankan lewat pekerja bangun peta di Docker** (`python -m server.manage job`, PR 1), pertama
+kalinya alur ujung ke ujung tanpa langkah manual. Foto uji: **46 frame Video 2 uji pertama**
+(menghadap arah jalan, hari berbeda), jadi sekaligus menguji beda sudut pandang dan beda hari.
+
+| Ukuran | Uji pertama (jalur ular, 2026-09-30) | **Uji kedua (keliling ke dalam)** |
+|---|---|---|
+| Frame terdaftar | 175/181, **pecah 3 potongan** (utama 87) | **401/402, 1 potongan** (hanya frame 207 lepas) |
+| Titik 3D | 2.920 | **24.401** |
+| Galat reproyeksi | 1,32 px | 1,34 px |
+| Panjang jejak rata-rata | 12,3 | 8,3 |
+| Query ter-PnP | 26/46 | 46/46 |
+| **Query diterima layanan (≥ 50 inlier)** | 20/46 (43%) | **36/46 (78%)** |
+| Waktu bangun peta (GPU) | ±3,5 menit (181 frame) | ±6 menit (402 frame): pencocokan 186 s, rekonstruksi 151 s |
+
+**Query:**
+- Kuat: query 0-13 (305 sampai 849 inlier), 24-28 (282 sampai 632), 43-45 (485 sampai 928).
+- Ditolak (di bawah 50): query 17-22 dan 39-42. Query 17-22 juga lemah di uji pertama, kemungkinan
+  titik sulit yang sama (kaca dan dinding polos). Posisinya dilihat di `report.html`.
+- Pose yang meloncat jauh (query 21 dan 22, lebih dari 3.000 langkah peta) hanya punya 3 sampai 7
+  inlier dan ditolak. **Tidak ada pose dengan lompatan janggal yang lolos ambang.** Ini pemeriksaan
+  konsistensi, belum akurasi meter.
+
+**Kesimpulan:**
+1. **Pola keliling menghadap ke dalam menyelesaikan masalah peta pecah.** Gerakan kamera banyak ke
+   samping relatif terhadap arah pandang (paralaks besar, kedalaman titik akurat), kamera tidak
+   pernah menghadap dinding polos dari dekat, dan jalur tertutup menyambung awal dan akhir.
+2. **Kekhawatiran beda sudut pandang ternyata lebih kecil dari dugaan.** Peta hanya berisi pandangan
+   ke tengah ruangan, query menghadap arah jalan (±90°), tetapi 78% query dari hari lain diterima.
+3. **Risiko yang tersisa:** dinding di belakang pemeta (termasuk pintu lab, tujuan penting) hanya
+   terlihat dari seberang ruangan. Kalau foto uji di depan pintu lab gagal, tambahkan potongan
+   rekaman pendek menghadap pintu itu.
+4. Pipeline pekerja terbukti: `extract`, `build` dengan `--seq 10 --exhaustive-max 0`, `inspect`,
+   `register`. Pekerjaan pertama gagal di `build` karena shared memory container (lihat
+   `deploy/README.md` bagian 3) dan tercatat `failed` dengan log, pekerja tetap hidup.
+
+**Belum ada:** akurasi dalam meter. Langkah berikutnya: rekam dengan pola ini sekaligus titik acuan
+(runbook bagian 2), lalu `eval_meter.py`.
