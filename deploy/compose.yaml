@@ -56,6 +56,9 @@ services:
       dockerfile: deploy/Dockerfile
     command: ["python", "-m", "server.worker"]
     init: true  # SIGTERM diteruskan, compose stop tidak menunggu 10 s lalu SIGKILL
+    # DataLoader PyTorch (dipakai hloc) mengirim data antarproses lewat /dev/shm. Bawaan Docker
+    # 64 MB habis dengan foto 2560x1440: "unable to allocate shared memory" (PC lab, 2026-10-01).
+    shm_size: "2gb"
     environment:
       DATABASE_URL: postgresql+psycopg://eutopos:${POSTGRES_PASSWORD}@db:5432/eutopos
     volumes:
