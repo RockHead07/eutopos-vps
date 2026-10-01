@@ -46,7 +46,9 @@ Kode uji coba ada di `spike/`, data di `data/` (tidak masuk git).
   Pola keliling jadi pola rekam utama di runbook. **Belum ada akurasi meter:** rekam dengan pola ini
   sekaligus titik acuan. Rincian: `docs/spike-plan.md` bagian "Uji video lantai 10".
 - Layanan: `server/` (FastAPI `/localize`, `/health`), Docker Compose + PostgreSQL (versi peta per
-  area), dan **antrean bangun peta** (`map_job`, pekerja GPU, `python -m server.manage job`).
+  area), **antrean bangun peta** (`map_job`, pekerja GPU, `python -m server.manage job`), dan
+  **unggahan video** (tusd, hook ke api, autentikasi Cloudflare Access, terverifikasi di PC lab
+  2026-10-02 dengan `server.upload_client`). Dashboard (PR 3) dan Tunnel (PR 4) belum.
   `/localize` lewat container terverifikasi di PC lab dengan peta demo: 405 inlier, 1,94 s CPU.
   Website unggah (PR 2 sampai 4) mengikuti `docs/specs/2026-10-01-web-upload-and-map-build-design.md`.
 - PC lab sudah jadi host: WSL2 Ubuntu 24.04, Docker Engine, NVIDIA Container Toolkit, GPU terlihat
