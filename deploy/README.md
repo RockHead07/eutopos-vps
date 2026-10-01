@@ -128,15 +128,16 @@ docker compose run --rm --no-deps --entrypoint ls api -la /maps
 Pekerja (`worker`) mengambil pekerjaan dari tabel `map_job`, mengekstrak frame, membangun peta
 dengan GPU (`run.py --seq 10`), membuat laporan dan tampilan 3D (`inspect_map.py`), lalu mendaftarkan
 versi kandidat. Masukan berupa video atau folder frame di dalam `EUTOPOS_DATA_DIR`, terlihat sebagai
-`/data` di container. Isi `EUTOPOS_DATA_DIR` di `deploy/.env` dulu (lihat `.env.example`).
+`/data` di container pekerja (perintah `job` dijalankan di `worker`, bukan `api`, karena hanya
+pekerja yang memasang `/data`). Isi `EUTOPOS_DATA_DIR` di `deploy/.env` dulu (lihat `.env.example`).
 
 ```bash
 mkdir -p ~/eutopos-data/work/inbox
 cp -r /mnt/c/Users/<user>/eutopos-vps/data/floor10-v1 ~/eutopos-data/work/inbox/
 docker compose -f compose.yaml -f compose.gpu.yaml up -d --build
-docker compose exec api python -m server.manage job floor10 "Lantai 10" \
+docker compose exec worker python -m server.manage job floor10 "Lantai 10" \
   --map /data/inbox/floor10-v1/mapping --query /data/inbox/floor10-v1/query
-docker compose exec api python -m server.manage jobs        # pantau status dan tahap
+docker compose exec worker python -m server.manage jobs        # pantau status dan tahap
 docker compose logs -f worker                                # log pekerja
 docker compose exec api python -m server.manage publish <versi id>
 docker compose restart api                                   # muat peta baru

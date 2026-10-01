@@ -26,8 +26,13 @@ def test_create_job_makes_area_and_keeps_videos(session):
 
 @pytest.mark.parametrize(
     "videos",
-    [[], [QUERY], [{"path": "/x.mp4", "role": "map"}]],
-    ids=["kosong", "tanpa-peta", "peran-salah-ketik"],
+    [
+        [],
+        [QUERY],
+        [{"path": "/x.mp4", "role": "map"}],
+        [MAP, {"path": "/lain/v1.mp4", "role": "uji"}],
+    ],
+    ids=["kosong", "tanpa-peta", "peran-salah-ketik", "nama-video-kembar"],
 )
 def test_create_job_rejects_unusable_videos(session, videos):
     with pytest.raises(ValueError):
@@ -82,8 +87,12 @@ def test_manage_job_queues_and_lists(tmp_path, monkeypatch, capsys):
     frames = tmp_path / "mapping"
     frames.mkdir()
     monkeypatch.setattr("sys.argv", ["manage", "job", "floor10", "Lantai 10", "--map", str(frames)])
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("sys.argv", ["manage", "job", "floor10", "Lantai 10", "--map", "mapping"])
     manage.main()
     assert "pekerjaan 1 diantrekan" in capsys.readouterr().out
+    job = Session(create_engine(url)).get(MapJob, 1)
+    assert job.videos[0]["path"] == str(frames.resolve())  # jalur relatif disimpan absolut
     monkeypatch.setattr("sys.argv", ["manage", "jobs"])
     manage.main()
     listing = capsys.readouterr().out

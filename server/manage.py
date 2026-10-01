@@ -64,11 +64,15 @@ def main():
             v = publish(s, a.version_id)
             print(f"{v.area_id} v{v.version} (id {v.id}) sekarang aktif")
         elif a.cmd == "job":
-            videos = [{"path": p, "role": "peta"} for p in a.map]
-            videos += [{"path": p, "role": "uji"} for p in a.query]
+            # Disimpan absolut: pekerja berjalan dari folder kerja lain.
+            videos = [{"path": str(Path(p).resolve()), "role": "peta"} for p in a.map]
+            videos += [{"path": str(Path(p).resolve()), "role": "uji"} for p in a.query]
             if missing := missing_inputs(videos):
                 raise SystemExit(f"berkas tidak ditemukan: {', '.join(missing)}")
-            job = jobs.create_job(s, a.area_id, a.name, a.by, videos, status="queued")
+            try:
+                job = jobs.create_job(s, a.area_id, a.name, a.by, videos, status="queued")
+            except ValueError as e:
+                raise SystemExit(str(e)) from e
             print(f"pekerjaan {job.id} diantrekan untuk {job.area_id}")
         elif a.cmd == "jobs":
             for job in s.exec(select(MapJob).order_by(MapJob.id.desc())):
