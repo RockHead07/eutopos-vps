@@ -33,6 +33,10 @@ services:
       EUTOPOS_DEVICE: cpu
       EUTOPOS_THREADS: ${EUTOPOS_THREADS:-0}
       EUTOPOS_GLOBAL_RESIZE: ${EUTOPOS_GLOBAL_RESIZE:-512}
+      # Autentikasi /api/* dan unggahan (server/auth.py). Kosong = 503, gagal tertutup.
+      CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:-}
+      CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
+      EUTOPOS_DEV_NO_AUTH: ${EUTOPOS_DEV_NO_AUTH:-0}
     volumes:
       # Bind panjang dengan create_host_path: false: kalau EUTOPOS_MAPS_DIR salah, compose menolak
       # menyala. Bentuk pendek diam-diam membuat folder kosong, dan layanan gagal memuat peta.
@@ -40,6 +44,12 @@ services:
         source: ${EUTOPOS_MAPS_DIR:?isi EUTOPOS_MAPS_DIR di deploy/.env}
         target: /maps
         read_only: true
+        bind:
+          create_host_path: false
+      # Baca tulis: hook tusd membuang sisa unggahan lama saat klien memulai ulang dari nol.
+      - type: bind
+        source: ${EUTOPOS_DATA_DIR:?isi EUTOPOS_DATA_DIR di deploy/.env}
+        target: /data
         bind:
           create_host_path: false
       - cache:/cache
@@ -79,6 +89,29 @@ services:
     depends_on:
       # Bukan service_healthy: kalau api gagal memuat peta aktif, pekerja tetap harus bisa membangun
       # peta pengganti. Kalau migrasi belum selesai, pekerja gagal lalu diulang oleh restart.
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+  tusd:
+    # Server tus resmi (MIT). Entrypoint image menjalankan "exec tusd $@", jadi command = flag tusd.
+    image: tusproject/tusd:v2.10.1
+    command:
+      - -upload-dir=/data/uploads
+      - -base-path=/files/
+      - -behind-proxy
+      - -disable-download  # video tidak bisa diambil kembali lewat Tunnel (ketentuan Cloudflare)
+      - -max-size=2147483648  # 2 GiB, sama dengan MAX_VIDEO_BYTES di server/uploads.py
+      - -hooks-http=http://api:8000/internal/tus-hook
+      - -hooks-enabled-events=pre-create,pre-finish
+    volumes:
+      - type: bind
+        source: ${EUTOPOS_DATA_DIR:?isi EUTOPOS_DATA_DIR di deploy/.env}
+        target: /data
+        bind:
+          create_host_path: false
+    # Sengaja tanpa "ports": diakses lewat cloudflared (PR 4) atau dari container lain.
+    depends_on:
       api:
         condition: service_started
     restart: unless-stopped

@@ -128,8 +128,9 @@ muat banyak area saat area kedua datang (spesifikasi pipeline bagian 5).
   konfigurasi di dashboard Cloudflare tidak membuka origin.
 - **Origin:** satu dependency FastAPI memvalidasi `Cf-Access-Jwt-Assertion` (PyJWT, kunci dari endpoint
   `certs` tim, diperiksa `aud`). Dipakai oleh semua `/api/*` dan oleh hook `pre-create`.
-  **Gagal tertutup:** tanpa `CF_ACCESS_TEAM_DOMAIN` dan `CF_ACCESS_AUD`, layanan menolak menyala, kecuali
-  `EUTOPOS_DEV_NO_AUTH=1` yang hanya dipakai uji lokal.
+  **Gagal tertutup per rute:** tanpa `CF_ACCESS_TEAM_DOMAIN` dan `CF_ACCESS_AUD`, `/api/*` dan hook
+  `pre-create` menjawab 503, sementara `/localize` dan `/health` tetap jalan supaya layanan yang
+  sudah berjalan tidak mati sebelum Tunnel ada. `EUTOPOS_DEV_NO_AUTH=1` hanya untuk uji lokal.
 - `/internal/*` tidak dirutekan oleh cloudflared, jadi hanya bisa dipanggil dari jaringan internal.
 - **`/localize` di v1 ikut di balik Access**, karena aplikasi navigasi belum ada. Saat aplikasi siap,
   `/localize` dibuka di hostname terpisah tanpa Access dengan pembatasan laju. Diputuskan saat itu.
