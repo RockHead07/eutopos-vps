@@ -727,6 +727,19 @@ tidak dipakai sebagai query, karena hasilnya pasti bagus tapi tidak jujur.
 3. Ekstraksi ulang 4 fps tidak bisa dicoba karena video mentah tidak ada lagi di laptop. Frame 2 fps
    tetap ada.
 
+**Tampilan 3D (`inspect_map.py --html`, 2026-10-01).** Potongan utama tampak sebagai deretan kamera
+lurus searah jalan (frame 0-73) dan satu kelompok kecil di ujung (frame 168-180). Query 0-16 membentuk
+garis mulus berjarak hampir sama, seperti orang berjalan dengan kecepatan tetap. Query 0-2 berada di
+dekat akhir Video 1 (awal Video 2) dan query 43-45 di awal Video 1 (akhir Video 2), sesuai urutan
+rekaman. Seluruh area jalur ular (lobi dan aula) tidak ada di potongan ini. **Lokalisasinya konsisten,
+cakupan petanya yang kurang.**
+
+**Pola rekam sudah sesuai MultiSet** (dicek ulang ke gambar panduan MultiSet: kamera searah jalan,
+jalur berkelok). **Bedanya:** aplikasi pemeta seperti MultiSet merekam lewat sesi AR, jadi selain
+gambar ada pose dari sensor ponsel. Tikungan yang buram tetap tersambung lewat pose itu. Pipeline
+spike hanya punya gambar video, jadi frame buram atau dinding polos langsung memutus peta. Ini
+argumen untuk aplikasi capture dengan pose ARCore (spesifikasi, keputusan terbuka nomor 1).
+
 **Percobaan lanjutan tanpa merekam ulang: pasangan berurutan (`--seq`).** Retrieval saja bisa
 melewatkan tetangga langsung di tikungan yang buram. `run.py --seq N` menambahkan pasangan setiap
 frame dengan N frame sesudahnya dari video yang sama, padanan *sequential matching* COLMAP yang

@@ -125,6 +125,9 @@ peta teratas, bukan melaporkan gagal (hloc `c13273b`, baris 205 sampai 207).
      persetujuan).
    Rekomendasi: **(a)**, dengan dokumen ini sebagai rencana pengembangan lanjutan di laporan. Diputuskan
    bersama pembimbing.
+   **Bukti baru (uji video 2026-09-30):** rekaman video saja membuat peta putus di tikungan yang buram
+   dan di dinding polos, karena tidak ada yang menyambungkan dua bagian peta selain gambar. Pose ARCore
+   di aplikasi capture menutup celah ini. Bawa sebagai bahan diskusi, rekomendasi belum berubah.
 2. Tempat halaman persetujuan: bagian dashboard anchoring tool (usulan) atau terpisah.
 3. Server permanen setelah PC lab.
 4. Cara login: akun lokal sederhana atau SSO kampus.
