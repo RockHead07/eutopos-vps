@@ -187,3 +187,10 @@ notifikasi, banyak pekerja, pemutaran video.
 2. **Unggahan:** tusd di Compose, `POST /api/jobs`, hook, autentikasi JWT.
 3. **Dashboard:** Next.js static export, Uppy, halaman bagian 9, Terbitkan dan pemuatan ulang.
 4. **Tunnel:** cloudflared di Compose, aplikasi Access, `ports` dihapus, panduan di `deploy/README.md`.
+
+**Status verifikasi (PC lab, Docker, RTX 3070):**
+- ✅ PR 1 (2026-10-01): pekerjaan dari `manage job`, peta jalur keliling 401/402 frame dalam satu peta.
+- ✅ PR 2 (2026-10-02): video uji 60 s (120 frame loop) diunggah lewat `server.upload_client`
+  (protokol tus, potongan 50 MiB) ke tusd, hook `pre-create` dan `pre-finish` mengantrekan pekerjaan,
+  pekerja membangun peta sampai `done` (versi id 3), folder `uploads/` kosong setelah ekstraksi.
+  Tanpa `CF_ACCESS_*`: `POST /api/jobs` 503, hook tanpa rahasia 403, `/health` 200.
