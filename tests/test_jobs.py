@@ -1,0 +1,73 @@
+"""Uji antrean pekerjaan bangun peta, dengan SQLite di memori."""
+
+import pytest
+from sqlmodel import Session, SQLModel, create_engine
+
+from server import jobs
+from server.db import Area, MapJob, publish, register
+
+MAP = {"path": "/data/inbox/v1.mp4", "role": "peta"}
+QUERY = {"path": "/data/inbox/v2.mp4", "role": "uji"}
+
+
+@pytest.fixture
+def session():
+    engine = create_engine("sqlite://")
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as s:
+        yield s
+
+
+def test_create_job_makes_area_and_keeps_videos(session):
+    job = jobs.create_job(session, "floor10", "Lantai 10", "a@x.id", [MAP, QUERY], "queued")
+    assert session.get(Area, "floor10").name == "Lantai 10"
+    assert (job.status, job.created_by, job.videos) == ("queued", "a@x.id", [MAP, QUERY])
+
+
+@pytest.mark.parametrize(
+    "videos",
+    [[], [QUERY], [{"path": "/x.mp4", "role": "map"}]],
+    ids=["kosong", "tanpa-peta", "peran-salah-ketik"],
+)
+def test_create_job_rejects_unusable_videos(session, videos):
+    with pytest.raises(ValueError):
+        jobs.create_job(session, "floor10", "Lantai 10", "a@x.id", videos, "queued")
+
+
+def test_claim_next_is_fifo_and_skips_non_queued(session):
+    jobs.create_job(session, "floor10", "L10", "a@x.id", [MAP], "uploading")
+    first = jobs.create_job(session, "floor10", "L10", "a@x.id", [MAP], "queued")
+    second = jobs.create_job(session, "floor10", "L10", "a@x.id", [MAP], "queued")
+    got = jobs.claim_next(session)
+    assert (got.id, got.status) == (first.id, "running")
+    assert got.started_at is not None
+    assert jobs.claim_next(session).id == second.id
+    assert jobs.claim_next(session) is None
+
+
+def test_finish_and_fail_record_outcome(session):
+    job = jobs.create_job(session, "floor10", "L10", "a@x.id", [MAP], "queued")
+    jobs.claim_next(session)
+    jobs.set_stage(session, job, "build")
+    jobs.fail(session, job, "x" * 10_000)
+    assert (job.status, job.stage) == ("failed", "build")
+    assert len(job.error) == 4000 and job.finished_at is not None
+
+    ok = jobs.create_job(session, "floor10", "L10", "a@x.id", [MAP], "queued")
+    jobs.claim_next(session)
+    v = register(session, "floor10", "L10", "/maps/floor10/job-2")
+    jobs.finish(session, ok, v.id, {"run": {"map_registered": 80}})
+    assert (ok.status, ok.map_version_id, ok.summary["run"]["map_registered"]) == ("done", v.id, 80)
+
+
+def test_recover_stale_fails_running_jobs(session):
+    job = jobs.create_job(session, "floor10", "L10", "a@x.id", [MAP], "queued")
+    jobs.claim_next(session)
+    assert jobs.recover_stale(session) == 1
+    assert session.get(MapJob, job.id).status == "failed"
+    assert "pekerja berhenti" in session.get(MapJob, job.id).error
+
+
+def test_publish_records_who(session):
+    v = register(session, "floor10", "L10", "/maps/v1")
+    assert publish(session, v.id, by="a@x.id").published_by == "a@x.id"
