@@ -14,6 +14,7 @@ Konfigurasi lain lewat variabel lingkungan:
     EUTOPOS_DEVICE           cpu atau cuda (bawaan cpu: angka latensi untuk klaim diukur tanpa GPU)
     EUTOPOS_THREADS          batas thread torch, 0 = bawaan (bawaan 0)
     EUTOPOS_MIN_INLIERS      di bawah ini status "failed" (bawaan 50)
+    CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD   autentikasi /api/* (server/auth.py)
 
 Menjalankan tanpa database:
     set EUTOPOS_MAP_DIR=outputs\\demo
@@ -32,6 +33,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 from sqlmodel import Session
 
+from server import uploads
 from server.db import active_version, engine_from_env
 from server.localizer import MIN_INLIERS, Localizer
 from server.photo import decode_upright, exif_camera, pinhole
@@ -77,6 +79,7 @@ def _load_localizer(map_dir: Path) -> Localizer:
 
 
 app = FastAPI(title="eutopos-vps", lifespan=lifespan)
+app.include_router(uploads.router)
 
 
 class Pose(BaseModel):
