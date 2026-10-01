@@ -1,0 +1,184 @@
+"""API pekerjaan bangun peta dan hook tusd (spesifikasi web-upload bagian 4 dan 8).
+
+Alur: POST /api/jobs (status uploading) -> unggahan tus dengan metadata job_id dan name ->
+hook pre-create (identitas, ID unggahan buatan server) -> hook pre-finish (tandai lengkap, queued
+setelah video terakhir). /internal/* tidak dirutekan cloudflared, hanya tusd di jaringan internal.
+"""
+
+import json
+import os
+import secrets
+from functools import lru_cache
+from pathlib import Path
+from typing import Annotated, Literal
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy import create_engine
+from sqlmodel import Session, select
+
+from server import auth, jobs
+from server.db import MapJob
+
+UPLOADS = Path("/data/uploads")  # -upload-dir tusd, dilihat dari container api
+MAX_VIDEOS = 4
+MAX_VIDEO_BYTES = 2 * 1024**3  # sama dengan -max-size tusd
+
+router = APIRouter()
+
+
+@lru_cache
+def _engine(url: str):
+    return create_engine(url)
+
+
+def get_session():
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        raise HTTPException(503, "layanan berjalan tanpa database (EUTOPOS_MAP_DIR)")
+    with Session(_engine(url)) as s:
+        yield s
+
+
+DB = Annotated[Session, Depends(get_session)]
+User = Annotated[str, Depends(auth.current_user)]
+
+
+class VideoIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    role: Literal["peta", "uji"]
+    size: int = Field(gt=0, le=MAX_VIDEO_BYTES)
+
+
+class JobIn(BaseModel):
+    area_id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{0,39}$")
+    area_name: str = Field(min_length=1, max_length=100)
+    videos: list[VideoIn] = Field(min_length=1, max_length=MAX_VIDEOS)
+
+
+class JobOut(BaseModel):
+    id: int
+    area_id: str
+    status: str
+    stage: str | None
+    created_by: str
+    videos: list[dict]
+    summary: dict | None
+    error: str | None
+    map_version_id: int | None
+
+
+@router.post("/api/jobs", status_code=201)
+def create(body: JobIn, user: User, s: DB) -> JobOut:
+    names = [v.name for v in body.videos]
+    if len(set(names)) != len(names):
+        raise HTTPException(422, "nama video kembar dalam satu pekerjaan")
+    videos = [
+        {**v.model_dump(), "upload_id": None, "path": None, "uploaded": False} for v in body.videos
+    ]
+    try:
+        job = jobs.create_job(s, body.area_id, body.area_name, user, videos)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    return JobOut.model_validate(job, from_attributes=True)
+
+
+@router.get("/api/jobs/{job_id}")
+def get(job_id: int, user: User, s: DB) -> JobOut:
+    job = s.get(MapJob, job_id)
+    if job is None:
+        raise HTTPException(404, "pekerjaan tidak ada")
+    return JobOut.model_validate(job, from_attributes=True)
+
+
+class HookReject(Exception):
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status, self.message = status, message
+
+
+def _header(headers: dict, name: str) -> str | None:
+    """tusd (Go) mengirim nama header dalam bentuk kanonik. Cocokkan tanpa peka huruf."""
+    for k, v in headers.items():
+        if k.lower() == name.lower():
+            return v[0] if v else None
+    return None
+
+
+def _locked_job(s: Session, meta: dict) -> MapJob:
+    try:
+        job_id = int(meta.get("job_id", ""))
+    except ValueError as e:
+        raise HookReject(400, "metadata job_id tidak ada") from e
+    # Kunci baris: dua video yang selesai bersamaan tidak saling menimpa daftar videos.
+    stmt = select(MapJob).where(MapJob.id == job_id).with_for_update()
+    job = s.exec(stmt).first()
+    if job is None:
+        raise HookReject(404, "pekerjaan tidak ada")
+    return job
+
+
+def _pre_create(s: Session, upload: dict, headers: dict) -> dict:
+    try:
+        email = auth.email_from_token(_header(headers, auth.HEADER))
+    except auth.AuthError as e:
+        raise HookReject(e.status, e.message) from e
+    meta = upload.get("MetaData") or {}
+    job = _locked_job(s, meta)
+    if job.created_by != email:
+        raise HookReject(403, "pekerjaan ini milik pengguna lain")
+    if job.status != "uploading":
+        raise HookReject(409, f"pekerjaan berstatus {job.status}, tidak menerima unggahan")
+    idx = next((i for i, v in enumerate(job.videos) if v["name"] == meta.get("name")), None)
+    if idx is None:
+        raise HookReject(404, "nama video tidak terdaftar di pekerjaan ini")
+    video = job.videos[idx]
+    if video.get("uploaded"):
+        raise HookReject(409, "video ini sudah lengkap diunggah")
+    if upload.get("SizeIsDeferred") or upload.get("Size") != video["size"]:
+        raise HookReject(400, "ukuran berkas berbeda dari yang didaftarkan")
+    upload_id = f"job{job.id}-v{idx}-{secrets.token_hex(8)}"
+    old = video.get("upload_id")
+    videos = list(job.videos)  # JSON tidak dilacak per elemen: ganti seluruh daftar
+    videos[idx] = {**video, "upload_id": upload_id, "path": str(UPLOADS / upload_id)}
+    job.videos = videos
+    s.add(job)
+    s.commit()
+    if old:  # klien memulai ulang dari nol: sisa unggahan lama dibuang
+        for p in (UPLOADS / old, UPLOADS / f"{old}.info"):
+            p.unlink(missing_ok=True)
+    return {"ChangeFileInfo": {"ID": upload_id}}
+
+
+def _pre_finish(s: Session, upload: dict) -> None:
+    # Path tidak pernah diambil dari hook (Storage.Path): selalu dari ID buatan server.
+    job = _locked_job(s, upload.get("MetaData") or {})
+    videos = list(job.videos)
+    idx = next((i for i, v in enumerate(videos) if v["upload_id"] == upload.get("ID")), None)
+    if idx is None:
+        raise HookReject(404, "ID unggahan tidak dikenal")
+    videos[idx] = {**videos[idx], "uploaded": True}
+    job.videos = videos
+    if job.status == "uploading" and all(v["uploaded"] for v in videos):
+        job.status = "queued"
+    s.add(job)
+    s.commit()
+
+
+@router.post("/internal/tus-hook")
+def tus_hook(hook: dict, s: DB) -> dict:
+    kind, event = hook.get("Type"), hook.get("Event") or {}
+    upload = event.get("Upload") or {}
+    try:
+        if kind == "pre-create":
+            headers = (event.get("HTTPRequest") or {}).get("Header") or {}
+            return _pre_create(s, upload, headers)
+        if kind == "pre-finish":
+            _pre_finish(s, upload)
+    except HookReject as e:
+        s.rollback()
+        body = json.dumps({"message": e.message})
+        response = {"StatusCode": e.status, "Body": body}
+        response["Header"] = {"Content-Type": "application/json"}
+        return {"RejectUpload": True, "HTTPResponse": response}
+    return {}
