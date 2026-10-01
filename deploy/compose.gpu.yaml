@@ -1,6 +1,8 @@
 # Tambahan untuk memakai GPU NVIDIA (butuh NVIDIA Container Toolkit, lihat deploy/README.md):
 #   docker compose -f compose.yaml -f compose.gpu.yaml up -d --build
 # Angka latensi untuk klaim "server tanpa GPU" tetap diukur dengan compose.yaml saja.
+# Pekerja bangun peta butuh GPU. Tanpa berkas ini, pekerja tetap jalan di CPU tapi sangat
+# lambat.
 
 services:
   api:
@@ -9,6 +11,18 @@ services:
         TORCH_INDEX: https://download.pytorch.org/whl/cu130
     environment:
       EUTOPOS_DEVICE: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  worker:
+    build:
+      args:
+        TORCH_INDEX: https://download.pytorch.org/whl/cu130
     deploy:
       resources:
         reservations:

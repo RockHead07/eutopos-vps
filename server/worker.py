@@ -112,6 +112,11 @@ def process(
 
 
 def main() -> None:
+    from server.localizer import trust_megaloc_hub_repo  # impor berat (torch, hloc), hanya di sini
+
+    # run.py memuat MegaLoc lewat torch.hub. Tanpa tanda tepercaya, torch bertanya y/N dan
+    # subprocess tanpa masukan gagal. Jangan bergantung pada api yang kebetulan sudah menandainya.
+    trust_megaloc_hub_repo()
     engine = engine_from_env()
     with Session(engine) as s:
         if n := jobs.recover_stale(s):

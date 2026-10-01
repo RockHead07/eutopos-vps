@@ -41,7 +41,7 @@ def half(x):
     return x.astype(np.float16).astype(np.float32)
 
 
-def _trust_megaloc_hub_repo():
+def trust_megaloc_hub_repo():
     """Tandai repo torch hub gmberton/MegaLoc sebagai tepercaya.
 
     hloc memuat MegaLoc lewat torch.hub.load tanpa trust_repo. Bawaan torch ("check") bertanya y/N
@@ -88,7 +88,7 @@ class Localizer:
             raise FileNotFoundError(f"peta tidak lengkap di {map_dir}: {[str(p) for p in missing]}")
 
         t0 = time.perf_counter()
-        _trust_megaloc_hub_repo()
+        trust_megaloc_hub_repo()
         self.megaloc = self._load(extractors, MEGALOC)
         self.aliked = self._load(extractors, aliked)
         self.lightglue = self._load(matchers, LIGHTGLUE)

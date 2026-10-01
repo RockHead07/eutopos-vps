@@ -132,3 +132,15 @@ def test_run_appends_command_and_raises_on_failure(tmp_path):
         worker.run([sys.executable, "-c", "print('halo'); raise SystemExit(3)"], log)
     text = log.read_text(encoding="utf-8")
     assert text.startswith("$ ") and "halo" in text
+
+
+def test_megaloc_hub_repo_is_trusted_once(tmp_path, monkeypatch):
+    import torch
+
+    from server.localizer import trust_megaloc_hub_repo
+
+    monkeypatch.setattr(torch.hub, "get_dir", lambda: str(tmp_path / "hub"))
+    trust_megaloc_hub_repo()
+    trust_megaloc_hub_repo()
+    trusted = (tmp_path / "hub" / "trusted_list").read_text(encoding="utf-8").split()
+    assert trusted == ["gmberton_MegaLoc"]

@@ -1,6 +1,7 @@
-# Konteks build hanya butuh pyproject.toml, uv.lock, dan server/.
+# Konteks build: pyproject.toml, uv.lock, server/, dan spike/ (alat yang dipanggil pekerja).
 *
 !pyproject.toml
 !uv.lock
 !server/
-server/**/__pycache__
+!spike/
+**/__pycache__
