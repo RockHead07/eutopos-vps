@@ -118,7 +118,7 @@ def test_process_refuses_when_disk_is_low(session, tmp_path):
     worker.process(session, job, data, maps, runner=fake_runner(calls), free_bytes=lambda p: 10)
     assert (job.status, job.stage) == ("failed", "extract")
     assert "ruang disk" in job.error and calls == []
-    assert uploaded.exists()  # tidak ada yang dihapus kalau belum diekstrak
+    assert not uploaded.exists()  # pekerjaan gagal tidak pernah diulang, video tidak ditinggal
 
 
 def test_process_reports_missing_input(session, tmp_path):
@@ -177,3 +177,12 @@ def test_delete_upload_files_removes_data_and_info(tmp_path):
         (uploads / name).write_text("x")
     worker.delete_upload_files(["job1-v0-abc", "../lain"], uploads)
     assert sorted(p.name for p in uploads.iterdir()) == ["lain"]
+
+
+def test_failed_job_still_deletes_uploaded_videos(session, tmp_path):
+    data, maps, uploaded, own, videos = make_inputs(tmp_path)
+    job = queued(session, videos)
+    runner = fake_runner([], fail_on="extract_frames.py")
+    worker.process(session, job, data, maps, runner=runner, free_bytes=lambda p: 10**12)
+    assert job.status == "failed"
+    assert not uploaded.exists() and own.exists()  # privasi: video unggahan tidak tertinggal

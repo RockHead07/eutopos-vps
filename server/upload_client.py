@@ -19,9 +19,11 @@ TUS = {"Tus-Resumable": "1.0.0"}
 
 
 def _request(method: str, url: str, headers: dict, data: bytes | None = None):
-    token = os.environ.get("CF_ACCESS_TOKEN")  # opsional, lewat Tunnel nanti
+    # Lewat Tunnel: token dari "cloudflared access token -app=<url>". Klien baris perintah
+    # mengirimnya di header cf-access-token, lalu tepi Cloudflare meneruskan JWT ke origin.
+    token = os.environ.get("CF_ACCESS_TOKEN")
     if token:
-        headers = {**headers, "Cf-Access-Jwt-Assertion": token}
+        headers = {**headers, "cf-access-token": token}
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     return urllib.request.urlopen(req, timeout=300)
 
@@ -39,11 +41,15 @@ def upload(path: Path, tus_url: str, job_id: int, chunk: int) -> None:
     offset = 0
     with path.open("rb") as f:
         while offset < size:
+            f.seek(offset)  # lanjut dari offset yang diakui server, bukan dari posisi baca terakhir
             data = f.read(chunk)
             headers = {**TUS, "Upload-Offset": str(offset)}
             headers["Content-Type"] = "application/offset+octet-stream"
             with _request("PATCH", location, headers, data) as r:
-                offset = int(r.headers["Upload-Offset"])
+                new = int(r.headers["Upload-Offset"])
+            if new <= offset:
+                raise RuntimeError(f"server tidak menerima data di offset {offset}")
+            offset = new
             print(f"{path.name}: {offset * 100 // size}%", flush=True)
 
 

@@ -132,6 +132,8 @@ def process(
         jobs.finish(session, job, version.id, summary)
     except Exception as e:  # pekerjaan gagal, pekerja tetap hidup untuk pekerjaan berikutnya
         session.rollback()
+        # Privasi: video unggahan tidak boleh tertinggal walau pekerjaan gagal sebelum ekstraksi.
+        delete_uploaded_videos(job.videos, data / "uploads")
         msg = str(e)[: jobs.ERROR_MAX // 2]  # pesan utama selalu utuh di awal
         tail = log_tail(log)[-(jobs.ERROR_MAX - len(msg) - 1) :]
         jobs.fail(session, job, f"{msg}\n{tail}".strip())

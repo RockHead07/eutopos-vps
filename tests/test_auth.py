@@ -65,3 +65,10 @@ def test_unconfigured_is_503_not_open(monkeypatch):
 def test_dev_mode(monkeypatch):
     monkeypatch.setenv("EUTOPOS_DEV_NO_AUTH", "1")
     assert auth.email_from_token(None) == auth.DEV_USER
+
+
+def test_dev_mode_never_overrides_real_config(key, monkeypatch):
+    monkeypatch.setenv("EUTOPOS_DEV_NO_AUTH", "1")  # konfigurasi Access ada (fixture key)
+    with pytest.raises(auth.AuthError) as e:
+        auth.email_from_token(None)
+    assert e.value.status == 401
