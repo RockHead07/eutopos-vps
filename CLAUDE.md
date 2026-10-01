@@ -187,6 +187,8 @@ Skill global yang juga relevan: `ponytail` (anti over-engineering), `engineering
 | `docs/research-paper.md` | Semua rujukan penelitian beserta tautan, perannya di proyek, lisensi, status verifikasi, dan kandidat cadangan |
 | `docs/multi-map-localization-research.md` | Riset memilih peta area untuk foto uji dan mengelola banyak peta area: praktik riset dan industri, prinsip, rekomendasi bertahap |
 | `docs/specs/2026-09-29-capture-and-map-pipeline-design.md` | Spesifikasi aplikasi capture dan pipeline peta: komponen, tech stack, alur data, model peta, privasi, tahapan, hal yang harus dibuktikan, keputusan terbuka, struktur repo (`eutopos-vps` dan `eutopos-mobile`) |
+| `docs/specs/2026-10-01-web-upload-and-map-build-design.md` | Spesifikasi website unggah video dan pembangunan peta otomatis di PC lab: Cloudflare Tunnel + Access, tusd, antrean pekerjaan, pekerja GPU, dashboard, Terbitkan |
+| `docs/web-upload-research.md` | Riset pendukung spesifikasi di atas: batas Cloudflare, protokol tus, FastAPI, antrean PostgreSQL, Access, plotly, Next.js static export |
 | `docs/ci-cd.md` | CI yang berjalan sekarang, perintah pemeriksaan lokal, rencana build dan deployment, dan pengaturan GitHub yang wajib diaktifkan |
 | `deploy/README.md` | Menyiapkan host (WSL2, Docker Engine, NVIDIA Container Toolkit) dan menjalankan layanan dengan Docker Compose |
 | `docs/figures/` | Gambar 1 (arsitektur) dan Gambar 2 (alur) dokumen pengajuan |
