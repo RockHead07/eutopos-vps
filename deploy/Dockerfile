@@ -13,22 +13,31 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends git \
  && rm -rf /var/lib/apt/lists/*
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
+# Jaringan lab lambat: roda CUDA ratusan MB per berkas (torch cu130 total ±3 GB). Batas baca 30 s
+# bawaan uv dan puluhan unduhan paralel membuat build gagal timeout (PC lab, 2026-10-01).
+ENV UV_HTTP_TIMEOUT=300 UV_CONCURRENT_DOWNLOADS=4
 RUN uv venv /opt/venv
+
+# Setiap "uv pip install" memakai cache mount: berkas yang sudah selesai diunduh tidak diunduh ulang
+# kalau build gagal di tengah (pola dokumentasi uv untuk Docker, butuh UV_LINK_MODE=copy).
 
 # 1. PyTorch paling jarang berubah dan paling besar, jadi lapisan pertama.
 ARG TORCH_INDEX=https://download.pytorch.org/whl/cpu
-RUN uv pip install --python /opt/venv torch==2.14.0 torchvision==0.29.0 --index-url ${TORCH_INDEX}
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python /opt/venv torch==2.14.0 torchvision==0.29.0 --index-url ${TORCH_INDEX}
 
 # 2. hloc dipin ke commit yang sama dengan spike (docs/spike-plan.md).
 ARG HLOC_COMMIT=c13273bd0ecc2917a35910fd843712a1c6243193
-RUN git clone https://github.com/cvg/Hierarchical-Localization.git /tmp/hloc \
+RUN --mount=type=cache,target=/root/.cache/uv \
+    git clone https://github.com/cvg/Hierarchical-Localization.git /tmp/hloc \
  && git -C /tmp/hloc checkout ${HLOC_COMMIT} \
  && uv pip install --python /opt/venv /tmp/hloc \
  && rm -rf /tmp/hloc
 
 # 3. Dependensi layanan, versinya dari uv.lock.
 COPY pyproject.toml uv.lock /src/
-RUN cd /src \
+RUN --mount=type=cache,target=/root/.cache/uv \
+    cd /src \
  && uv export --frozen --no-dev --no-emit-project --no-hashes -o /tmp/requirements.txt \
  && uv pip install --python /opt/venv -r /tmp/requirements.txt
 

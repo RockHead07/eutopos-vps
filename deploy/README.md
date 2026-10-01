@@ -116,6 +116,7 @@ Semua sudah diperbaiki di kode atau konfigurasi. Dicatat supaya tidak diulang sa
 | `RuntimeError: Missing dependencies: huggingface_hub, safetensors` | Kode MegaLoc di torch hub mensyaratkan keduanya. Di lingkungan spike keduanya dipasang manual, tidak pernah tercatat di `pyproject.toml` | Dideklarasikan di `pyproject.toml` dan `uv.lock` |
 | (Tidak sempat terjadi) layanan macet menunggu jawaban y/N | `torch.hub.load` bawaan bertanya "percaya repo ini?" untuk MegaLoc | `server/localizer.py` menandai `gmberton_MegaLoc` tepercaya secara eksplisit |
 | `files do not exist at "/maps/demo/kp1024-r1024/sfm"` | `EUTOPOS_MAPS_DIR` di `.env` masih contoh `/home/USER/...`. Bind bentuk pendek diam-diam membuat folder kosong milik root sebagai `/maps` | `compose.yaml` memakai bind panjang dengan `create_host_path: false` (compose menolak menyala). `server.manage register` dan `Localizer` memeriksa berkas peta lebih dulu dan menyebut berkas yang tidak ada |
+| Build GPU gagal: `Failed to download nvidia-nvtx ... operation timed out` (2026-10-01) | Roda CUDA ±3 GB lewat jaringan lab. Batas baca uv 30 s dan puluhan unduhan paralel | `Dockerfile`: `UV_HTTP_TIMEOUT=300`, `UV_CONCURRENT_DOWNLOADS=4`, dan cache mount uv di setiap `uv pip install`, jadi build ulang melanjutkan unduhan yang sudah selesai |
 
 **Cara memeriksa isi yang terlihat dari dalam container** tanpa menjalankan layanan:
 
