@@ -1,4 +1,4 @@
-# Layanan eutopos: PostgreSQL + API. Jalankan dari folder deploy/:
+# Layanan eutopos: PostgreSQL + API + pekerja bangun peta. Jalankan dari folder deploy/:
 #   cp .env.example .env   (lalu isi POSTGRES_PASSWORD)
 #   docker compose up -d --build
 # Varian GPU: docker compose -f compose.yaml -f compose.gpu.yaml up -d --build
@@ -48,6 +48,33 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    command: ["python", "-m", "server.worker"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://eutopos:${POSTGRES_PASSWORD}@db:5432/eutopos
+    volumes:
+      # Pekerja menulis peta baru, jadi /maps baca tulis (api tetap baca saja).
+      - type: bind
+        source: ${EUTOPOS_MAPS_DIR:?isi EUTOPOS_MAPS_DIR di deploy/.env}
+        target: /maps
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${EUTOPOS_DATA_DIR:?isi EUTOPOS_DATA_DIR di deploy/.env}
+        target: /data
+        bind:
+          create_host_path: false
+      - cache:/cache
+    healthcheck:
+      disable: true  # healthcheck image memeriksa HTTP :8000, pekerja tidak melayani HTTP
+    depends_on:
+      api:
+        condition: service_healthy  # migrasi Alembic dijalankan api saat menyala
     restart: unless-stopped
 
 volumes:

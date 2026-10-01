@@ -46,6 +46,7 @@ ENV PATH=/opt/venv/bin:$PATH \
     HF_HOME=/cache/huggingface
 WORKDIR /app
 COPY --chown=eutopos:eutopos server ./server
+COPY --chown=eutopos:eutopos spike ./spike
 USER eutopos
 EXPOSE 8000
 # Memuat model dan peta butuh waktu, jadi start-period panjang.
