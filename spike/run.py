@@ -218,6 +218,22 @@ def main():
         image_list=refs,
     )
 
+    base = {
+        "max_keypoints": a.max_kp,
+        "resize_max": a.resize,
+        "covisibility_clustering": a.covis,
+        "sequential_pairs": a.seq,
+        "map_images": len(refs),
+        "map_registered": model.num_reg_images(),
+        "map_points3D": model.num_points3D(),
+        "t_map_s": t_map,
+    }
+    if not queries:  # peta produksi: semua video berperan peta, tidak ada foto uji
+        summary = {**base, "queries": 0, "env": env()}
+        (run_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        print(json.dumps(summary, indent=2))
+        return
+
     # 2. Foto uji (diproses sekaligus; waktu tahap termasuk memuat model sekali)
     if feats_global.exists() or len(refs) > a.exhaustive_max:
         timed(
@@ -296,14 +312,7 @@ def main():
 
     n_q = max(len(queries), 1)
     summary = {
-        "max_keypoints": a.max_kp,
-        "resize_max": a.resize,
-        "covisibility_clustering": a.covis,
-        "sequential_pairs": a.seq,
-        "map_images": len(refs),
-        "map_registered": model.num_reg_images(),
-        "map_points3D": model.num_points3D(),
-        "t_map_s": t_map,
+        **base,
         "queries": len(queries),
         "queries_localized": sum(r["ok"] for r in rows),
         "t_query_stage_total_s": t_q,

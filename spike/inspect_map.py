@@ -11,6 +11,7 @@ Tanpa titik acuan meter pun, dua hal ini sudah terlihat:
 Contoh:
     python spike/inspect_map.py outputs/floor10-v1/kp1024-r1024
     python spike/inspect_map.py outputs/floor10-v1/kp1024-r1024 --html outputs/floor10-v1/map.html
+    python spike/inspect_map.py outputs/floor10-v1/kp1024-r1024 --json outputs/floor10-v1/i.json
     python spike/inspect_map.py --self-test
 """
 
@@ -18,6 +19,7 @@ import argparse
 import csv
 import itertools
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -53,6 +55,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("run_dir", type=Path, nargs="?", help="folder kp*-r* keluaran run.py")
     ap.add_argument("--html", type=Path, help="simpan tampilan 3D peta utama dan posisi query")
+    ap.add_argument("--json", type=Path, help="simpan ringkasan potongan dan query")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
     if a.self_test:
@@ -68,6 +71,7 @@ def main():
     ]
     print("== potongan peta (nomor frame) ==")
     step = main_model = None
+    part_rows = []
     for label, d in parts:
         model = pycolmap.Reconstruction(d)
         if label == "utama":
@@ -78,10 +82,12 @@ def main():
         med = float(np.median(steps)) if steps else float("nan")
         step = med if label == "utama" else step
         print(f"{label}: {len(ids)} frame, rentang {ranges(ids)}, langkah median {med:.3f}")
+        part_rows.append({"label": label, "frames": len(ids), "ranges": ranges(ids)})
 
     print(f"\n== query terhadap peta utama (layanan menolak di bawah {MIN_INLIERS} inlier) ==")
     prev, accepted, rows, located = None, 0, 0, []
-    with open(a.run_dir / "results.csv", encoding="utf-8") as f:
+    results = a.run_dir / "results.csv"  # tidak ada kalau peta dibangun tanpa foto uji
+    with open(results if results.exists() else os.devnull, encoding="utf-8") as f:
         for r in csv.DictReader(f):
             rows += 1
             n = frame_no(r["query"])
@@ -96,6 +102,9 @@ def main():
             prev = (n, c)
             located.append((n, c, inl))
     print(f"\nditerima layanan: {accepted}/{rows} query")
+    if a.json:
+        summary = {"parts": part_rows, "queries": rows, "accepted": accepted}
+        a.json.write_text(json.dumps({**summary, "min_inliers": MIN_INLIERS}), encoding="utf-8")
     if a.html:
         save_html(a.html, main_model, located)
 
