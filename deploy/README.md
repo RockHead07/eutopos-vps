@@ -151,3 +151,23 @@ dihapus setelah diekstrak. Berkas yang diberikan lewat perintah di atas tidak pe
 
 Kalau pekerja mati di tengah pekerjaan (misalnya `docker compose restart worker`), pekerjaan itu
 ditandai `failed` saat pekerja menyala lagi. Antrekan ulang dengan perintah yang sama.
+
+## 5. Unggahan video (tusd)
+
+Unggahan memakai protokol tus lewat container `tusd`, dengan hook ke `api` yang memeriksa identitas
+Cloudflare Access dan mencatat video ke pekerjaan. Tanpa `CF_ACCESS_TEAM_DOMAIN` dan `CF_ACCESS_AUD`,
+`/api/*` dan unggahan menjawab 503, sedangkan `/localize` dan `/health` tetap jalan. Sebelum Tunnel
+(PR 4) ada, uji dari dalam PC lab dengan `EUTOPOS_DEV_NO_AUTH=1` di `deploy/.env`, lalu kembalikan ke
+`0`.
+
+```bash
+mkdir -p ~/eutopos-data/work/uploads
+docker compose -f compose.yaml -f compose.gpu.yaml up -d --build
+docker compose exec worker python -m server.upload_client floor10 "Lantai 10" \
+  peta:/data/inbox/floor10-20261001-loop/loop-inward.mp4
+docker compose exec worker python -m server.manage jobs
+```
+
+Klien mengunggah dalam potongan 50 MiB, sama dengan dashboard nanti (batas Cloudflare Free 100 MB
+per permintaan). Video unggahan dihapus pekerja setelah frame diekstrak. Pekerjaan `uploading` lebih
+dari 24 jam ditandai gagal dan sisa unggahannya dihapus.
