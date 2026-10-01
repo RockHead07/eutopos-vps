@@ -52,7 +52,15 @@ Semuanya disimpan di luar git.
 
 ### 3. Rekam video peta (±15 sampai 30 menit)
 
-**Cara A, video (cara utama).** Dua video per area.
+**Pola yang terbukti paling baik (uji 2026-10-01): keliling, menghadap ke dalam.** Satu video,
+berjalan pelan mengelilingi tepi area sampai kembali ke titik awal, **punggung ke dinding dan kamera
+menghadap ke tengah ruangan**. Di lantai 10 pola ini menghasilkan satu peta utuh (401/402 frame)
+dan 78% foto uji dari hari lain diterima, dibanding peta pecah 3 dengan jalur ular di bawah.
+Rinciannya di `docs/spike-plan.md`, "Uji video lantai 10, percobaan kedua". Aturan belok di bawah
+tetap berlaku di sudut ruangan. Kalau ada tujuan penting di dinding belakang (misalnya pintu lab),
+tambahkan rekaman pendek menghadap tujuan itu.
+
+**Cara A, video jalur ular (pola awal).** Dua video per area.
 
 **Video 1**
 1. Berdiri di jalan masuk. Pegang ponsel **mendatar** dengan dua tangan, setinggi dada, kamera ke
