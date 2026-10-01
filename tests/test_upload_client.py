@@ -37,3 +37,22 @@ def test_upload_sends_chunks_with_matching_offsets(tmp_path, monkeypatch):
     assert [p[1] for p in patches] == ["http://tusd:8080/files/job1-v0-abc"] * 3
     assert [p[2]["Upload-Offset"] for p in patches] == ["0", "10", "20"]
     assert [len(p[3]) for p in patches] == [10, 10, 5]
+
+
+def test_upload_resends_from_server_offset(tmp_path, monkeypatch):
+    video = tmp_path / "loop.mp4"
+    video.write_bytes(bytes(range(20)))
+    sent = []
+
+    @contextmanager
+    def fake_request(method, url, headers, data=None):
+        if method == "POST":
+            yield Resp({"Location": "/files/x"})
+            return
+        sent.append((int(headers["Upload-Offset"]), data))
+        acked = 3 if len(sent) == 1 else len(data)  # server hanya menerima 3 byte pertama
+        yield Resp({"Upload-Offset": str(int(headers["Upload-Offset"]) + acked)})
+
+    monkeypatch.setattr(upload_client, "_request", fake_request)
+    upload_client.upload(video, "http://tusd:8080/files/", job_id=1, chunk=10)
+    assert sent[1][0] == 3 and sent[1][1] == bytes(range(3, 13))  # dilanjutkan dari offset server

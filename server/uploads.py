@@ -3,6 +3,9 @@
 Alur: POST /api/jobs (status uploading) -> unggahan tus dengan metadata job_id dan name ->
 hook pre-create (identitas, ID unggahan buatan server) -> hook pre-finish (tandai lengkap, queued
 setelah video terakhir). /internal/* tidak dirutekan cloudflared, hanya tusd di jaringan internal.
+
+Kanal hook diautentikasi dengan rahasia bersama di URL hook (TUS_HOOK_SECRET, parameter key): port
+api terbuka di jaringan lab, dan hook palsu bisa mengantrekan atau merusak pekerjaan siapa pun.
 """
 
 import json
@@ -12,7 +15,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine
 from sqlmodel import Session, select
@@ -56,13 +59,21 @@ class JobIn(BaseModel):
     videos: list[VideoIn] = Field(min_length=1, max_length=MAX_VIDEOS)
 
 
+class VideoOut(BaseModel):
+    # Tanpa upload_id dan path: dengan ID unggahan orang bisa mengganggu unggahan milik orang lain.
+    name: str
+    role: str
+    size: int
+    uploaded: bool = False
+
+
 class JobOut(BaseModel):
     id: int
     area_id: str
     status: str
     stage: str | None
     created_by: str
-    videos: list[dict]
+    videos: list[VideoOut]
     summary: dict | None
     error: str | None
     map_version_id: int | None
@@ -105,7 +116,9 @@ def _header(headers: dict, name: str) -> str | None:
     return None
 
 
-def _locked_job(s: Session, meta: dict) -> MapJob:
+def _locked_job(s: Session, meta) -> MapJob:
+    if not isinstance(meta, dict):
+        raise HookReject(400, "metadata tidak sah")
     try:
         job_id = int(meta.get("job_id", ""))
     except ValueError as e:
@@ -154,9 +167,14 @@ def _pre_finish(s: Session, upload: dict) -> None:
     # Path tidak pernah diambil dari hook (Storage.Path): selalu dari ID buatan server.
     job = _locked_job(s, upload.get("MetaData") or {})
     videos = list(job.videos)
-    idx = next((i for i, v in enumerate(videos) if v["upload_id"] == upload.get("ID")), None)
+    uid = upload.get("ID")
+    idx = next((i for i, v in enumerate(videos) if uid and v["upload_id"] == uid), None)
     if idx is None:
         raise HookReject(404, "ID unggahan tidak dikenal")
+    # Jangan percaya kata hook saja: berkas di disk harus sudah selengkap ukuran yang didaftarkan.
+    data = UPLOADS / uid
+    if not data.is_file() or data.stat().st_size != videos[idx]["size"]:
+        raise HookReject(409, "berkas unggahan belum lengkap")
     videos[idx] = {**videos[idx], "uploaded": True}
     job.videos = videos
     if job.status == "uploading" and all(v["uploaded"] for v in videos):
@@ -165,7 +183,15 @@ def _pre_finish(s: Session, upload: dict) -> None:
     s.commit()
 
 
-@router.post("/internal/tus-hook")
+def _hook_key(key: Annotated[str | None, Query()] = None) -> None:
+    secret = os.environ.get("TUS_HOOK_SECRET", "")
+    if not secret:
+        raise HTTPException(503, "TUS_HOOK_SECRET belum diisi, hook ditutup")
+    if not key or not secrets.compare_digest(key, secret):
+        raise HTTPException(403, "kunci hook salah")
+
+
+@router.post("/internal/tus-hook", dependencies=[Depends(_hook_key)])
 def tus_hook(hook: dict, s: DB) -> dict:
     kind, event = hook.get("Type"), hook.get("Event") or {}
     upload = event.get("Upload") or {}

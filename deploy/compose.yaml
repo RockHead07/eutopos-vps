@@ -37,6 +37,8 @@ services:
       CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:-}
       CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
       EUTOPOS_DEV_NO_AUTH: ${EUTOPOS_DEV_NO_AUTH:-0}
+      # Rahasia kanal hook tusd -> api. Kosong = hook ditutup (503).
+      TUS_HOOK_SECRET: ${TUS_HOOK_SECRET:-}
     volumes:
       # Bind panjang dengan create_host_path: false: kalau EUTOPOS_MAPS_DIR salah, compose menolak
       # menyala. Bentuk pendek diam-diam membuat folder kosong, dan layanan gagal memuat peta.
@@ -46,10 +48,10 @@ services:
         read_only: true
         bind:
           create_host_path: false
-      # Baca tulis: hook tusd membuang sisa unggahan lama saat klien memulai ulang dari nol.
+      # Hanya folder unggahan, baca tulis: hook membuang sisa unggahan lama dan memeriksa ukuran.
       - type: bind
-        source: ${EUTOPOS_DATA_DIR:?isi EUTOPOS_DATA_DIR di deploy/.env}
-        target: /data
+        source: ${EUTOPOS_DATA_DIR:?isi EUTOPOS_DATA_DIR di deploy/.env}/uploads
+        target: /data/uploads
         bind:
           create_host_path: false
       - cache:/cache
@@ -101,13 +103,15 @@ services:
       - -base-path=/files/
       - -behind-proxy
       - -disable-download  # video tidak bisa diambil kembali lewat Tunnel (ketentuan Cloudflare)
+      - -disable-termination  # klien tidak bisa menghapus unggahan; pembersihan oleh pekerja
       - -max-size=2147483648  # 2 GiB, sama dengan MAX_VIDEO_BYTES di server/uploads.py
-      - -hooks-http=http://api:8000/internal/tus-hook
+      - -hooks-http=http://api:8000/internal/tus-hook?key=${TUS_HOOK_SECRET:?isi TUS_HOOK_SECRET di deploy/.env}
       - -hooks-enabled-events=pre-create,pre-finish
     volumes:
+      # Hanya folder unggahan: tusd nanti menghadap internet lewat Tunnel, jangan lihat jobs/ dan inbox/.
       - type: bind
-        source: ${EUTOPOS_DATA_DIR:?isi EUTOPOS_DATA_DIR di deploy/.env}
-        target: /data
+        source: ${EUTOPOS_DATA_DIR:?isi EUTOPOS_DATA_DIR di deploy/.env}/uploads
+        target: /data/uploads
         bind:
           create_host_path: false
     # Sengaja tanpa "ports": diakses lewat cloudflared (PR 4) atau dari container lain.

@@ -160,8 +160,12 @@ Cloudflare Access dan mencatat video ke pekerjaan. Tanpa `CF_ACCESS_TEAM_DOMAIN`
 (PR 4) ada, uji dari dalam PC lab dengan `EUTOPOS_DEV_NO_AUTH=1` di `deploy/.env`, lalu kembalikan ke
 `0`.
 
+Kanal hook dari tusd ke `api` dijaga rahasia bersama `TUS_HOOK_SECRET` (port `api` terbuka di
+jaringan lab, hook palsu bisa merusak pekerjaan). tusd dan `api` hanya memasang folder `uploads/`.
+
 ```bash
 mkdir -p ~/eutopos-data/work/uploads
+echo "TUS_HOOK_SECRET=$(openssl rand -hex 32)" >> deploy/.env
 docker compose -f compose.yaml -f compose.gpu.yaml up -d --build
 docker compose exec worker python -m server.upload_client floor10 "Lantai 10" \
   peta:/data/inbox/floor10-20261001-loop/loop-inward.mp4
@@ -170,4 +174,5 @@ docker compose exec worker python -m server.manage jobs
 
 Klien mengunggah dalam potongan 50 MiB, sama dengan dashboard nanti (batas Cloudflare Free 100 MB
 per permintaan). Video unggahan dihapus pekerja setelah frame diekstrak. Pekerjaan `uploading` lebih
-dari 24 jam ditandai gagal dan sisa unggahannya dihapus.
+dari 24 jam ditandai gagal dan sisa unggahannya dihapus. Pekerjaan yang gagal juga menghapus video
+unggahannya (v1 tidak punya tombol ulangi, jadi video tidak ditinggal di disk).

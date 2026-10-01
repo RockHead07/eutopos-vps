@@ -28,7 +28,8 @@ class AuthError(Exception):
 @lru_cache
 def _jwks(team: str) -> jwt.PyJWKClient:
     # Kunci dirotasi Cloudflare tiap 6 minggu, PyJWKClient mengambil ulang kalau kid tidak dikenal.
-    return jwt.PyJWKClient(f"{team}/cdn-cgi/access/certs", cache_keys=True)
+    # timeout di bawah batas hook tusd (15 s), supaya galat jaringan jadi 403, bukan hook timeout.
+    return jwt.PyJWKClient(f"{team}/cdn-cgi/access/certs", cache_keys=True, timeout=5)
 
 
 def signing_key(token: str, team: str):
@@ -36,10 +37,11 @@ def signing_key(token: str, team: str):
 
 
 def email_from_token(token: str | None) -> str:
-    if os.environ.get("EUTOPOS_DEV_NO_AUTH") == "1":
-        return DEV_USER
     team = os.environ.get("CF_ACCESS_TEAM_DOMAIN", "").rstrip("/")
     aud = os.environ.get("CF_ACCESS_AUD", "")
+    # Mode uji hanya berlaku kalau Access belum dikonfigurasi, tidak pernah menimpa yang nyata.
+    if os.environ.get("EUTOPOS_DEV_NO_AUTH") == "1" and not (team or aud):
+        return DEV_USER
     if not (team and aud):
         # Gagal tertutup: tanpa konfigurasi, rute terlindungi tidak terbuka.
         raise AuthError(

@@ -94,6 +94,8 @@ def expire_uploading(session: Session, max_age: timedelta) -> list[MapJob]:
     """Unggahan yang ditinggal (spesifikasi bagian 10): uploading terlalu lama menjadi failed."""
     limit = datetime.now(UTC) - max_age
     stmt = select(MapJob).where(MapJob.status == "uploading", MapJob.created_at < limit)
+    # Kunci baris: pre-finish yang mengantrekan tepat di batas 24 jam tidak tertimpa failed.
+    stmt = stmt.with_for_update(skip_locked=True)
     stale = session.exec(stmt).all()
     for job in stale:
         fail(session, job, "unggahan tidak selesai dalam 24 jam, buat sesi baru")
