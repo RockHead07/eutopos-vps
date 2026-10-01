@@ -108,3 +108,23 @@ def test_manage_job_rejects_missing_path(tmp_path, monkeypatch):
     monkeypatch.setattr("sys.argv", ["manage", "job", "floor10", "L10", "--map", "/tidak/ada"])
     with pytest.raises(SystemExit, match="tidak ditemukan"):
         manage.main()
+
+
+def test_upload_job_may_have_no_path_yet(session):
+    videos = [{"name": "a.mp4", "role": "peta", "size": 10, "upload_id": None, "path": None}]
+    job = jobs.create_job(session, "floor10", "L10", "a@x.id", videos)
+    assert job.status == "uploading"
+
+
+def test_expire_uploading_fails_only_old_jobs(session):
+    from datetime import UTC, datetime, timedelta
+
+    old = jobs.create_job(session, "floor10", "L10", "a@x.id", [MAP])
+    new = jobs.create_job(session, "floor10", "L10", "a@x.id", [MAP])
+    old.created_at = datetime.now(UTC) - timedelta(hours=25)
+    session.add(old)
+    session.commit()
+    expired = jobs.expire_uploading(session, timedelta(hours=24))
+    assert [j.id for j in expired] == [old.id]
+    assert session.get(MapJob, old.id).status == "failed"
+    assert session.get(MapJob, new.id).status == "uploading"

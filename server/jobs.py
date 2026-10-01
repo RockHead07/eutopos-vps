@@ -4,7 +4,7 @@ Satu pekerja, jadi FOR UPDATE SKIP LOCKED di sini lebih sebagai pengaman daripad
 antrean ini disebut di dokumentasi PostgreSQL untuk SELECT ... FOR UPDATE.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from sqlmodel import Session, select
@@ -36,7 +36,9 @@ def create_job(
     if not any(v["role"] == "peta" for v in videos):
         raise ValueError("butuh minimal satu video berperan peta")
     # Frame dinamai <nama video>_<nomor>.jpg: dua video bernama sama saling menimpa frame.
-    stems = [Path(v["path"]).stem for v in videos if Path(v["path"]).suffix]
+    # Video unggahan belum punya path saat dibuat; namanya dibuat unik oleh server (ID unggahan).
+    paths = [Path(v["path"]) for v in videos if v.get("path")]
+    stems = [p.stem for p in paths if p.suffix]
     if dup := sorted({s for s in stems if stems.count(s) > 1}):
         raise ValueError(f"nama video kembar {dup}, ganti nama salah satunya")
     if session.get(Area, area_id) is None:
@@ -86,3 +88,13 @@ def recover_stale(session: Session) -> int:
     for job in stale:
         fail(session, job, "pekerja berhenti di tengah pekerjaan, unggah atau antrekan ulang")
     return len(stale)
+
+
+def expire_uploading(session: Session, max_age: timedelta) -> list[MapJob]:
+    """Unggahan yang ditinggal (spesifikasi bagian 10): uploading terlalu lama menjadi failed."""
+    limit = datetime.now(UTC) - max_age
+    stmt = select(MapJob).where(MapJob.status == "uploading", MapJob.created_at < limit)
+    stale = session.exec(stmt).all()
+    for job in stale:
+        fail(session, job, "unggahan tidak selesai dalam 24 jam, buat sesi baru")
+    return stale

@@ -168,3 +168,12 @@ def test_worker_session_holds_no_transaction_during_stage(tmp_path):
         jobs.set_stage(s, job, "build")
         assert not s.in_transaction()  # subprocess berjam-jam tidak boleh menahan transaksi
         assert job.stage == "build"
+
+
+def test_delete_upload_files_removes_data_and_info(tmp_path):
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    for name in ["job1-v0-abc", "job1-v0-abc.info", "lain"]:
+        (uploads / name).write_text("x")
+    worker.delete_upload_files(["job1-v0-abc", "../lain"], uploads)
+    assert sorted(p.name for p in uploads.iterdir()) == ["lain"]
