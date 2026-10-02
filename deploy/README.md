@@ -177,3 +177,51 @@ Klien mengunggah dalam potongan 50 MiB, sama dengan dashboard nanti (batas Cloud
 per permintaan). Video unggahan dihapus pekerja setelah frame diekstrak. Pekerjaan `uploading` lebih
 dari 24 jam ditandai gagal dan sisa unggahannya dihapus. Pekerjaan yang gagal juga menghapus video
 unggahannya (v1 tidak punya tombol ulangi, jadi video tidak ditinggal di disk).
+
+## 6. Akses dari internet (Cloudflare Tunnel + Access)
+
+Sudah dibuat di akun Cloudflare pemilik (2026-10-02, lewat `cf` CLI). Perubahan rute atau daftar
+pengguna dilakukan di Cloudflare, bukan di repo ini:
+
+| Bagian | Isi |
+|---|---|
+| Tunnel `eutopos-pclab` | Dikelola remote dari Cloudflare. Terpisah dari tunnel proyek lain |
+| Rute | `eutopos.rockhead07.tech`: `/internal/*` 404, `/files/*` ke `tusd:8080`, sisanya ke `api:8000`. Hostname lain 404 |
+| Pagar kedua | `originRequest.access` (`required`, tim, AUD): tunnel menolak permintaan tanpa JWT Access yang sah |
+| Aplikasi Access `eutopos` | Self-hosted, login kode email (One-time PIN) saja, sesi 720 jam, kebijakan Allow berisi daftar email |
+| DNS | CNAME `eutopos` ke tunnel, proxied |
+
+**Isi `deploy/.env` di PC lab** (ketiganya tidak pernah masuk repo atau chat):
+
+```text
+CF_ACCESS_TEAM_DOMAIN=https://<team>.cloudflareaccess.com
+CF_ACCESS_AUD=<AUD tag: Zero Trust, Access controls, Applications, eutopos>
+TUNNEL_TOKEN=<rahasia: Networks, Tunnels, eutopos-pclab, Configure, teks setelah --token>
+COMPOSE_FILE=compose.yaml:compose.gpu.yaml:compose.tunnel.yaml
+```
+
+Dengan `COMPOSE_FILE`, perintah cukup `docker compose up -d` tanpa deretan `-f`.
+
+```bash
+docker compose up -d
+docker compose logs cloudflared | grep -i "registered tunnel connection"   # minimal satu koneksi
+curl -s -o /dev/null -w '%{http_code}\n' -X POST localhost:8000/api/jobs   # 401: tanpa token Access
+```
+
+Lalu buka `https://eutopos.rockhead07.tech/health` di browser: Cloudflare meminta email, mengirim kode,
+lalu tampil JSON layanan.
+
+Port `api` hanya terikat ke `127.0.0.1`, jadi tidak lagi terlihat dari jaringan lab. Dari luar mesin,
+satu-satunya jalan masuk adalah Tunnel.
+
+**Menambah pengguna:** tambahkan email ke kebijakan Allow aplikasi Access `eutopos` (dashboard Zero
+Trust atau `cf zero-trust access applications update`). Kode hanya dikirim ke email yang terdaftar.
+
+**Mengunggah dari laptop tanpa browser** (butuh `cloudflared` terpasang di laptop):
+
+```bash
+cloudflared access login https://eutopos.rockhead07.tech
+export CF_ACCESS_TOKEN=$(cloudflared access token -app=https://eutopos.rockhead07.tech)
+python -m server.upload_client floor10 "Lantai 10" peta:video.mp4 \
+  --api https://eutopos.rockhead07.tech --tus https://eutopos.rockhead07.tech/files/
+```

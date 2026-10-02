@@ -194,3 +194,6 @@ notifikasi, banyak pekerja, pemutaran video.
   (protokol tus, potongan 50 MiB) ke tusd, hook `pre-create` dan `pre-finish` mengantrekan pekerjaan,
   pekerja membangun peta sampai `done` (versi id 3), folder `uploads/` kosong setelah ekstraksi.
   Tanpa `CF_ACCESS_*`: `POST /api/jobs` 503, hook tanpa rahasia 403, `/health` 200.
+- ✅ PR 4 bagian akun (2026-10-02, `cf` CLI): tunnel `eutopos-pclab`, aplikasi Access (kode email,
+  720 jam, daftar email), rute, pagar `originRequest.access`, DNS. Dari luar tanpa login: 302 ke
+  halaman login Access. `cloudflared` di PC lab: lihat `deploy/README.md` bagian 6.

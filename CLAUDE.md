@@ -48,7 +48,8 @@ Kode uji coba ada di `spike/`, data di `data/` (tidak masuk git).
 - Layanan: `server/` (FastAPI `/localize`, `/health`), Docker Compose + PostgreSQL (versi peta per
   area), **antrean bangun peta** (`map_job`, pekerja GPU, `python -m server.manage job`), dan
   **unggahan video** (tusd, hook ke api, autentikasi Cloudflare Access, terverifikasi di PC lab
-  2026-10-02 dengan `server.upload_client`). Dashboard (PR 3) dan Tunnel (PR 4) belum.
+  2026-10-02 dengan `server.upload_client`), dan **akses dari internet** lewat Cloudflare Tunnel +
+  Access di `eutopos.rockhead07.tech` (`deploy/compose.tunnel.yaml`). Dashboard (PR 3) belum.
   `/localize` lewat container terverifikasi di PC lab dengan peta demo: 405 inlier, 1,94 s CPU.
   Website unggah (PR 2 sampai 4) mengikuti `docs/specs/2026-10-01-web-upload-and-map-build-design.md`.
 - PC lab sudah jadi host: WSL2 Ubuntu 24.04, Docker Engine, NVIDIA Container Toolkit, GPU terlihat

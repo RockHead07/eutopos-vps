@@ -1,0 +1,21 @@
+# Akses dari internet lewat Cloudflare Tunnel (spesifikasi web-upload bagian 3 dan 8). Tanpa port
+# terbuka: cloudflared membuka koneksi keluar ke Cloudflare. Pemakaian dan isi .env: deploy/README.md
+# bagian 6. Dipakai bersama compose.yaml (dan compose.gpu.yaml di PC lab):
+#   COMPOSE_FILE=compose.yaml:compose.gpu.yaml:compose.tunnel.yaml   (di deploy/.env)
+#
+# Aturan rute (hostname, /files/ ke tusd, /internal/ 404, sisanya ke api) dan pagar kedua
+# originRequest.access disimpan di Cloudflare (tunnel dikelola remote), bukan di repo ini.
+
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:2026.9.3
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      # Rahasia. Ambil dari dashboard Zero Trust: Networks, Tunnels, konektor, perintah install.
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?isi TUNNEL_TOKEN di deploy/.env}
+    depends_on:
+      api:
+        condition: service_started
+      tusd:
+        condition: service_started
+    restart: unless-stopped
