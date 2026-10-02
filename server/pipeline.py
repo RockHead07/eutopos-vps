@@ -60,6 +60,9 @@ def build_command(dataset: Path, map_dir: Path) -> list[str]:
     ]
 
 
+PLOTLY_URL = "/assets/plotly.min.js"  # disajikan server/maps_api.py
+
+
 def inspect_command(map_dir: Path) -> list[str]:
     return [
         sys.executable,
@@ -69,4 +72,6 @@ def inspect_command(map_dir: Path) -> list[str]:
         str(map_dir / "report.html"),
         "--json",
         str(map_dir / "inspect.json"),
+        "--plotly-url",
+        PLOTLY_URL,
     ]
