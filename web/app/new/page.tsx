@@ -60,20 +60,25 @@ export default function NewSessionPage() {
     try {
       const videos = files.map((f, i) => ({ name: f.name, size: f.size, role: roleOf(f, i) }));
       const key = JSON.stringify([areaId, areaName, videos]);
-      let result;
-      if (last.current?.key === key) {
-        result = await uppy.retryAll();
-      } else {
+      if (last.current?.key !== key) {
         const job = await api.createJob({ area_id: areaId, area_name: areaName, videos });
         last.current = { id: job.id, key };
         uppy.setMeta({ job_id: String(job.id) });
         uppy.resetProgress(); // pekerjaan baru butuh semua video, termasuk yang sudah terunggah
-        result = await uppy.upload();
       }
-      if (result?.failed?.length) {
-        throw new Error(`${result.failed.length} video gagal diunggah. Tekan tombol lagi untuk mengulang.`);
+      // upload() mengulang video yang gagal dan mengunggah yang belum dimulai (termasuk yang
+      // dihapus lalu ditambah lagi).
+      await uppy.upload();
+      // Server pemilik kebenaran: hasil Uppy tidak menghitung video yang dibatalkan atau dihapus.
+      const job = await api.job(last.current.id);
+      const missing = job.videos.filter((v) => !v.uploaded).map((v) => v.name);
+      if (missing.length) {
+        throw new Error(
+          `Belum terunggah: ${missing.join(", ")}. Tambahkan lagi kalau terhapus, lalu tekan tombol ` +
+            "untuk mengulang. Kalau sesi login habis, muat ulang halaman (unggahan mulai dari awal).",
+        );
       }
-      router.push(`/job/?id=${last.current.id}`);
+      router.push(`/job/?id=${job.id}`);
     } catch (e) {
       setError((e as Error).message);
     } finally {

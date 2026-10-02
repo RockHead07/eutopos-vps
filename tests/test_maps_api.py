@@ -83,7 +83,7 @@ def test_report_outside_maps_root_is_404(client, tmp_path):
 
 def test_publish_reloads_served_area(client):
     v = make_version(client)
-    r = client.post(f"/api/versions/{v.id}/publish").json()
+    r = client.post(f"/api/versions/{v.id}/publish", json={}).json()
     assert r["reload"] == "started"
     wait_reload(client.st)
     row = client.get("/api/versions").json()[0]
@@ -95,7 +95,7 @@ def test_publish_reloads_served_area(client):
 
 def test_publish_other_area_does_not_reload(client):
     v = make_version(client, area="floor9")
-    r = client.post(f"/api/versions/{v.id}/publish").json()
+    r = client.post(f"/api/versions/{v.id}/publish", json={}).json()
     assert r["reload"] == "other_area" and r["version"]["status"] == "published"
     assert client.st.localizer is None
 
@@ -110,5 +110,17 @@ def test_publish_while_reloading_is_409(client):
     # sementara yang lain sudah menukar peta.
     v = make_version(client)
     client.st.reloading = True
-    assert client.post(f"/api/versions/{v.id}/publish").status_code == 409
+    assert client.post(f"/api/versions/{v.id}/publish", json={}).status_code == 409
     assert client.get("/api/versions").json()[0]["status"] == "candidate"
+
+
+def test_publish_rejects_cross_site_form(client):
+    # Formulir lintas situs tidak bisa mengirim application/json tanpa preflight CORS (yang tidak
+    # diizinkan), jadi tipe isi ini menutup CSRF lewat cookie Access.
+    v = make_version(client, area="floor9")
+    form = client.post(f"/api/versions/{v.id}/publish", data={"x": "1"})
+    empty = client.post(f"/api/versions/{v.id}/publish")
+    assert (form.status_code, empty.status_code) == (415, 415)
+    assert client.get("/api/versions").json()[0]["status"] == "candidate"
+    ok = client.post(f"/api/versions/{v.id}/publish", json={})
+    assert ok.json()["reload"] == "other_area"
