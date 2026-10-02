@@ -63,6 +63,10 @@ def report(version_id: int, user: uploads.User, s: uploads.DB) -> FileResponse:
 
 @router.post("/api/versions/{version_id}/publish")
 def publish_version(version_id: int, request: Request, user: uploads.User, s: uploads.DB) -> dict:
+    # Tanpa isi, rute ini bisa dipicu formulir situs lain yang menumpang cookie Access (CSRF).
+    # application/json butuh preflight CORS, dan layanan ini tidak mengizinkan CORS.
+    if request.headers.get("content-type", "").split(";")[0].strip() != "application/json":
+        raise HTTPException(415, "kirim dengan Content-Type: application/json")
     v = s.get(MapVersion, version_id)
     if v is None:
         raise HTTPException(404, "versi tidak ada")

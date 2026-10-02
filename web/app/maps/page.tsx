@@ -11,12 +11,17 @@ export default function MapsPage() {
   // Versi baru ditulis aktif setelah selesai dimuat: muat ulang daftar saat status memuat berubah.
   const versions = usePoll(api.versions, 10000, [tick, reloading]);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
   async function publish(id: number, version: number) {
     if (!window.confirm(`Jadikan versi ${version} aktif?`)) return;
     setError(null);
+    setMessage(null);
     try {
-      await api.publish(id);
+      const r = await api.publish(id);
+      if (r.reload === "other_area") {
+        setMessage(`Versi ${version} ditandai aktif, tetapi layanan ini melayani area lain: /localize tidak memakainya.`);
+      }
       setTick(tick + 1);
     } catch (e) {
       setError((e as Error).message);
@@ -34,6 +39,7 @@ export default function MapsPage() {
         </p>
       )}
       {s?.reload_error && <p className="error">{s.reload_error}</p>}
+      {message && <p>{message}</p>}
       {(error || versions.error || service.error) && (
         <p className="error">{error ?? versions.error ?? service.error}</p>
       )}
