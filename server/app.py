@@ -33,49 +33,35 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 from sqlmodel import Session
 
-from server import uploads
+from server import active_map, uploads
 from server.db import active_version, engine_from_env
-from server.localizer import MIN_INLIERS, Localizer
+from server.localizer import Localizer
 from server.photo import decode_upright, exif_camera, pinhole
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 
-def _env_int(name: str, default: int) -> int:
-    return int(os.environ.get(name, default))
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if threads := _env_int("EUTOPOS_THREADS", 0):
+    if threads := int(os.environ.get("EUTOPOS_THREADS", 0)):
         torch.set_num_threads(threads)
-    app.state.area_id = app.state.map_version = app.state.localizer = None
+    st = app.state
+    st.area_id = st.map_version = st.localizer = st.reload_error = None
+    st.reloading = False
+    # ponytail: satu lokalisasi dalam satu waktu. Model torch dipakai bersama dan server kecil
+    # (2 vCPU). Kalau antrean permintaan jadi masalah, jalankan beberapa proses pekerja.
+    st.lock = threading.Lock()
     if os.environ.get("DATABASE_URL"):
         with Session(engine_from_env()) as s:
-            v = active_version(s, os.environ.get("EUTOPOS_AREA", "demo"))
+            v = active_version(s, active_map.serving_area())
         map_dir = Path(v.path) if v else None
         if v:
-            app.state.area_id, app.state.map_version = v.area_id, v.version
+            st.area_id, st.map_version = v.area_id, v.version
     else:
         map_dir = Path(os.environ["EUTOPOS_MAP_DIR"])
     if map_dir is not None:
-        app.state.localizer = _load_localizer(map_dir)
-    # ponytail: satu lokalisasi dalam satu waktu. Model torch dipakai bersama dan server kecil
-    # (2 vCPU). Kalau antrean permintaan jadi masalah, jalankan beberapa proses pekerja.
-    app.state.lock = threading.Lock()
+        st.localizer = active_map.load_localizer(map_dir)
     yield
-
-
-def _load_localizer(map_dir: Path) -> Localizer:
-    return Localizer(
-        map_dir,
-        max_kp=_env_int("EUTOPOS_MAX_KP", 1024),
-        resize=_env_int("EUTOPOS_RESIZE", 1024),
-        global_resize=_env_int("EUTOPOS_GLOBAL_RESIZE", 512),
-        k=_env_int("EUTOPOS_K", 5),
-        device=os.environ.get("EUTOPOS_DEVICE", "cpu"),
-        min_inliers=_env_int("EUTOPOS_MIN_INLIERS", MIN_INLIERS),
-    )
 
 
 app = FastAPI(title="eutopos-vps", lifespan=lifespan)
@@ -144,7 +130,9 @@ def localize(
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
 
-    loc: Localizer | None = request.app.state.localizer
+    st = request.app.state
+    with st.lock:
+        loc, area_id, map_version = st.localizer, st.area_id, st.map_version
     if loc is None:
         raise HTTPException(503, "belum ada versi peta aktif untuk area ini")
     h, w = rgb.shape[:2]
@@ -155,7 +143,7 @@ def localize(
     else:
         camera, source = exif_camera(data, w, h), "exif"
 
-    with request.app.state.lock:
+    with st.lock:
         r = loc.localize(rgb, camera)
 
     pose_model = pose_building = None
@@ -173,7 +161,7 @@ def localize(
         intrinsics_source=source,
         pose_model=pose_model,
         pose_building=pose_building,
-        area_id=request.app.state.area_id,
-        map_version=request.app.state.map_version,
+        area_id=area_id,
+        map_version=map_version,
         t_s={k: round(v, 3) for k, v in r.t.items()},
     )
