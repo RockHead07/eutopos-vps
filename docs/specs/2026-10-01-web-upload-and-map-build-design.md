@@ -197,3 +197,7 @@ notifikasi, banyak pekerja, pemutaran video.
 - ✅ PR 4 bagian akun (2026-10-02, `cf` CLI): tunnel `eutopos-pclab`, aplikasi Access (kode email,
   720 jam, daftar email), rute, pagar `originRequest.access`, DNS. Dari luar tanpa login: 302 ke
   halaman login Access. `cloudflared` di PC lab: lihat `deploy/README.md` bagian 6.
+- ✅ PR 4 sisi PC lab (2026-10-02): `cloudflared` 2026.9.3 tersambung (4 koneksi QUIC ke Singapura,
+  tunnel `healthy`), port `api` hanya `127.0.0.1`. Dari internet tanpa login: `/health`, `/files/`,
+  `/internal/tus-hook` semuanya 302 ke login Access. Setelah login kode email: `/health` menjawab
+  `{"status":"ok", ...}` lewat Tunnel. Di PC lab tanpa token: `POST /api/jobs` 401.
