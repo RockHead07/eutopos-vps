@@ -55,6 +55,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("run_dir", type=Path, nargs="?", help="folder kp*-r* keluaran run.py")
     ap.add_argument("--html", type=Path, help="simpan tampilan 3D peta utama dan posisi query")
+    ap.add_argument("--plotly-url", help="muat plotly dari URL ini, bukan disematkan")
     ap.add_argument("--json", type=Path, help="simpan ringkasan potongan dan query")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
@@ -106,10 +107,10 @@ def main():
         summary = {"parts": part_rows, "queries": rows, "accepted": accepted}
         a.json.write_text(json.dumps({**summary, "min_inliers": MIN_INLIERS}), encoding="utf-8")
     if a.html:
-        save_html(a.html, main_model, located)
+        save_html(a.html, main_model, located, a.plotly_url)
 
 
-def save_html(path: Path, model, located):
+def save_html(path: Path, model, located, plotly_url: str | None = None):
     # Potongan lain punya kerangka koordinat sendiri, jadi hanya potongan utama yang digambar.
     import plotly.graph_objects as go
     from hloc.utils import viz_3d
@@ -137,7 +138,8 @@ def save_html(path: Path, model, located):
             )
         )
     path.parent.mkdir(parents=True, exist_ok=True)
-    fig.write_html(path)  # plotly.js ikut di dalam berkas, bisa dibuka tanpa internet
+    # Tanpa URL: plotly disematkan (±4,8 MB) supaya bisa dibuka tanpa internet di laptop.
+    fig.write_html(path, include_plotlyjs=plotly_url or True)
     print(f"tampilan 3D: {path}")
 
 

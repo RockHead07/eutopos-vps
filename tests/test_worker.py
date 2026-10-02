@@ -186,3 +186,8 @@ def test_failed_job_still_deletes_uploaded_videos(session, tmp_path):
     worker.process(session, job, data, maps, runner=runner, free_bytes=lambda p: 10**12)
     assert job.status == "failed"
     assert not uploaded.exists() and own.exists()  # privasi: video unggahan tidak tertinggal
+
+
+def test_inspect_command_links_plotly_once(tmp_path):
+    cmd = pipeline.inspect_command(tmp_path / "map")
+    assert cmd[cmd.index("--plotly-url") + 1] == "/assets/plotly.min.js"
