@@ -12,3 +12,5 @@ th, td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid #eee
 button { padding: 0.4rem 0.9rem; cursor: pointer; }
 iframe { width: 100%; height: 70vh; border: 1px solid #ddd; background: #fff; }
 label { display: block; margin: 0.5rem 0; }
+/* Layar HP: tabel lebar menggulir sendiri, halaman tidak ikut tergeser ke samping. */
+@media (max-width: 640px) { table { display: block; overflow-x: auto; } }

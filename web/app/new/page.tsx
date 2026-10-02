@@ -1,5 +1,6 @@
 "use client";
 import Uppy from "@uppy/core";
+import Indonesian from "@uppy/locales/lib/id_ID";
 import Dashboard from "@uppy/react/dashboard";
 import Tus from "@uppy/tus";
 import { useRouter } from "next/navigation";
@@ -13,6 +14,7 @@ const CHUNK = 50 * 1024 * 1024; // di bawah batas Cloudflare Free 100 MB per per
 function createUppy() {
   return new Uppy({
     autoProceed: false,
+    locale: Indonesian,
     restrictions: { allowedFileTypes: ["video/*"], maxNumberOfFiles: 4, maxFileSize: 2 * 1024 ** 3 },
   }).use(Tus, {
     endpoint: "/files/",
