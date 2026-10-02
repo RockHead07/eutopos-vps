@@ -31,6 +31,7 @@ from typing import Annotated, Literal
 
 import torch
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlmodel import Session
 
@@ -171,3 +172,17 @@ def localize(
         map_version=map_version,
         t_s={k: round(v, 3) for k, v in r.t.items()},
     )
+
+
+WEB_DIR = Path(__file__).resolve().parents[1] / "web" / "out"
+
+
+def mount_web(app: FastAPI, directory: Path) -> bool:
+    """Dashboard hasil next build (static export). Dipasang terakhir supaya rute API menang."""
+    if not directory.is_dir():
+        return False
+    app.mount("/", StaticFiles(directory=directory, html=True), name="web")
+    return True
+
+
+mount_web(app, WEB_DIR)

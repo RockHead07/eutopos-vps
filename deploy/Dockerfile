@@ -41,6 +41,15 @@ RUN --mount=type=cache,target=/root/.cache/uv \
  && uv export --frozen --no-dev --no-emit-project --no-hashes -o /tmp/requirements.txt \
  && uv pip install --python /opt/venv -r /tmp/requirements.txt
 
+# ---- web: dashboard Next.js static export ----
+FROM node:24.21.0-bookworm-slim AS web
+ENV NEXT_TELEMETRY_DISABLED=1
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+COPY web/ ./
+RUN npm run build
+
 # ---- runtime: hanya venv, kode layanan, dan pustaka sistem yang dibutuhkan OpenCV ----
 FROM ${PYTHON_IMAGE} AS runtime
 RUN apt-get update \
@@ -56,6 +65,7 @@ ENV PATH=/opt/venv/bin:$PATH \
 WORKDIR /app
 COPY --chown=eutopos:eutopos server ./server
 COPY --chown=eutopos:eutopos spike ./spike
+COPY --from=web --chown=eutopos:eutopos /web/out ./web/out
 USER eutopos
 EXPOSE 8000
 # Memuat model dan peta butuh waktu, jadi start-period panjang.
