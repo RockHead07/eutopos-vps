@@ -55,8 +55,10 @@ services:
         bind:
           create_host_path: false
       - cache:/cache
+    # Hanya localhost: dari luar mesin, akses lewat Cloudflare Tunnel (compose.tunnel.yaml), bukan port
+    # terbuka ke jaringan lab. Dari Ubuntu (dan Windows di mesin yang sama): curl localhost:8000/health
     ports:
-      - "${EUTOPOS_PORT:-8000}:8000"
+      - "127.0.0.1:${EUTOPOS_PORT:-8000}:8000"
     depends_on:
       db:
         condition: service_healthy
