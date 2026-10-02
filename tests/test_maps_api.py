@@ -55,6 +55,7 @@ def wait_reload(st):
         if not st.reloading:
             return
         time.sleep(0.02)
+    raise AssertionError("pemuatan ulang tidak selesai")
 
 
 def test_lists_jobs_newest_first(client):
@@ -83,8 +84,10 @@ def test_report_outside_maps_root_is_404(client, tmp_path):
 def test_publish_reloads_served_area(client):
     v = make_version(client)
     r = client.post(f"/api/versions/{v.id}/publish").json()
-    assert r["reload"] == "started" and r["version"]["published_by"] == "dev@local"
+    assert r["reload"] == "started"
     wait_reload(client.st)
+    row = client.get("/api/versions").json()[0]
+    assert (row["status"], row["published_by"]) == ("published", "dev@local")
     s = client.get("/api/service").json()
     assert (s["area_id"], s["map_version"], s["reload_error"]) == ("floor10", v.version, None)
     assert client.st.localizer.startswith("loc:job-")

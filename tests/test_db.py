@@ -88,6 +88,28 @@ def test_service_starts_without_active_map(tmp_path, monkeypatch):
         assert r.status_code == 503
 
 
+def test_service_starts_when_active_map_fails_to_load(tmp_path, monkeypatch):
+    """Peta aktif rusak (atau GPU penuh saat menyala): api tetap menyala supaya dashboard bisa
+    dipakai menerbitkan versi lain, bukan restart berulang."""
+    from fastapi.testclient import TestClient
+
+    url = f"sqlite:///{tmp_path / 's.db'}"
+    engine = create_engine(url)
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as s:
+        publish(s, register(s, "floor10", "L10", str(tmp_path / "tidak-ada")).id)
+    monkeypatch.setenv("DATABASE_URL", url)
+    monkeypatch.setenv("EUTOPOS_AREA", "floor10")
+    monkeypatch.setenv("EUTOPOS_DEV_NO_AUTH", "1")
+    monkeypatch.delenv("CF_ACCESS_TEAM_DOMAIN", raising=False)
+    monkeypatch.delenv("CF_ACCESS_AUD", raising=False)
+    from server.app import app
+
+    with TestClient(app) as client:
+        assert client.get("/health").json()["status"] == "no_map"
+        assert "versi 1" in client.get("/api/service").json()["reload_error"]
+
+
 def test_migration_cli_runs_like_the_container(tmp_path):
     """Container menjalankan perintah alembic (bukan pytest), jadi paket server harus bisa diimpor
     tanpa bantuan pythonpath pytest. Uji ini sempat hilang dan container gagal menyala."""

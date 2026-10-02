@@ -22,6 +22,7 @@ Menjalankan tanpa database:
 Dengan database: deploy/README.md.
 """
 
+import logging
 import os
 import threading
 from contextlib import asynccontextmanager
@@ -54,13 +55,17 @@ async def lifespan(app: FastAPI):
     if os.environ.get("DATABASE_URL"):
         with Session(engine_from_env()) as s:
             v = active_version(s, active_map.serving_area())
-        map_dir = Path(v.path) if v else None
         if v:
-            st.area_id, st.map_version = v.area_id, v.version
+            try:
+                st.localizer = active_map.load_localizer(Path(v.path))
+                st.area_id, st.map_version = v.area_id, v.version
+            except Exception as e:
+                # Tetap menyala, /localize 503: dashboard di proses ini dipakai untuk menerbitkan
+                # versi lain. Tanpa ini api restart berulang dan dashboard ikut mati.
+                logging.getLogger("eutopos").exception("gagal memuat peta aktif")
+                st.reload_error = f"versi {v.version} gagal dimuat saat menyala ({e})"
     else:
-        map_dir = Path(os.environ["EUTOPOS_MAP_DIR"])
-    if map_dir is not None:
-        st.localizer = active_map.load_localizer(map_dir)
+        st.localizer = active_map.load_localizer(Path(os.environ["EUTOPOS_MAP_DIR"]))
     yield
 
 
