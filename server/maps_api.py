@@ -1,6 +1,5 @@
 """API dashboard: versi peta, laporan 3D, Terbitkan, status layanan (spesifikasi bagian 7 dan 9)."""
 
-import os
 from datetime import datetime
 from pathlib import Path
 
@@ -12,7 +11,6 @@ from sqlmodel import select
 
 from server import active_map, uploads
 from server.db import MapJob, MapVersion, publish
-from server.db import active_version as active_of
 
 MAPS_ROOT = Path("/maps")  # jalur peta di dalam container (deploy/compose.yaml)
 PLOTLY_JS = Path(plotly.__file__).parent / "package_data" / "plotly.min.js"
@@ -74,13 +72,11 @@ def publish_version(version_id: int, request: Request, user: uploads.User, s: up
     # Cukup untuk satu operator; kunci terbitkan kalau pengguna dashboard bertambah.
     if serving and st.reloading:
         raise HTTPException(409, "peta sebelumnya masih dimuat, coba lagi sebentar")
-    previous = active_of(s, v.area_id)
-    v = publish(s, version_id, by=user)
     if not serving:
+        v = publish(s, version_id, by=user)
         return {"version": _out(s, v), "reload": "other_area"}
-    engine = uploads._engine(os.environ["DATABASE_URL"])
-    prev_id = previous.id if previous and previous.id != v.id else None
-    active_map.reload_in_background(st, engine, v.id, prev_id)
+    # Diterbitkan oleh thread setelah peta terbukti bisa dimuat (server/active_map.py).
+    active_map.reload_in_background(st, s.get_bind(), v.id, user)
     return {"version": _out(s, v), "reload": "started"}
 
 

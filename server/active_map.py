@@ -1,7 +1,8 @@
 """Peta aktif yang dimuat /localize, dan penukarannya setelah Terbitkan (spesifikasi bagian 7).
 
-Peta baru dimuat di thread latar. Selama memuat, /localize tetap memakai peta lama. Kalau gagal,
-peta lama tetap dipakai, versi aktif di database dikembalikan, dan galatnya ditampilkan dashboard.
+Peta baru dimuat di thread latar. Selama memuat, /localize tetap memakai peta lama. Versi baru
+diterbitkan di database SETELAH terbukti bisa dimuat: kalau gagal (berkas rusak, GPU penuh, proses
+mati di tengah), database tidak berubah, peta lama tetap dipakai, galatnya ditampilkan dashboard.
 """
 
 import logging
@@ -37,32 +38,29 @@ def load_localizer(map_dir: Path) -> Localizer:
     )
 
 
-def reload_in_background(state, engine, version_id: int, previous_id: int | None):
-    """ponytail: memuat ulang seluruh model untuk peta baru (beberapa detik, memori sementara dua
+def reload_in_background(state, engine, version_id: int, by: str | None):
+    """Muat versi peta, terbitkan atas nama `by`, lalu tukar peta yang dilayani.
+
+    ponytail: memuat ulang seluruh model untuk peta baru (beberapa detik, memori sementara dua
     kali lipat). Pakai ulang model yang sudah dimuat kalau penukaran jadi sering."""
-    state.reloading = True
+    state.reloading, state.reload_error = True, None
 
     def run():
-        with Session(engine) as s:
-            v = s.get(MapVersion, version_id)
-            try:
-                localizer = load_localizer(Path(v.path))
-            except Exception as e:
-                log.exception("gagal memuat versi peta %s", version_id)
-                if previous_id is not None:
-                    publish(s, previous_id)  # versi lama aktif lagi
+        label = f"versi id {version_id}"
+        try:
+            with Session(engine) as s:
                 v = s.get(MapVersion, version_id)
-                v.status = "rejected"
-                s.add(v)
-                s.commit()
-                state.reload_error = (
-                    f"versi {v.version} gagal dimuat ({e}), peta lama tetap dipakai"
-                )
-                state.reloading = False
-                return
+                label, path = f"versi {v.version}", Path(v.path)
+            localizer = load_localizer(path)  # tanpa sesi database terbuka selama memuat
+            with Session(engine) as s:
+                v = publish(s, version_id, by=by)
             with state.lock:
                 state.localizer, state.area_id, state.map_version = localizer, v.area_id, v.version
-            state.reload_error, state.reloading = None, False
+        except Exception as e:
+            log.exception("gagal menerbitkan %s", label)
+            state.reload_error = f"{label} gagal diterbitkan ({e}), peta lama tetap dipakai"
+        finally:
+            state.reloading = False
 
     t = threading.Thread(target=run, daemon=True)
     t.start()

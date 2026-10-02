@@ -32,35 +32,63 @@ def versions(engine):
     with Session(engine) as s:
         v1 = register(s, "floor10", "L10", "/maps/floor10/job-1")
         v2 = register(s, "floor10", "L10", "/maps/floor10/job-2")
-        publish(s, v1.id)
-        publish(s, v2.id)  # yang diterbitkan pengguna
+        publish(s, v1.id, by="alice")  # peta yang sedang dilayani
         return v1.id, v2.id
 
 
-def test_reload_swaps_localizer(engine, monkeypatch):
-    v1, v2 = versions(engine)
+def broken(path):
+    raise RuntimeError("berkas peta rusak")
+
+
+def test_reload_swaps_localizer_then_publishes(engine, monkeypatch):
+    _, v2 = versions(engine)
     monkeypatch.setattr(active_map, "load_localizer", lambda path: f"baru:{path.name}")
     st = state()
-    active_map.reload_in_background(st, engine, v2, v1).join(5)
+    st.reload_error = "galat lama"
+    active_map.reload_in_background(st, engine, v2, "bob").join(5)
     assert (st.localizer, st.map_version, st.reloading, st.reload_error) == (
         "baru:job-2",
         2,
         False,
         None,
     )
+    with Session(engine) as s:
+        assert (active_version(s, "floor10").id, s.get(MapVersion, v2).published_by) == (v2, "bob")
 
 
-def test_failed_load_keeps_old_map_and_restores_version(engine, monkeypatch):
+def test_failed_load_keeps_old_map_and_database(engine, monkeypatch):
+    # Spesifikasi bagian 7: peta lama tetap dipakai, versi kembali ke status sebelumnya.
     v1, v2 = versions(engine)
-
-    def broken(path):
-        raise RuntimeError("berkas peta rusak")
-
     monkeypatch.setattr(active_map, "load_localizer", broken)
     st = state()
-    active_map.reload_in_background(st, engine, v2, v1).join(5)
+    active_map.reload_in_background(st, engine, v2, "bob").join(5)
     assert (st.localizer, st.map_version, st.reloading) == ("lama", 1, False)
     assert "versi 2" in st.reload_error
     with Session(engine) as s:
+        assert (active_version(s, "floor10").id, active_version(s, "floor10").published_by) == (
+            v1,
+            "alice",
+        )
+        assert s.get(MapVersion, v2).status == "candidate"
+
+
+def test_failed_republish_of_active_version_keeps_it_published(engine, monkeypatch):
+    v1, _ = versions(engine)
+    monkeypatch.setattr(active_map, "load_localizer", broken)
+    active_map.reload_in_background(state(), engine, v1, "bob").join(5)
+    with Session(engine) as s:
         assert active_version(s, "floor10").id == v1
-        assert s.get(MapVersion, v2).status == "rejected"
+
+
+def test_database_error_does_not_leave_reloading_stuck(engine, monkeypatch):
+    _, v2 = versions(engine)
+    monkeypatch.setattr(active_map, "load_localizer", lambda path: "baru")
+
+    def db_down(*args, **kwargs):
+        raise ConnectionError("database mati")
+
+    monkeypatch.setattr(active_map, "publish", db_down)
+    st = state()
+    active_map.reload_in_background(st, engine, v2, "bob").join(5)
+    assert (st.localizer, st.reloading) == ("lama", False)
+    assert "database mati" in st.reload_error

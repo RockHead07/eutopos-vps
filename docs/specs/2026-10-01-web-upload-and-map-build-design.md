@@ -117,7 +117,11 @@ sepenuhnya dari daftar email di Cloudflare Access (keputusan terbuka nomor 4 ter
 Sekarang peta dimuat sekali saat `api` menyala. Setelah terbit, kalau area yang diterbitkan sama dengan
 `EUTOPOS_AREA`, `api` memuat `Localizer` baru di thread terpisah, lalu menukarnya di bawah kunci yang
 sudah ada. Selama memuat, permintaan `/localize` tetap memakai peta lama. Kalau gagal memuat, peta lama
-tetap dipakai dan versi dikembalikan ke status sebelumnya. `ponytail:` satu area aktif per layanan;
+tetap dipakai dan versi dikembalikan ke status sebelumnya. Implementasi (PR 3a, setelah review): versi
+baru ditulis `published` di database SETELAH peta terbukti bisa dimuat, jadi kegagalan apa pun, termasuk
+proses mati di tengah memuat, tidak mengubah database. Terbitkan ditolak (409) selama pemuatan
+sebelumnya berjalan. Kalau peta aktif gagal dimuat saat `api` menyala, `api` tetap menyala tanpa peta
+(`/localize` 503) supaya dashboard bisa dipakai menerbitkan versi lain. `ponytail:` satu area aktif per layanan;
 muat banyak area saat area kedua datang (spesifikasi pipeline bagian 5).
 
 ## 8. Autentikasi dan keamanan
