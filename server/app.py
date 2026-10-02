@@ -33,7 +33,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 from sqlmodel import Session
 
-from server import active_map, uploads
+from server import active_map, maps_api, uploads
 from server.db import active_version, engine_from_env
 from server.localizer import Localizer
 from server.photo import decode_upright, exif_camera, pinhole
@@ -66,6 +66,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="eutopos-vps", lifespan=lifespan)
 app.include_router(uploads.router)
+app.include_router(maps_api.router)
 
 
 class Pose(BaseModel):
