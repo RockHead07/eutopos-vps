@@ -225,3 +225,27 @@ export CF_ACCESS_TOKEN=$(cloudflared access token -app=https://eutopos.rockhead0
 python -m server.upload_client floor10 "Lantai 10" peta:video.mp4 \
   --api https://eutopos.rockhead07.tech --tus https://eutopos.rockhead07.tech/files/
 ```
+
+## 7. Dashboard
+
+`https://eutopos.rockhead07.tech/` setelah login kode email. Dibangun `next build` di Dockerfile dan
+disajikan `api` dari `web/out`.
+
+| Halaman | Isi |
+|---|---|
+| `/` | Daftar pekerjaan, status diperbarui tiap 5 detik |
+| `/new/` | Pilih area, tambah video, tentukan peran (peta atau uji), unggah dengan progress |
+| `/job/?id=N` | Status, ringkasan peta, galat, tampilan 3D, tombol Terbitkan |
+| `/maps/` | Versi per area, versi yang dilayani, Terbitkan atau Kembalikan |
+
+Terbitkan memuat peta baru di latar. Selama memuat, `/localize` tetap memakai peta lama dan tombol
+Terbitkan nonaktif. Versi baru ditulis aktif di database hanya setelah berhasil dimuat. Kalau gagal
+(misalnya GPU penuh karena pekerja sedang membangun peta), database tidak berubah, peta lama tetap
+dipakai, galatnya tampil di `/maps/`, dan versi itu bisa diterbitkan lagi nanti. Layanan hanya memuat
+ulang untuk area `EUTOPOS_AREA`; versi area lain hanya ditandai aktif di database.
+
+Kalau peta aktif gagal dimuat saat `api` menyala, `api` tetap menyala tanpa peta (`/localize` 503) dan
+galatnya tampil di `/maps/`. Terbitkan versi lain dari sana.
+
+Pengembangan di laptop: `cd web && npm install && npm run build` (pemeriksaan tipe). Data hanya muncul
+lewat layanan sungguhan (`npm run dev` menampilkan halaman dengan galat 404 dari `/api`).

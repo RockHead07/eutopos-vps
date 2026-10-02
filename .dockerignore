@@ -1,7 +1,11 @@
-# Konteks build: pyproject.toml, uv.lock, server/, dan spike/ (alat yang dipanggil pekerja).
+# Konteks build: pyproject.toml, uv.lock, server/, spike/, dan web/ (dashboard).
 *
 !pyproject.toml
 !uv.lock
 !server/
 !spike/
+!web/
 **/__pycache__
+web/node_modules
+web/.next
+web/out
