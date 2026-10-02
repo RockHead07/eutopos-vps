@@ -94,6 +94,12 @@ def create(body: JobIn, user: User, s: DB) -> JobOut:
     return JobOut.model_validate(job, from_attributes=True)
 
 
+@router.get("/api/jobs")
+def list_jobs(user: User, s: DB, limit: int = Query(50, ge=1, le=200)) -> list[JobOut]:
+    stmt = select(MapJob).order_by(MapJob.id.desc()).limit(limit)
+    return [JobOut.model_validate(j, from_attributes=True) for j in s.exec(stmt)]
+
+
 @router.get("/api/jobs/{job_id}")
 def get(job_id: int, user: User, s: DB) -> JobOut:
     job = s.get(MapJob, job_id)
