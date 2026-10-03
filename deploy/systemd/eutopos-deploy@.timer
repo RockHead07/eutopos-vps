@@ -1,0 +1,10 @@
+# Starts eutopos-deploy@<user>.service 5 minutes after boot, then every 5 minutes.
+[Unit]
+Description=Check eutopos main every 5 minutes for %i
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,13 @@
+# Pull-based deploy (docs/specs/2026-10-04-pull-deploy-design.md). Instance = Linux user that owns
+# ~/eutopos-vps and is in the docker group. Install: deploy/README.md section 9.
+[Unit]
+Description=Deploy eutopos main for %i
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=%i
+ExecStart=/bin/bash /home/%i/eutopos-vps/deploy/autodeploy.sh
+# A build that downloads the GPU torch wheels can take long on the lab network.
+TimeoutStartSec=2h

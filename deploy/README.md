@@ -304,3 +304,33 @@ Host eutopos-pclab
 
 Lalu `ssh eutopos-pclab`. Percobaan pertama membuka browser untuk kode email Access (sesi 24 jam). SSH
 hanya untuk manusia; deploy otomatis tidak memakai kunci ini.
+
+## 9. Deploy otomatis dari `main` (CD, 2026-10-04)
+
+PC lab menarik sendiri: timer systemd tiap 5 menit menjalankan `deploy/autodeploy.sh`. Commit baru di
+`main` di-deploy hanya kalau ketiga check CI lulus di commit itu, tidak ada pekerjaan bangun peta yang
+`running`, dan checkout PC lab berada di `main` tanpa perubahan. Gagal build: kembali ke commit lama.
+Gagal `/health` setelah start: rollback, dan commit itu tidak dicoba lagi. Rancangan dan batasannya
+(migrasi database tidak ikut di-rollback): `docs/specs/2026-10-04-pull-deploy-design.md`.
+
+**Pasang sekali** (di Ubuntu, `sudo` meminta password Linux):
+
+```bash
+cd ~/eutopos-vps && deploy/autodeploy.sh --dry-run    # cek dulu: "up to date at ..." atau alasan menunggu
+sudo cp deploy/systemd/eutopos-deploy@.service deploy/systemd/eutopos-deploy@.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now "eutopos-deploy@$USER.timer"
+```
+
+Berkas di `deploy/systemd/` tidak ikut ter-deploy: ulangi dua perintah `sudo` pertama setelah berkas itu
+berubah.
+
+```bash
+systemctl list-timers 'eutopos-deploy@*'          # kapan cek berikutnya
+journalctl -u "eutopos-deploy@$USER" -n 50         # riwayat: deploying, deployed, wait, rollback
+deploy/autodeploy.sh --dry-run                     # alasan commit terbaru belum di-deploy
+```
+
+**Bekerja manual di PC lab** (pindah cabang, mengubah berkas): timer otomatis berhenti mengubah apa pun
+selama checkout bukan `main` yang bersih. Untuk menghentikannya sama sekali:
+`sudo systemctl disable --now "eutopos-deploy@$USER.timer"`.
