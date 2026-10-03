@@ -31,23 +31,28 @@ jobs:
       - run: uv run --locked ruff check --output-format=github .
       - run: uv run --locked ruff format --check .
 
-  web:
-    name: Dashboard build
+  # Unit tests run inside the image the PC lab runs (Dockerfile target "test"). The same build also
+  # proves the Dockerfile and the dashboard (Next.js stage) still build. CPU torch, nothing is pushed.
+  tests:
+    name: Tests (Docker)
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 45
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          node-version: 24.21.0
-      - run: npm ci
-        working-directory: web
-      - run: npm run build
-        working-directory: web
+          context: .
+          file: deploy/Dockerfile
+          target: test
+          push: false
+          # Layer cache (torch, hloc, npm) in the GitHub Actions cache. A miss only costs time.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   workflows:
     name: Workflow security audit

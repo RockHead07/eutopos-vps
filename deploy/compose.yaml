@@ -27,6 +27,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
+      target: runtime  # tanpa ini Docker membangun tahap terakhir (test)
     environment:
       DATABASE_URL: postgresql+psycopg://eutopos:${POSTGRES_PASSWORD}@db:5432/eutopos
       EUTOPOS_AREA: ${EUTOPOS_AREA:-demo}
@@ -68,6 +69,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
+      target: runtime  # tanpa ini Docker membangun tahap terakhir (test)
     command: ["python", "-m", "server.worker"]
     init: true  # SIGTERM diteruskan, compose stop tidak menunggu 10 s lalu SIGKILL
     # DataLoader PyTorch (dipakai hloc) mengirim data antarproses lewat /dev/shm. Bawaan Docker
