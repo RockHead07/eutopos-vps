@@ -1,6 +1,9 @@
 # Spesifikasi: Website Unggah Video dan Pembangunan Peta
 
-**Status:** rancangan, hasil brainstorming 2026-10-01. Riset pendukung: `docs/web-upload-research.md`.
+**Status (2026-10-04):** diimplementasikan. PR 1 antrean dan pekerja (#28), PR 2 unggahan dan
+autentikasi (#29), PR 4 Tunnel (#30), PR 3a backend dashboard (#31), PR 3b dashboard web (#32), dan
+restyle dengan Overview (#34) sudah di `main`. Unggah dari `/new/` lewat Cloudflare belum diuji di PC lab. Hasil verifikasi per PR di bagian 13. Rancangan awal
+hasil brainstorming 2026-10-01. Riset pendukung: `docs/web-upload-research.md`.
 Melengkapi `docs/specs/2026-09-29-capture-and-map-pipeline-design.md` untuk **jalur video** (Tahap 0
 dan PA opsi a: kamera bawaan + `extract_frames.py`). Aplikasi capture dengan foto kunci dan pose ARCore
 tetap rencana terpisah di spesifikasi itu.

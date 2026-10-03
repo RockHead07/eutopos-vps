@@ -102,23 +102,38 @@ antar-koreksi (RPE).
 - **Pembanding:** ARCore tanpa koreksi pada lintasan yang sama. VPS komersial hanya kalau disetujui
   pembimbing, dan hanya sebagai pembanding pengujian.
 
-## 6. Kontrak API layanan (usulan)
+## 6. Kontrak API layanan
+
+Sumber kebenaran: `server/app.py` (lokalisasi), `server/uploads.py` dan `server/maps_api.py`
+(dashboard). Bagian ini ringkasannya per 2026-10-03.
 
 ```text
-POST /localize
-  masukan : 1 foto (JPEG) + intrinsik kamera (fx, fy, cx, cy) + opsional: lantai
-  keluaran: posisi (x, y, z) dan rotasi dalam koordinat GEDUNG,
-            jumlah inlier, status (ok / gagal), waktu proses per tahap
+POST /localize          (multipart)
+  masukan : image (JPEG/PNG, maks 20 MB) + opsional fx, fy, cx, cy (dikirim semua atau tidak sama sekali)
+  keluaran: status (ok / failed), inliers, correspondences,
+            intrinsics_source (client / map / exif),
+            pose_model    : posisi + rotasi kamera dalam kerangka peta SfM (tanpa skala meter)
+            pose_building : posisi + rotasi dalam kerangka gedung (meter), null kalau peta belum diselaraskan
+            area_id, map_version, t_s (waktu per tahap)
+  503 kalau belum ada versi peta aktif untuk area yang dilayani
 
 GET /health
-  status layanan dan versi peta yang termuat
+  status (ok / no_map), area_id, map_version, map_images, device, aligned
 ```
 
-- **Intrinsik dikirim klien.** ARCore menyediakan intrinsik kamera per frame.
-- **Model dimuat sekali saat server menyala**, supaya setiap permintaan memakai model yang hangat.
-- **Jumlah inlier dikembalikan**, supaya klien bisa menolak koreksi yang meragukan.
-- **Foto harus tegak, dan intrinsiknya dalam orientasi yang sama dengan foto.** Frame kamera ARCore
-  selalu berorientasi sensor, apa pun posisi ponsel. ALIKED + LightGlue tidak tahan rotasi 90 derajat:
-  foto miring tetap menghasilkan pose, tapi salah (uji 2026-09-28 di `docs/spike-plan.md`). Pilihannya:
-  klien memutar foto beserta intrinsiknya sebelum mengirim, atau klien mengirim rotasi perangkat
-  (0/90/180/270) dan server yang memutar keduanya. Putuskan saat membangun layanan.
+API dashboard (di balik Cloudflare Access): `GET/POST /api/jobs`, `GET /api/jobs/{id}`,
+`GET /api/versions`, `GET /api/versions/{id}/report`, `POST /api/versions/{id}/publish`,
+`GET /api/service`. Rinciannya di `docs/specs/2026-10-01-web-upload-and-map-build-design.md`.
+
+- **Intrinsik opsional.** Kalau klien tidak mengirim, server memakai intrinsik peta (foto beresolusi sama
+  dengan frame peta) atau taksiran dari EXIF. ARCore menyediakan intrinsik per frame, jadi aplikasi
+  navigasi sebaiknya tetap mengirimnya.
+- **Model dimuat sekali saat server menyala**, supaya setiap permintaan memakai model yang hangat. Versi
+  peta baru dimuat di latar saat diterbitkan, tanpa restart.
+- **Jumlah inlier dikembalikan**, dan di bawah 50 inlier statusnya `failed`, supaya klien bisa menolak
+  koreksi yang meragukan.
+- **Foto harus tegak, dan intrinsiknya dalam orientasi yang sama dengan foto.** ALIKED + LightGlue tidak
+  tahan rotasi 90 derajat: foto miring tetap menghasilkan pose, tapi salah (uji 2026-09-28 di
+  `docs/spike-plan.md`). Server menegakkan foto menurut tag EXIF Orientation. Frame kamera ARCore tidak
+  punya EXIF dan selalu berorientasi sensor, jadi **aplikasi navigasi wajib memutar frame beserta
+  intrinsiknya sebelum mengirim.** Ini belum diuji dengan aplikasi sungguhan.

@@ -3,7 +3,7 @@
 > Dibuka di HP saat bimbingan. **Jangan dibaca urut seperti naskah.** Pelajari sebelumnya, lirik kalau
 > buntu, dan tatap lawan bicara. Konteks lengkap: `docs/pa-context.md`.
 
-**Posisi (2026-09-30):** judul diterima di MIS, tanpa perubahan judul, dengan kedua pembimbing sesuai
+**Posisi (2026-10-03):** judul diterima di MIS, tanpa perubahan judul, dengan kedua pembimbing sesuai
 usulan. **Seminar proposal: 15 Desember 2026** (±11 minggu). Proposal PA adalah dokumen terpisah dari
 pengajuan judul.
 
@@ -12,8 +12,9 @@ pengajuan judul.
 Belum tercatat di dokumen mana pun, dan menentukan bentuk proposal. Tanyakan ke prodi atau kakak
 tingkat yang sudah seminar proposal.
 
-- [ ] **Template dan persyaratan proposal PA** dari jurusan. Template resmi selalu menang atas struktur
-      buatan sendiri.
+- [x] **Template dan persyaratan proposal PA** dari jurusan. Diterima 2026-10-02: Panduan Buku PA
+      Rev05, proposal = Bab 1 sampai 3. Ringkasan dan empat hal yang perlu dikonfirmasi di
+      `docs/pa-context.md` bagian 11.
 - [ ] **Kartu atau log bimbingan:** wajib atau tidak, dan minimal berapa kali sebelum seminar.
 - [ ] **Pembimbing di MIS sudah penetapan Kaprodi atau belum.** Pembimbing final ditetapkan Kaprodi
       setelah ACC, tidak otomatis mengikuti usulan.
@@ -47,7 +48,14 @@ Tunjukkan yang sudah terbukti, sebut juga yang belum. Jangan melebih-lebihkan.
   punya 6 sampai 9 titik cocok, jauh di bawah ambang 50, jadi **tersaring dan tidak ditampilkan**.
 - **Masalah yang ditemukan dan penyebabnya:** peta putus di belokan cepat dan saat kamera menghadap
   dinding polos. Cara merekam sudah diperbaiki di panduan lapangan.
-- **Belum ada:** angka akurasi dalam meter. Butuh rekaman ulang dengan titik acuan terukur.
+- **Setelah cara merekam diperbaiki (pola keliling, punggung ke dinding):** 401 dari 402 frame masuk satu
+  peta utuh, dan 36 dari 46 foto uji yang diambil di hari lain berhasil dilokalisasi (≥ 50 titik cocok).
+- **Alur kerja tanpa terminal:** video diunggah dari browser (juga dari HP), PC lab membangun peta
+  otomatis dengan GPU, lalu hasilnya terlihat sebagai angka kualitas dan tampilan 3D di dashboard, dan
+  bisa diterbitkan ke layanan tanpa restart. Akses lewat internet dilindungi login kode email
+  (Cloudflare Access).
+- **Belum ada:** angka akurasi dalam meter. Butuh rekaman ulang dengan titik acuan terukur. Ini yang
+  menentukan apakah VPS layak dipakai untuk navigasi, jadi rencana ujinya dibawa untuk minta arahan.
 
 ## 4. Rencana bimbingan sampai seminar (perkiraan)
 

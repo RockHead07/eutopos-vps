@@ -1,6 +1,12 @@
 # Spesifikasi: Aplikasi Capture dan Pipeline Peta
 
-**Status:** rancangan, hasil brainstorming 2026-09-29. Judul PA diterima 2026-09-30. Pengembangan
+**Status (2026-10-03):** sebagian sudah dibangun. Bagian 11 (`/localize`) dan 12 (Compose +
+PostgreSQL) jadi PR #23 dan #24. Jalur video, antrean pekerjaan, dan dashboard dibangun lewat
+`docs/specs/2026-10-01-web-upload-and-map-build-design.md`: dashboard ada di `web/` (bukan `dashboard/`
+seperti bagian 10), dan Next.js static export sudah terbukti (bagian 8 nomor 8). Aplikasi capture
+(eutopos Mapper) dan anchoring POI di denah **belum** dibangun.
+
+Rancangan awal hasil brainstorming 2026-09-29. Judul PA diterima 2026-09-30. Pengembangan
 berjalan dengan penghalang per pekerjaan di `CLAUDE.md` bagian Status:
 bagian yang bergantung pada metode lokalisasi menunggu hasil spike (`docs/spike-plan.md`), dan
 aplikasi capture menunggu keputusan terbuka nomor 1.
