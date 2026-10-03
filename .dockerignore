@@ -1,10 +1,11 @@
-# Konteks build: pyproject.toml, uv.lock, server/, spike/, dan web/ (dashboard).
+# Konteks build: pyproject.toml, uv.lock, server/, spike/, web/ (dashboard), dan tests/ (tahap test).
 *
 !pyproject.toml
 !uv.lock
 !server/
 !spike/
 !web/
+!tests/
 **/__pycache__
 web/node_modules
 web/.next

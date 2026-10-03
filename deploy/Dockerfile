@@ -72,3 +72,20 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=300s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=4)"
 CMD ["sh", "-c", "alembic -c server/alembic.ini upgrade head && uvicorn server.app:app --host 0.0.0.0 --port 8000"]
+
+# ---- test: unit test di dalam image yang dikirim (CI: docs/ci-cd.md) ----
+# Bukan image layanan: compose.yaml memilih target runtime. Build tahap ini gagal kalau ada tes yang
+# gagal: docker build -f deploy/Dockerfile --target test .
+FROM runtime AS test
+USER root
+COPY --from=uv /uv /usr/local/bin/uv
+ENV UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
+COPY pyproject.toml uv.lock /src/
+RUN --mount=type=cache,target=/root/.cache/uv \
+    cd /src \
+ && uv export --frozen --only-group dev --no-emit-project --no-hashes -o /tmp/dev.txt \
+ && uv pip install --python /opt/venv -r /tmp/dev.txt
+COPY --chown=eutopos:eutopos pyproject.toml ./
+COPY --chown=eutopos:eutopos tests ./tests
+USER eutopos
+RUN pytest -q -p no:cacheprovider

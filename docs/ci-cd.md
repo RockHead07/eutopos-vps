@@ -1,119 +1,93 @@
 # CI/CD
 
-Cara repo ini diperiksa otomatis sekarang, dan rencana build serta deployment layanan nanti. Klaim
-yang belum terverifikasi ke sumber primer ditandai ⚠️.
+How this repository is checked automatically, and how the PC lab gets new versions. Claims not yet
+verified against a primary source are marked ⚠️.
 
-## 1. Prinsip
+## 1. Principles
 
-Semua prinsip di bawah berasal dari panduan keamanan GitHub Actions
-([Secure use reference](https://docs.github.com/en/actions/reference/security/secure-use)), kecuali
-yang ditandai lain.
+All principles below come from GitHub's
+[Secure use reference](https://docs.github.com/en/actions/reference/security/secure-use) for Actions,
+unless marked otherwise.
 
-| Prinsip | Penerapan di repo ini |
+| Principle | How this repo applies it |
 |---|---|
-| **Action dipin ke SHA commit penuh.** Menurut GitHub, ini satu-satunya cara memakai action sebagai rilis yang tidak bisa diubah | Semua `uses:` memakai SHA, versinya ditulis di komentar. Dependabot yang memperbaruinya |
-| **Hak token minimum.** Izin bawaan `GITHUB_TOKEN` sebaiknya baca saja, dinaikkan per job hanya kalau perlu | `permissions: {}` di tingkat workflow, `contents: read` per job |
-| **Self-hosted runner hampir tidak pernah dipakai di repo publik**, karena siapa pun bisa membuka pull request yang menjalankan kode di runner itu | Repo ini publik. **Server instansi tidak boleh dijadikan runner GitHub** (lihat bagian 4) |
-| **Kredensial tidak tertinggal di runner** | `persist-credentials: false` di setiap checkout |
-| **Versi alat dikunci.** CI dan laptop memakai versi yang sama persis | Versi uv dipin lewat `required-version` di `pyproject.toml` (dibaca `setup-uv` di CI, ditegakkan uv lokal). Alat pengembangan dikunci di `uv.lock`, dan CI memakai `uv sync --locked` |
-| **Perintah CI bisa dijalankan lokal** | Lihat bagian 3 |
-| **Pembaruan dependensi ditunda sebentar** (cooldown), supaya rilis bermasalah sempat ditarik sebelum masuk | Dependabot `cooldown: 7 hari` |
+| **Actions pinned to a full commit SHA.** The only way to use an action as an immutable release | Every `uses:` is a SHA with the version in a comment. Dependabot updates them |
+| **Least-privilege token** | `permissions: {}` at workflow level, `contents: read` per job |
+| **No self-hosted runner on a public repository**: anyone can open a pull request that runs code on it | This repo is public. **The PC lab is never a GitHub runner, and GitHub never holds a key to it** (section 4) |
+| **No credentials left on the runner** | `persist-credentials: false` on every checkout |
+| **Locked tool versions**: CI and laptops run the same versions | uv pinned by `required-version` in `pyproject.toml`; dev tools locked in `uv.lock`; CI uses `--locked` / `--frozen` |
+| **Test what ships** (repo decision, `docs/specs/2026-10-03-ci-docker-tests-design.md`) | Unit tests run inside the image built from `deploy/Dockerfile`, the same file the PC lab builds |
+| **Every CI command runs locally** | Section 3 |
+| **Dependency updates wait a few days** (cooldown) so a bad release can be pulled first | Dependabot `cooldown: 7 days` |
 
-## 2. Yang sudah ada (fase 0, sebelum ACC)
+## 2. What runs
 
-| Berkas | Isi |
-|---|---|
-| `.github/workflows/ci.yml` | Job **Python lint and format**: `ruff check` dan `ruff format --check`. Job **Workflow security audit**: [zizmor](https://github.com/zizmorcore/zizmor) memeriksa workflow dari pola berbahaya (injeksi, token berlebih, action tidak dipin) |
-| `.github/dependabot.yml` | PR mingguan untuk SHA action dan alat di `uv.lock`, dikelompokkan jadi satu PR per ekosistem |
-| `pyproject.toml`, `uv.lock` | Konfigurasi ruff dan versi alat. **Belum** memuat dependensi runtime (torch, hloc) |
+`.github/workflows/ci.yml` runs on every pull request, on push to `main`, and manually
+(`workflow_dispatch`). A new push to a pull request cancels its older run.
 
-CI berjalan pada push ke `main`, setiap pull request, dan manual (`workflow_dispatch`). PR yang
-diperbarui membatalkan run lama untuk PR yang sama.
+| Job | What it checks | Required for merge |
+|---|---|---|
+| **Python lint and format** | `ruff check` and `ruff format --check` | yes |
+| **Workflow security audit** | [zizmor](https://github.com/zizmorcore/zizmor) on `.github/` (injection, excessive token permissions, unpinned actions) | yes |
+| **Tests (Docker)** | Builds `deploy/Dockerfile` up to the `test` target with CPU torch: dependencies, hloc, the Next.js dashboard, then `pytest -q` as the unprivileged `eutopos` user. A failing test fails the build. Nothing is pushed. Layers are cached in the GitHub Actions cache | after it has passed once (section 5) |
 
-**Sengaja belum ada:**
-- **Unit test.** Belum ada kode layanan yang diuji. Mulai fase 1.
-- **Smoke test pipeline hloc** (instalasi torch CPU + hloc, lalu `spike/run.py` pada data contoh
-  Sacré-Cœur). Berguna untuk menangkap instalasi yang rusak, tapi **waktunya di runner GitHub tidak
-  boleh dipakai sebagai hasil**, karena runner GitHub bukan salah satu dari T1, T2, atau T3. Belum
-  dibuat karena tidak bisa divalidasi dari lingkungan penyusun (unduhan PyTorch diblokir). Usulan:
-  workflow manual, bukan gerbang PR.
-- **Build dan deploy.** Belum ada layanan dan belum ada Dockerfile.
+The `test` stage is `FROM runtime` plus pytest (version from `uv.lock`) and `tests/`. The service image
+is unchanged: `deploy/compose.yaml` builds `target: runtime`, so the PC lab never builds or ships the
+tests.
 
-## 3. Menjalankan pemeriksaan yang sama di laptop
+Not covered by CI, on purpose:
+- **The GPU image** (cu130, about 3 GB). Runners have no GPU, and the CPU build exercises the same
+  Dockerfile apart from the torch index.
+- **The six `/localize` tests that need a real map** (`EUTOPOS_MAP_DIR`). Skipped in CI, as on a laptop
+  without map data.
+- **Timing.** A GitHub runner is not one of the measured targets, so its timings are never results.
+
+`.github/dependabot.yml` opens weekly pull requests for action SHAs and for `uv.lock`, one per
+ecosystem.
+
+## 3. Running the same checks locally
 
 ```bash
-uv sync --inexact             # memasang ruff dan zizmor sesuai uv.lock, TANPA menghapus paket spike
-uv run ruff check .           # lint
-uv run ruff format .          # merapikan format (CI hanya memeriksa, tidak mengubah)
-uv run zizmor .github/        # audit workflow
+uv sync --inexact             # ruff, zizmor and pytest from uv.lock, WITHOUT removing spike packages
+uv run ruff check .
+uv run ruff format .          # CI only checks; this rewrites
+uv run zizmor .github/
+docker build -f deploy/Dockerfile --target test .   # the "Tests (Docker)" job
 ```
 
-> 🚨 **Jangan menjalankan `uv sync` tanpa `--inexact` di laptop.** `uv sync` melakukan sinkronisasi
-> *exact*: paket yang tidak ada di `uv.lock` **dihapus** dari `.venv` ([dokumentasi uv](https://docs.astral.sh/uv/concepts/projects/sync/)). Torch, hloc, pycolmap, dan
-> LightGlue untuk spike dipasang manual (`docs/spike-plan.md` bagian 12) dan belum ada di `uv.lock`,
-> jadi `uv sync` biasa akan menghapus 43 paket (dicek dengan `--dry-run`, 2026-09-27). `uv run`
-> aman karena sinkronisasinya *inexact*. CI tidak terpengaruh karena runner mulai dari lingkungan
-> kosong. Masalah ini hilang di fase 1, saat dependensi runtime dideklarasikan di `pyproject.toml`.
+> 🚨 **Do not run `uv sync` without `--inexact` on a laptop with the spike environment.** `uv sync` is
+> exact: packages not in `uv.lock` are **removed** from `.venv`
+> ([uv docs](https://docs.astral.sh/uv/concepts/projects/sync/)). torch, hloc, pycolmap and LightGlue
+> are installed by the Dockerfile (and manually for the spike, `docs/spike-plan.md` section 12), not
+> declared in `pyproject.toml`. `uv run` is safe because its sync is inexact.
 
-Mengubah versi alat: `uv add --dev ruff@<versi>` atau `uv lock --upgrade-package ruff`, lalu commit
-`pyproject.toml` dan `uv.lock` bersamaan.
+Changing a tool version: `uv add --dev ruff@<version>` or `uv lock --upgrade-package ruff`, then
+commit `pyproject.toml` and `uv.lock` together. **uv itself** is pinned by `required-version`; uv of
+another version refuses to run. ⚠️ Not checked whether Dependabot updates that pin: assume it does
+not, and bump it by hand (`required-version`, then `uv self update <version>`).
 
-**Versi uv** dipin di `pyproject.toml` (`required-version`). uv dengan versi lain menolak berjalan
-dan menyarankan `uv self update <versi>`. ⚠️ Belum dicek apakah Dependabot ikut memperbarui pin ini. Anggap tidak, dan naikkan manual:
-ubah `required-version`, jalankan `uv self update <versi>`, lalu pastikan `uv sync --locked --inexact` lolos.
+`.claude/` is excluded from ruff: it holds third-party skills copied as they are.
 
-`.claude/` dikecualikan dari ruff karena isinya skill pihak ketiga yang disalin apa adanya.
+## 4. Delivery to the PC lab
 
-## 4. Rencana (fase 1 dan 2, setelah ACC dan setelah layanan ada)
+**Pull-based.** The PC lab checks for a new `main` itself, builds, and restarts. GitHub never logs in
+to it. Reasons: a public repository must not drive a self-hosted runner, and a server key stored as a
+GitHub secret would be a way into the lab network from outside. SSH through the Cloudflare Tunnel
+(`deploy/README.md` section 8) is for people, not for deployment.
 
-### Fase 1: continuous integration layanan
+Design and status: `docs/specs/2026-10-04-pull-deploy-design.md`.
 
-1. **Dependensi runtime masuk `pyproject.toml`**: torch dari indeks CPU PyTorch dan hloc dipin ke
-   commit. Langkah manual di `docs/spike-plan.md` bagian 12 digantikan `uv sync`.
-2. **Unit test** (pytest) untuk bagian yang dibangun sendiri: kontrak API `/localize` dan `/health`,
-   transformasi koordinat, dan validasi masukan. Pipeline hloc sendiri tidak diuji ulang.
-3. **Image Docker multi-stage**, PyTorch CPU, dibangun di CI pada setiap PR (tanpa dipublikasikan)
-   supaya Dockerfile yang rusak ketahuan lebih awal.
-4. **Rilis bertag** (`v*`): image dipublikasikan dengan tag versi dan dirujuk lewat **digest**,
-   disertai provenance build. ⚠️ Pilihan action untuk attestation belum dicek.
+## 5. GitHub settings (owner)
 
-### Fase 2: deployment ke server instansi
+Files in the repo cannot switch these on. In the repository **Settings**:
 
-**Best practice untuk kondisi ini: deployment berbasis tarik (pull).** Server instansi menarik
-image versi tertentu (lewat digest), lalu menjalankannya. GitHub tidak pernah masuk ke server.
-Alasannya:
-- Server instansi berada di jaringan internal, dan alamatnya tidak boleh muncul di repo publik.
-- Self-hosted runner di repo publik dilarang (bagian 1).
-- Kunci SSH server yang disimpan sebagai secret GitHub akan memberi akses masuk ke jaringan instansi
-  dari luar. Risiko ini tidak perlu diambil.
+1. **Ruleset `main-protection`**: pull request required, no bypass, force push blocked, required status
+   checks `Python lint and format`, `Workflow security audit`, and **`Tests (Docker)`** (add it after
+   the job has passed once: GitHub only offers checks it has seen).
+2. **Actions > General**: require actions pinned to a full SHA; default workflow permissions **read**.
+3. **Advanced Security**: secret scanning with push protection, Dependabot alerts and security updates,
+   code scanning default setup (CodeQL).
 
-**Rollback** cukup menjalankan kembali digest sebelumnya.
-
-**Keputusan yang harus ditanyakan ke pembimbing dulu:**
-
-| Pertanyaan | Kenapa |
-|---|---|
-| Registry image boleh di GitHub Container Registry, atau harus di dalam instansi? | Arahan "fully local" berlaku untuk layanan. Runtime tidak bergantung pada registry setelah image ditarik, tapi menarik dari luar tetap lalu lintas keluar dari server instansi. Kompromi: registry di dalam instansi, atau image dibangun di server dari tag git |
-| Server instansi punya akses internet keluar? | Menentukan apakah server bisa menarik image dan bobot model sendiri |
-
-**Bobot model tidak boleh diunduh saat layanan menyala.** Server bisa saja tanpa internet, dan
-layanan harus fully local. Bobot dimasukkan ke image atau dipasang sebagai volume. ⚠️ Kalau image
-dipublikasikan secara publik, bobot di dalamnya ikut **didistribusikan ulang**, jadi lisensi bobot
-ALIKED, LightGlue, dan retrieval global (MegaLoc atau NetVLAD) harus dicek dulu. Lisensi kode
-repo-nya tidak otomatis berlaku untuk bobotnya.
-
-## 5. Pengaturan GitHub yang harus diaktifkan pemilik repo
-
-Berkas di repo tidak bisa mengaktifkan ini. Aktifkan lewat **Settings** repo:
-
-1. **Rulesets untuk `main`**: wajib lewat pull request, dan wajib lolos status check
-   `Python lint and format` dan `Workflow security audit`. Larang force push.
-2. **Actions > General**: aktifkan kebijakan yang mewajibkan action dipin ke SHA penuh (disebut di
-   panduan keamanan GitHub). Izin bawaan workflow: **read**.
-3. **Advanced Security**: secret scanning dan push protection, Dependabot alerts dan security
-   updates, serta code scanning **default setup** (CodeQL). ⚠️ Ketersediaan gratis untuk repo publik
-   belum saya cocokkan ke halaman harga GitHub. Cek di halaman Settings.
-
-Secret scanning hanya mengenali pola kredensial yang dikenalnya. **NRP, nama server internal, dan
-alamat IP tidak tertangkap.** Aturan repo publik di `CLAUDE.md` tetap harus diperiksa manual sebelum
-commit.
+Secret scanning only knows credential patterns. **Student ID numbers, internal host names and IP
+addresses are not caught.** The public-repo rules in `CLAUDE.md` still need a manual check before
+every commit.
