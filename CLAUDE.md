@@ -50,7 +50,8 @@ Kode uji coba ada di `spike/`, data di `data/` (tidak masuk git).
   **unggahan video** (tusd, hook ke api, autentikasi Cloudflare Access, terverifikasi di PC lab
   2026-10-02 dengan `server.upload_client`), dan **akses dari internet** lewat Cloudflare Tunnel +
   Access di `eutopos.rockhead07.tech` (`deploy/compose.tunnel.yaml`). Dashboard (PR 3) di `web/`,
-  disajikan dari `/`.
+  disajikan dari `/`, berbahasa Inggris; tampil lewat Access di PC lab 2026-10-03 (unggah dari
+  `/new/` belum diuji).
   `/localize` lewat container terverifikasi di PC lab dengan peta demo: 405 inlier, 1,94 s CPU.
   Website unggah (PR 2 sampai 4) mengikuti `docs/specs/2026-10-01-web-upload-and-map-build-design.md`.
 - PC lab sudah jadi host: WSL2 Ubuntu 24.04, Docker Engine, NVIDIA Container Toolkit, GPU terlihat

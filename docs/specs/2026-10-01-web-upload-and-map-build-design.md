@@ -205,3 +205,8 @@ notifikasi, banyak pekerja, pemutaran video.
   tunnel `healthy`), port `api` hanya `127.0.0.1`. Dari internet tanpa login: `/health`, `/files/`,
   `/internal/tus-hook` semuanya 302 ke login Access. Setelah login kode email: `/health` menjawab
   `{"status":"ok", ...}` lewat Tunnel. Di PC lab tanpa token: `POST /api/jobs` 401.
+- ✅ PR 3 sebagian (2026-10-03, cabang `feat/dashboard-web` di-build di PC lab): dashboard tampil lewat
+  Cloudflare Access. `GET /api/jobs` sempat 500 karena pekerjaan dari `manage job` menyimpan video
+  tanpa `name` dan `size`; setelah diperbaiki, daftar pekerjaan 1 sampai 3 tampil, dan `/job/?id=2`
+  serta `/job/?id=3` menampilkan ringkasan dan tampilan 3D di iframe (laporan lama, plotly disematkan).
+  Belum: unggah dari `/new/` lewat Cloudflare dan laporan 3D yang merujuk `/assets/plotly.min.js`.
