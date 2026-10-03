@@ -28,7 +28,7 @@ def decode_upright(data: bytes) -> np.ndarray:
         np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION
     )
     if raw is None:
-        raise ValueError("bukan gambar yang bisa dibaca")
+        raise ValueError("not a readable image")
     with Image.open(io.BytesIO(data)) as im:
         orientation = im.getexif().get(0x0112, 1)
     image = _UPRIGHT.get(orientation, lambda a: a)(raw[:, :, ::-1])

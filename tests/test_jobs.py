@@ -70,7 +70,7 @@ def test_recover_stale_fails_running_jobs(session):
     jobs.claim_next(session)
     assert jobs.recover_stale(session) == 1
     assert session.get(MapJob, job.id).status == "failed"
-    assert "pekerja berhenti" in session.get(MapJob, job.id).error
+    assert "worker stopped" in session.get(MapJob, job.id).error
 
 
 def test_publish_records_who(session):

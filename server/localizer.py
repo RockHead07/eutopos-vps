@@ -85,7 +85,7 @@ class Localizer:
         aliked = {**ALIKED, "model": {**ALIKED["model"], "max_num_keypoints": max_kp}}
         # Periksa peta dulu: pesan yang jelas, dan tidak membuang waktu memuat model.
         if missing := missing_files(map_dir, max_kp, resize, global_resize):
-            raise FileNotFoundError(f"peta tidak lengkap di {map_dir}: {[str(p) for p in missing]}")
+            raise FileNotFoundError(f"map is incomplete in {map_dir}: {[str(p) for p in missing]}")
 
         t0 = time.perf_counter()
         trust_megaloc_hub_repo()

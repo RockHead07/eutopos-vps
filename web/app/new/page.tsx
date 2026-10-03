@@ -4,7 +4,7 @@ import Dashboard from "@uppy/react/dashboard";
 import Tus from "@uppy/tus";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { api, mb } from "@/lib/api";
+import { api, mb, ROLE } from "@/lib/api";
 import "@uppy/core/css/style.min.css";
 import "@uppy/dashboard/css/style.min.css";
 
@@ -74,8 +74,8 @@ export default function NewSessionPage() {
       const missing = job.videos.filter((v) => !v.uploaded).map((v) => v.name);
       if (missing.length) {
         throw new Error(
-          `Belum terunggah: ${missing.join(", ")}. Tambahkan lagi kalau terhapus, lalu tekan tombol ` +
-            "untuk mengulang. Kalau sesi login habis, muat ulang halaman (unggahan mulai dari awal).",
+          `Not uploaded yet: ${missing.join(", ")}. Add them again if removed, then press the button ` +
+            "to retry. If your login session expired, reload the page (the upload starts over).",
         );
       }
       router.push(`/job/?id=${job.id}`);
@@ -88,19 +88,19 @@ export default function NewSessionPage() {
 
   return (
     <>
-      <h1>Sesi peta baru</h1>
+      <h1>New map session</h1>
       <label>
-        ID area (huruf kecil, angka, tanda hubung){" "}
+        Area ID (lowercase letters, digits, hyphens){" "}
         <input value={areaId} onChange={(e) => setAreaId(e.target.value)} pattern="[a-z0-9][a-z0-9-]{0,39}" />
       </label>
       <label>
-        Nama area <input value={areaName} onChange={(e) => setAreaName(e.target.value)} />
+        Area name <input value={areaName} onChange={(e) => setAreaName(e.target.value)} />
       </label>
       <Dashboard uppy={uppy} hideUploadButton proudlyDisplayPoweredByUppy={false} height={320} />
       {files.length > 0 && (
         <table>
           <thead>
-            <tr><th>Video</th><th>Ukuran</th><th>Peran</th></tr>
+            <tr><th>Video</th><th>Size</th><th>Role</th></tr>
           </thead>
           <tbody>
             {files.map((f, i) => (
@@ -109,8 +109,8 @@ export default function NewSessionPage() {
                 <td>{mb(f.size)}</td>
                 <td>
                   <select value={roleOf(f, i)} onChange={(e) => setRoles({ ...roles, [f.id]: e.target.value as Role })}>
-                    <option value="peta">peta</option>
-                    <option value="uji">uji</option>
+                    <option value="peta">{ROLE.peta}</option>
+                    <option value="uji">{ROLE.uji}</option>
                   </select>
                 </td>
               </tr>
@@ -118,9 +118,9 @@ export default function NewSessionPage() {
           </tbody>
         </table>
       )}
-      <p>Peta produksi: tandai semua video sebagai peta. Jangan tutup tab sampai unggahan selesai.</p>
+      <p>For a production map, mark every video as map. Keep this tab open until the upload finishes.</p>
       <button onClick={start} disabled={busy || files.length === 0}>
-        {busy ? "Mengunggah..." : "Mulai unggah"}
+        {busy ? "Uploading..." : "Start upload"}
       </button>
       {error && <p className="error">{error}</p>}
     </>

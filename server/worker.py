@@ -61,9 +61,9 @@ def run(argv: list[str], log: Path) -> None:
         try:
             proc = subprocess.run(argv, stdout=f, stderr=subprocess.STDOUT, timeout=STAGE_TIMEOUT_S)
         except subprocess.TimeoutExpired as e:
-            raise StageError(f"perintah melewati {STAGE_TIMEOUT_S} s: {Path(argv[1]).name}") from e
+            raise StageError(f"command exceeded {STAGE_TIMEOUT_S} s: {Path(argv[1]).name}") from e
     if proc.returncode:
-        raise StageError(f"perintah gagal (kode {proc.returncode}): {Path(argv[1]).name}")
+        raise StageError(f"command failed (exit {proc.returncode}): {Path(argv[1]).name}")
 
 
 def log_tail(log: Path) -> str:
@@ -105,9 +105,9 @@ def process(
         jobs.set_stage(session, job, "extract")
         job_dir.mkdir(parents=True, exist_ok=True)  # di dalam try: folder tak bisa ditulis = gagal
         if min(free_bytes(data), free_bytes(maps)) < MIN_FREE_BYTES:
-            raise StageError("ruang disk kurang dari 20 GB, pekerjaan tidak dimulai")
+            raise StageError("less than 20 GB of free disk; job not started")
         if missing := missing_inputs(job.videos):
-            raise StageError(f"berkas masukan tidak ditemukan: {', '.join(missing)}")
+            raise StageError(f"input files not found: {', '.join(missing)}")
         for sub in ("mapping", "query"):
             (dataset / sub).mkdir(parents=True, exist_ok=True)
         copy_frame_dirs(job.videos, dataset)
@@ -123,7 +123,7 @@ def process(
 
         jobs.set_stage(session, job, "register")
         if missing := missing_files(map_dir, MAX_KP, RESIZE, GLOBAL_RESIZE):
-            raise StageError(f"peta tidak lengkap: {', '.join(map(str, missing))}")
+            raise StageError(f"map is incomplete: {', '.join(map(str, missing))}")
         summary = {
             "run": json.loads((run_dir(map_dir) / "summary.json").read_text(encoding="utf-8")),
             "inspect": json.loads((map_dir / "inspect.json").read_text(encoding="utf-8")),

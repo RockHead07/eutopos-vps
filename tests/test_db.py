@@ -107,7 +107,7 @@ def test_service_starts_when_active_map_fails_to_load(tmp_path, monkeypatch):
 
     with TestClient(app) as client:
         assert client.get("/health").json()["status"] == "no_map"
-        assert "versi 1" in client.get("/api/service").json()["reload_error"]
+        assert "version 1" in client.get("/api/service").json()["reload_error"]
 
 
 def test_migration_cli_runs_like_the_container(tmp_path):

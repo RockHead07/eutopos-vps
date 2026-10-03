@@ -26,7 +26,7 @@ def fake_runner(calls, fail_on=None):
         script = Path(argv[1]).name
         calls.append(script)
         if script == fail_on:
-            raise worker.StageError(f"perintah gagal (kode 1): {script}")
+            raise worker.StageError(f"command failed (exit 1): {script}")
         if script == "run.py":
             map_dir = Path(argv[argv.index("--out") + 1])
             for p in required_files(map_dir, 1024, 1024, 512):
@@ -117,7 +117,7 @@ def test_process_refuses_when_disk_is_low(session, tmp_path):
     calls = []
     worker.process(session, job, data, maps, runner=fake_runner(calls), free_bytes=lambda p: 10)
     assert (job.status, job.stage) == ("failed", "extract")
-    assert "ruang disk" in job.error and calls == []
+    assert "free disk" in job.error and calls == []
     assert not uploaded.exists()  # pekerjaan gagal tidak pernah diulang, video tidak ditinggal
 
 
@@ -130,7 +130,7 @@ def test_process_reports_missing_input(session, tmp_path):
 
 def test_run_appends_command_and_raises_on_failure(tmp_path):
     log = tmp_path / "log.txt"
-    with pytest.raises(worker.StageError, match="kode 3"):
+    with pytest.raises(worker.StageError, match="exit 3"):
         worker.run([sys.executable, "-c", "print('halo'); raise SystemExit(3)"], log)
     text = log.read_text(encoding="utf-8")
     assert text.startswith("$ ") and "halo" in text
@@ -156,7 +156,7 @@ def test_error_keeps_message_when_log_is_long(session, tmp_path):
     log.write_text("".join("x" * 120 + "\n" for _ in range(60)), encoding="utf-8")
     runner = fake_runner([], fail_on="run.py")
     worker.process(session, job, data, maps, runner=runner, free_bytes=lambda p: 10**12)
-    assert job.error.startswith("perintah gagal (kode 1): run.py")
+    assert job.error.startswith("command failed (exit 1): run.py")
     assert len(job.error) <= jobs.ERROR_MAX
 
 

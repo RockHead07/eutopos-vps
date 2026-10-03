@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
                 # Tetap menyala, /localize 503: dashboard di proses ini dipakai untuk menerbitkan
                 # versi lain. Tanpa ini api restart berulang dan dashboard ikut mati.
                 logging.getLogger("eutopos").exception("gagal memuat peta aktif")
-                st.reload_error = f"versi {v.version} gagal dimuat saat menyala ({e})"
+                st.reload_error = f"version {v.version} failed to load at startup ({e})"
     else:
         st.localizer = active_map.load_localizer(Path(os.environ["EUTOPOS_MAP_DIR"]))
     yield
@@ -128,10 +128,10 @@ def localize(
     dipakai intrinsik peta (resolusi sama) atau taksiran dari EXIF."""
     data = image.file.read(MAX_UPLOAD_BYTES + 1)
     if len(data) > MAX_UPLOAD_BYTES:
-        raise HTTPException(413, f"foto lebih dari {MAX_UPLOAD_BYTES // 2**20} MB")
+        raise HTTPException(413, f"photo larger than {MAX_UPLOAD_BYTES // 2**20} MB")
     given = [v is not None for v in (fx, fy, cx, cy)]
     if any(given) and not all(given):
-        raise HTTPException(422, "fx, fy, cx, cy dikirim semua atau tidak sama sekali")
+        raise HTTPException(422, "send all of fx, fy, cx, cy or none of them")
     try:
         rgb = decode_upright(data)
     except ValueError as e:
@@ -141,7 +141,7 @@ def localize(
     with st.lock:
         loc, area_id, map_version = st.localizer, st.area_id, st.map_version
     if loc is None:
-        raise HTTPException(503, "belum ada versi peta aktif untuk area ini")
+        raise HTTPException(503, "no published map version for this area")
     h, w = rgb.shape[:2]
     if all(given):
         camera, source = pinhole(fx, fy, cx, cy, w, h), "client"
