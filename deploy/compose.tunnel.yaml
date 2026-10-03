@@ -13,6 +13,9 @@ services:
     environment:
       # Rahasia. Ambil dari dashboard Zero Trust: Networks, Tunnels, konektor, perintah install.
       TUNNEL_TOKEN: ${TUNNEL_TOKEN:?isi TUNNEL_TOKEN di deploy/.env}
+    # Rute SSH (ssh://host.docker.internal:22) menuju sshd di host WSL, bukan ke container lain.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       api:
         condition: service_started

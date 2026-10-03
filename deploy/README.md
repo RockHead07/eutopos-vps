@@ -187,10 +187,11 @@ pengguna dilakukan di Cloudflare, bukan di repo ini:
 | Bagian | Isi |
 |---|---|
 | Tunnel `eutopos-pclab` | Dikelola remote dari Cloudflare. Terpisah dari tunnel proyek lain |
-| Rute | `eutopos.rockhead07.tech`: `/internal/*` 404, `/files/*` ke `tusd:8080`, sisanya ke `api:8000`. Hostname lain 404 |
-| Pagar kedua | `originRequest.access` (`required`, tim, AUD): tunnel menolak permintaan tanpa JWT Access yang sah |
+| Rute | `eutopos.rockhead07.tech`: `/internal/*` 404, `/files/*` ke `tusd:8080`, sisanya ke `api:8000`. `ssh-eutopos.rockhead07.tech` ke `ssh://host.docker.internal:22` (bagian 8). Hostname lain 404 |
+| Pagar kedua | `originRequest.access` (`required`, tim, AUD): tunnel menolak permintaan tanpa JWT Access yang sah. Rute SSH memakai AUD aplikasinya sendiri |
 | Aplikasi Access `eutopos` | Self-hosted, login kode email (One-time PIN) saja, sesi 720 jam, kebijakan Allow berisi daftar email |
-| DNS | CNAME `eutopos` ke tunnel, proxied |
+| Aplikasi Access `eutopos-ssh` | Sama, untuk hostname SSH, sesi 24 jam, Allow hanya pemilik |
+| DNS | CNAME `eutopos` dan `ssh-eutopos` ke tunnel, proxied |
 
 **Isi `deploy/.env` di PC lab** (ketiganya tidak pernah masuk repo atau chat):
 
@@ -250,3 +251,55 @@ galatnya tampil di `/maps/`. Terbitkan versi lain dari sana dengan **Publish**.
 
 Pengembangan di laptop: `cd web && npm install && npm run build` (pemeriksaan tipe). Data hanya muncul
 lewat layanan sungguhan (`npm run dev` menampilkan halaman dengan galat 404 dari `/api`).
+
+## 8. Menyala sendiri setelah boot, dan SSH (PC lab, 2026-10-03)
+
+**Autostart.** WSL tidak menyala sendiri saat Windows boot, dan `exit` di terminal Ubuntu terakhir mematikan
+seluruh layanan. Task Scheduler Windows `WSL-Ubuntu-Autostart` menahannya tetap hidup:
+
+| Pengaturan | Nilai |
+|---|---|
+| Trigger | At startup |
+| Akun | pengguna Windows pemilik distro (bukan SYSTEM: distro WSL terikat ke akun pengguna) |
+| Mode | Run whether user is logged on or not; password disimpan. Akun Microsoft: password akun Microsoft, bukan PIN |
+| Aksi | `wsl.exe -d Ubuntu-24.04 --exec sleep infinity` |
+| Settings | batas waktu dimatikan (PT0S; bawaan 3 hari akan menghentikannya), boleh jalan dengan baterai, IgnoreNew, restart 3x tiap 1 menit |
+
+Trigger boot dan password hanya bisa disimpan dari Task Scheduler yang dibuka **Run as administrator**.
+Untuk maintenance, hentikan task dulu: kalau WSL dimatikan saat task berjalan, restart otomatis menyalakannya
+lagi satu menit kemudian.
+
+```powershell
+Stop-ScheduledTask -TaskName WSL-Ubuntu-Autostart; wsl --terminate Ubuntu-24.04; wsl -l -v   # Stopped
+Start-ScheduledTask -TaskName WSL-Ubuntu-Autostart
+(Get-ScheduledTask WSL-Ubuntu-Autostart).State; (Get-ScheduledTaskInfo WSL-Ubuntu-Autostart).LastTaskResult  # Running, 267009
+```
+
+Bukti 2026-10-03: setelah restart, tunnel tersambung kembali sebelum ada yang login.
+
+**SSH.** `openssh-server` di Ubuntu, hanya kunci. Drop-in `/etc/ssh/sshd_config.d/01-eutopos.conf`
+(nama `01-` supaya dibaca sebelum `50-cloud-init.conf`):
+
+```text
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+PubkeyAuthentication yes
+AllowUsers <pengguna-linux>
+```
+
+Kunci publik laptop di `~/.ssh/authorized_keys` (mode 600, folder 700). Tidak ada port yang dibuka ke
+jaringan: laptop masuk lewat Tunnel dan Access, sama seperti dashboard. Di laptop (butuh `cloudflared`),
+`~/.ssh/config`:
+
+```text
+Host eutopos-pclab
+  HostName ssh-eutopos.rockhead07.tech
+  User <pengguna-linux>
+  IdentityFile ~/.ssh/id_ed25519_eutopos
+  IdentitiesOnly yes
+  ProxyCommand cloudflared access ssh --hostname %h
+```
+
+Lalu `ssh eutopos-pclab`. Percobaan pertama membuka browser untuk kode email Access (sesi 24 jam). SSH
+hanya untuk manusia; deploy otomatis tidak memakai kunci ini.
