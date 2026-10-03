@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import create_engine
 from sqlmodel import Session, select
 
@@ -63,8 +63,16 @@ class VideoOut(BaseModel):
     # Tanpa upload_id dan path: dengan ID unggahan orang bisa mengganggu unggahan milik orang lain.
     name: str
     role: str
-    size: int
-    uploaded: bool = False
+    size: int | None = None  # None: pekerjaan dari manage job (CLI), videonya tidak diunggah
+    uploaded: bool | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_cli(cls, v):
+        # manage job menyimpan {"path", "role"} saja: nama diambil dari nama berkas.
+        if isinstance(v, dict) and "name" not in v and v.get("path"):
+            return {**v, "name": Path(v["path"]).name}
+        return v
 
 
 class JobOut(BaseModel):

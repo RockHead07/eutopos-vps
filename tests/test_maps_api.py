@@ -124,3 +124,18 @@ def test_publish_rejects_cross_site_form(client):
     assert client.get("/api/versions").json()[0]["status"] == "candidate"
     ok = client.post(f"/api/versions/{v.id}/publish", json={})
     assert ok.json()["reload"] == "other_area"
+
+
+def test_jobs_from_cli_are_listed(client):
+    # manage job (CLI) menyimpan video hanya dengan path dan role. Satu baris lama seperti ini
+    # sempat membuat seluruh GET /api/jobs gagal 500 di PC lab (2026-10-03).
+    jobs.create_job(
+        client.db,
+        "floor10",
+        "L10",
+        "cli",
+        [{"path": "/data/inbox/a.mp4", "role": "peta"}],
+        "queued",
+    )
+    videos = client.get("/api/jobs").json()[0]["videos"]
+    assert videos == [{"name": "a.mp4", "role": "peta", "size": None, "uploaded": None}]
