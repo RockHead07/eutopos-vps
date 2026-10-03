@@ -117,6 +117,7 @@ Semua sudah diperbaiki di kode atau konfigurasi. Dicatat supaya tidak diulang sa
 | (Tidak sempat terjadi) layanan macet menunggu jawaban y/N | `torch.hub.load` bawaan bertanya "percaya repo ini?" untuk MegaLoc | `server/localizer.py` menandai `gmberton_MegaLoc` tepercaya secara eksplisit |
 | `files do not exist at "/maps/demo/kp1024-r1024/sfm"` | `EUTOPOS_MAPS_DIR` di `.env` masih contoh `/home/USER/...`. Bind bentuk pendek diam-diam membuat folder kosong milik root sebagai `/maps` | `compose.yaml` memakai bind panjang dengan `create_host_path: false` (compose menolak menyala). `server.manage register` dan `Localizer` memeriksa berkas peta lebih dulu dan menyebut berkas yang tidak ada |
 | Build GPU gagal: `Failed to download nvidia-nvtx ... operation timed out` (2026-10-01) | Roda CUDA ±3 GB lewat jaringan lab. Batas baca uv 30 s dan puluhan unduhan paralel | `Dockerfile`: `UV_HTTP_TIMEOUT=300`, `UV_CONCURRENT_DOWNLOADS=4`, dan cache mount uv di setiap `uv pip install`, jadi build ulang melanjutkan unduhan yang sudah selesai |
+| Rahasia hook terlihat di log (2026-10-03) | tusd mencetak alamat hook lengkap, termasuk `?key=<TUS_HOOK_SECRET>`, setiap kali menyala | Jangan menempel bagian awal `docker compose logs tusd` ke mana pun. Kalau terlanjur: `sed -i "s/^TUS_HOOK_SECRET=.*/TUS_HOOK_SECRET=$(openssl rand -hex 32)/" .env` lalu `docker compose up -d` (membuat ulang `api` dan `tusd`) |
 | Build atau `compose up` mati dengan `fatal error: fault` dan `SIGBUS: bus error` (2026-10-02) | Disk C: penuh (sisa 0,18 GB). Disk virtual WSL tidak bisa tumbuh. Cache build Docker bisa mencapai 40 GB lebih | Kosongkan C: (sisakan minimal 30 GB sebelum build besar). `docker system df` untuk melihat ukuran. `docker builder prune` membebaskan cache build, tetapi build berikutnya yang mengubah dependensi mengunduh ulang PyTorch CUDA (±46 menit) |
 | Pekerjaan gagal di tahap `build`: `unable to allocate shared memory(shm) ... No space left on device` (2026-10-01) | `DataLoader` PyTorch di hloc memakai `/dev/shm`, bawaannya hanya 64 MB di container | `shm_size: "2gb"` di layanan `worker` (`compose.yaml`) |
 
@@ -235,17 +236,17 @@ disajikan `api` dari `web/out`.
 |---|---|
 | `/` | Daftar pekerjaan, status diperbarui tiap 5 detik |
 | `/new/` | Pilih area, tambah video, tentukan peran (peta atau uji), unggah dengan progress |
-| `/job/?id=N` | Status, ringkasan peta, galat, tampilan 3D, tombol Terbitkan |
-| `/maps/` | Versi per area, versi yang dilayani, Terbitkan atau Kembalikan |
+| `/job/?id=N` | Status, ringkasan peta, galat, tampilan 3D, tombol **Publish** |
+| `/maps/` | Versi per area, versi yang dilayani, **Publish** atau **Restore** |
 
-Terbitkan memuat peta baru di latar. Selama memuat, `/localize` tetap memakai peta lama dan tombol
-Terbitkan nonaktif. Versi baru ditulis aktif di database hanya setelah berhasil dimuat. Kalau gagal
+**Publish** (Terbitkan) memuat peta baru di latar. Selama memuat, `/localize` tetap memakai peta lama dan tombol
+**Publish** nonaktif. Versi baru ditulis aktif di database hanya setelah berhasil dimuat. Kalau gagal
 (misalnya GPU penuh karena pekerja sedang membangun peta), database tidak berubah, peta lama tetap
 dipakai, galatnya tampil di `/maps/`, dan versi itu bisa diterbitkan lagi nanti. Layanan hanya memuat
 ulang untuk area `EUTOPOS_AREA`; versi area lain hanya ditandai aktif di database.
 
 Kalau peta aktif gagal dimuat saat `api` menyala, `api` tetap menyala tanpa peta (`/localize` 503) dan
-galatnya tampil di `/maps/`. Terbitkan versi lain dari sana.
+galatnya tampil di `/maps/`. Terbitkan versi lain dari sana dengan **Publish**.
 
 Pengembangan di laptop: `cd web && npm install && npm run build` (pemeriksaan tipe). Data hanya muncul
 lewat layanan sungguhan (`npm run dev` menampilkan halaman dengan galat 404 dari `/api`).
