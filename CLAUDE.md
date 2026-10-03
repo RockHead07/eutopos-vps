@@ -37,7 +37,7 @@ Riwayat: 2026-09-20 tidak ada pengembangan sebelum ACC; 2026-09-25 pengecualian 
 lantai 10; 2026-09-29 dicabut dengan penghalang per pekerjaan di atas; 2026-09-30 judul diterima.
 Kode uji coba ada di `spike/`, data di `data/` (tidak masuk git).
 
-**Posisi terakhir (2026-09-30):**
+**Posisi terakhir (2026-10-04):**
 - Spike: pipeline, pengukuran latensi hangat, dan penilai galat meter jalan di data contoh (laptop dan
   PC lab). Rincian: `docs/spike-plan.md`.
 - Uji video lantai 10 (tanpa titik acuan): jalur ular (2026-09-30) membuat peta pecah 3 potongan,
@@ -49,13 +49,15 @@ Kode uji coba ada di `spike/`, data di `data/` (tidak masuk git).
   area), **antrean bangun peta** (`map_job`, pekerja GPU, `python -m server.manage job`), dan
   **unggahan video** (tusd, hook ke api, autentikasi Cloudflare Access, terverifikasi di PC lab
   2026-10-02 dengan `server.upload_client`), dan **akses dari internet** lewat Cloudflare Tunnel +
-  Access di `eutopos.rockhead07.tech` (`deploy/compose.tunnel.yaml`). Dashboard (PR 3) di `web/`,
-  disajikan dari `/`, berbahasa Inggris; tampil lewat Access di PC lab 2026-10-03 (unggah dari
-  `/new/` belum diuji).
+  Access di `eutopos.rockhead07.tech` (`deploy/compose.tunnel.yaml`). **Dashboard** (PR 3) di `web/`,
+  disajikan FastAPI dari `/`, berbahasa Inggris: Overview, daftar pekerjaan, unggah video, detail
+  pekerjaan dengan tampilan 3D, versi peta dan Publish. Tampil lewat Access di PC lab 2026-10-03;
+  unggah dari `/new/` lewat Cloudflare belum diuji.
   `/localize` lewat container terverifikasi di PC lab dengan peta demo: 405 inlier, 1,94 s CPU.
   Website unggah (PR 2 sampai 4) mengikuti `docs/specs/2026-10-01-web-upload-and-map-build-design.md`.
 - PC lab sudah jadi host: WSL2 Ubuntu 24.04, Docker Engine, NVIDIA Container Toolkit, GPU terlihat
-  dari dalam container (`deploy/README.md`).
+  dari dalam container. WSL menyala sendiri setelah boot tanpa login (Task Scheduler), dan SSH masuk lewat
+  Tunnel + Access di `ssh-eutopos.rockhead07.tech` (`deploy/README.md` bagian 8).
 - Rancangan setelahnya: `docs/specs/2026-09-29-capture-and-map-pipeline-design.md`.
 
 **Prioritas tetap spike satu koridor** (`docs/spike-plan.md`). Spike menjawab dua hal: apakah akurasi
@@ -188,13 +190,15 @@ Skill global yang juga relevan: `ponytail` (anti over-engineering), `engineering
 | `docs/pa-context.md` | Konteks PA: judul final dan riwayatnya, arahan pembimbing, isi dokumen pengajuan, isu Proposal PA, keputusan, pelajaran, dan yang masih terbuka |
 | `docs/supervision-plan.md` | Rencana bimbingan menuju seminar proposal (15 Desember 2026): yang dicari tahu dulu, agenda bimbingan dengan usulan posisi, kemajuan yang ditunjukkan, jadwal, catatan hasil |
 | `docs/spike-plan.md` | Rencana spike: data, varian, perangkat, ambang keputusan, pertanyaan untuk pembimbing |
-| `docs/field-test-runbook.md` | Panduan kerja lapangan uji lantai 10: persiapan, jadwal, cara merekam video peta (jalur ular dua arah), titik acuan, formulir, perintah setelahnya |
-| `docs/design-notes.md` | Desain: dua lapis posisi, rumus penyelarasan ARCore ke gedung, sistem koordinat, model data, rute, metrik evaluasi, kontrak API |
+| `docs/field-test-runbook.md` | Panduan kerja lapangan uji lantai 10: persiapan, jadwal, cara merekam video peta (pola keliling menghadap ke dalam sebagai pola utama sejak 2026-10-01), titik acuan, formulir, perintah setelahnya |
+| `docs/design-notes.md` | Desain: dua lapis posisi, rumus penyelarasan ARCore ke gedung, sistem koordinat, model data, rute, metrik evaluasi, kontrak API (sesuai `server/app.py`) |
 | `docs/research-paper.md` | Semua rujukan penelitian beserta tautan, perannya di proyek, lisensi, status verifikasi, dan kandidat cadangan |
 | `docs/multi-map-localization-research.md` | Riset memilih peta area untuk foto uji dan mengelola banyak peta area: praktik riset dan industri, prinsip, rekomendasi bertahap |
 | `docs/specs/2026-09-29-capture-and-map-pipeline-design.md` | Spesifikasi aplikasi capture dan pipeline peta: komponen, tech stack, alur data, model peta, privasi, tahapan, hal yang harus dibuktikan, keputusan terbuka, struktur repo (`eutopos-vps` dan `eutopos-mobile`) |
 | `docs/specs/2026-10-01-web-upload-and-map-build-design.md` | Spesifikasi website unggah video dan pembangunan peta otomatis di PC lab: Cloudflare Tunnel + Access, tusd, antrean pekerjaan, pekerja GPU, dashboard, Terbitkan |
 | `docs/web-upload-research.md` | Riset pendukung spesifikasi di atas: batas Cloudflare, protokol tus, FastAPI, antrean PostgreSQL, Access, plotly, Next.js static export |
 | `docs/ci-cd.md` | CI yang berjalan sekarang, perintah pemeriksaan lokal, rencana build dan deployment, dan pengaturan GitHub yang wajib diaktifkan |
-| `deploy/README.md` | Menyiapkan host (WSL2, Docker Engine, NVIDIA Container Toolkit) dan menjalankan layanan dengan Docker Compose |
+| `docs/plans/` | Rencana implementasi yang sudah dieksekusi (pekerja peta, unggahan dan autentikasi, dashboard), masing-masing dengan status dan nomor PR di bagian atas |
+| `deploy/README.md` | Menyiapkan host (WSL2, Docker Engine, NVIDIA Container Toolkit), menjalankan layanan, antrean pekerjaan, unggahan tusd, Cloudflare Tunnel + Access, dan dashboard, beserta tabel jebakan |
+| `web/` | Dashboard Next.js (static export). Dibangun di tahap Node pada `deploy/Dockerfile` |
 | `docs/figures/` | Gambar 1 (arsitektur) dan Gambar 2 (alur) dokumen pengajuan |

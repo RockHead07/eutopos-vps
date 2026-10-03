@@ -1,5 +1,7 @@
 # Unggahan Video dan Autentikasi (PR 2) Implementation Plan
 
+**Status:** dieksekusi, merged sebagai PR #29 (2026-10-02). Verifikasi PC lab: spesifikasi web unggah bagian 13.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Video diunggah lewat protokol tus (bisa dilanjutkan, potongan di bawah batas Cloudflare) ke tusd, lalu otomatis menjadi pekerjaan bangun peta, dengan setiap langkah diperiksa terhadap identitas Cloudflare Access.

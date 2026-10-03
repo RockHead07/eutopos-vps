@@ -224,8 +224,26 @@ Gambar 2, dan istilah "(Spike Testing)". Rapikan di Proposal PA.
 4. Tempat, tanggal, tanda tangan
 5. **Daftar Pustaka, setelah tanda tangan**
 
-Tanpa Abstrak dan tanpa Batasan Masalah. ⚠️ Status resmi template belum dikonfirmasi. **Template resmi
-jurusan selalu menang** atas struktur acuan di bawah.
+Tanpa Abstrak dan tanpa Batasan Masalah. Struktur ini hanya untuk **pengajuan judul**, yang sudah lewat.
+
+### Template resmi Proposal PA (diterima 2026-10-02)
+
+Dosen wali membagikan *Panduan Buku PA Sarjana Terapan* (Rev05, PDF dan DOCX) di grup kelas pada
+2026-10-02: **proposal berisi Bab 1 sampai 3**. Template resmi selalu menang atas struktur acuan di bawah.
+
+| Bab | Sub-bab |
+|---|---|
+| 1 Pendahuluan | Latar Belakang, Permasalahan, Batasan Masalah (berbutir), Tujuan, Manfaat, Sistematika Penulisan |
+| 2 Kajian Pustaka | Deskripsi Permasalahan, Teori Penunjang, Penelitian Terkait |
+| 3 Desain Sistem | Deskripsi Solusi, Perancangan Sistem (diagram tingkat atas lalu rincian); variabel, teknik pengumpulan dan analisis data |
+
+Tujuan dibuka dengan kalimat pola "Penelitian proyek akhir ini mengajukan suatu pendekatan ... untuk
+mengatasi ... dengan menggunakan ..." diikuti klaim orisinalitas. Format inti: Times New Roman 12, spasi
+1,5, A4, margin kiri 4 cm dan sisi lain 3 cm (mirror), pustaka IEEE.
+
+**Perlu dikonfirmasi:** template menyebut Sarjana Terapan (S.Tr.Kom.), sedangkan PA ini D3; urutan
+pustaka (teks menyebut urut nama pengarang, padahal IEEE bernomor); posisi keterangan tabel (teks di
+bawah, contoh di atas); bagian depan apa saja yang wajib di proposal.
 
 ### Struktur acuan (dipakai hanya untuk menambah bagian yang belum ada)
 
@@ -294,10 +312,11 @@ bagian lain.
 ## 12. Yang masih terbuka
 
 - [x] ~~Keputusan ACC judul.~~ Diterima di MIS 2026-09-30.
-- [ ] Gedung dan koridor uji, serta izin memotret.
+- [ ] Gedung dan koridor uji, serta izin memotret. Uji spike memakai lorong lantai 10; izin resmi untuk
+      pengujian lanjutan belum dicatat.
 - [ ] Pertanyaan untuk pembimbing (`docs/spike-plan.md` bagian 9). Dirangkum jadi agenda di `docs/supervision-plan.md`.
 - [ ] Makna "anchoring tool untuk titik tujuan". Tafsiran saat ini: dashboard web untuk menandai POI
       di denah.
 - [ ] Apakah ada aturan HKI kampus atau rencana paten tim yang bertabrakan dengan lisensi terbuka.
-- [ ] Status resmi template dokumen pengajuan (tanpa Abstrak, tanpa Batasan Masalah, Daftar Pustaka
-      setelah tanda tangan).
+- [x] ~~Status resmi template.~~ Template resmi Proposal PA diterima 2026-10-02 (bagian 11). Empat hal
+      di dalamnya masih perlu dikonfirmasi.

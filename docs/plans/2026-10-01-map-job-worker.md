@@ -1,5 +1,7 @@
 # Antrean dan Pekerja Bangun Peta (PR 1) Implementation Plan
 
+**Status:** dieksekusi, merged sebagai PR #28 (2026-10-01). Verifikasi PC lab: spesifikasi web unggah bagian 13.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Membangun peta dari video atau folder frame lewat satu perintah antrean, dikerjakan pekerja GPU di Docker, lalu hasilnya terdaftar sebagai versi kandidat yang bisa diterbitkan.

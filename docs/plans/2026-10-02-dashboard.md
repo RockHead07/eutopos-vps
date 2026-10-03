@@ -1,5 +1,10 @@
 # Dashboard Website Unggah Video (PR 3) Implementation Plan
 
+**Status:** dieksekusi. PR 3a (Task 1-3) merged sebagai #31, PR 3b (Task 4-7) merged sebagai #32. Menyimpang dari
+rencana setelah review: Terbitkan memuat peta dulu baru menulis `published` (versi gagal tetap `candidate`,
+bukan `rejected`), Terbitkan ditolak 409 selama memuat dan 415 kalau bukan JSON, unggah dinilai dari
+server, dan antarmuka berbahasa Inggris. Rinciannya di deskripsi PR #31 dan #32.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Dari browser (termasuk HP) lewat `eutopos.rockhead07.tech`: unggah video dengan progress, lihat status pekerjaan, ringkasan dan tampilan 3D peta, lalu tekan **Terbitkan** supaya `/localize` memakai versi baru tanpa restart.
