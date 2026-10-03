@@ -88,41 +88,57 @@ export default function NewSessionPage() {
 
   return (
     <>
-      <h1>New map session</h1>
-      <label>
-        Area ID (lowercase letters, digits, hyphens){" "}
-        <input value={areaId} onChange={(e) => setAreaId(e.target.value)} pattern="[a-z0-9][a-z0-9-]{0,39}" />
-      </label>
-      <label>
-        Area name <input value={areaName} onChange={(e) => setAreaName(e.target.value)} />
-      </label>
-      <Dashboard uppy={uppy} hideUploadButton proudlyDisplayPoweredByUppy={false} height={320} />
-      {files.length > 0 && (
-        <table>
-          <thead>
-            <tr><th>Video</th><th>Size</th><th>Role</th></tr>
-          </thead>
-          <tbody>
-            {files.map((f, i) => (
-              <tr key={f.id}>
-                <td>{f.name}</td>
-                <td>{mb(f.size)}</td>
-                <td>
-                  <select value={roleOf(f, i)} onChange={(e) => setRoles({ ...roles, [f.id]: e.target.value as Role })}>
-                    <option value="peta">{ROLE.peta}</option>
-                    <option value="uji">{ROLE.uji}</option>
-                  </select>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      <p>For a production map, mark every video as map. Keep this tab open until the upload finishes.</p>
-      <button onClick={start} disabled={busy || files.length === 0}>
-        {busy ? "Uploading..." : "Start upload"}
-      </button>
-      {error && <p className="error">{error}</p>}
+      <div className="page-head">
+        <h1>New map session</h1>
+        <p className="muted">Walk the area with your back to the wall, camera facing the room. Videos are uploaded in 50 MiB chunks.</p>
+      </div>
+      <section className="card">
+        <h2>Area</h2>
+        <div className="fields">
+          <label>
+            Area ID (lowercase letters, digits, hyphens)
+            <input value={areaId} onChange={(e) => setAreaId(e.target.value)} pattern="[a-z0-9][a-z0-9-]{0,39}" />
+          </label>
+          <label>
+            Area name
+            <input value={areaName} onChange={(e) => setAreaName(e.target.value)} />
+          </label>
+        </div>
+      </section>
+      <section className="card">
+        <h2>Videos</h2>
+        <Dashboard uppy={uppy} hideUploadButton proudlyDisplayPoweredByUppy={false} height={300} width="100%" />
+        {files.length > 0 && (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Video</th><th>Size</th><th>Role</th></tr>
+              </thead>
+              <tbody>
+                {files.map((f, i) => (
+                  <tr key={f.id}>
+                    <td>{f.name}</td>
+                    <td className="num">{mb(f.size)}</td>
+                    <td>
+                      <select value={roleOf(f, i)} onChange={(e) => setRoles({ ...roles, [f.id]: e.target.value as Role })}>
+                        <option value="peta">{ROLE.peta}</option>
+                        <option value="uji">{ROLE.uji}</option>
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="muted">For a production map, mark every video as map. Keep this tab open until the upload finishes.</p>
+        <div className="actions">
+          <button onClick={start} disabled={busy || files.length === 0}>
+            {busy ? "Uploading..." : "Start upload"}
+          </button>
+        </div>
+        {error && <p className="error">{error}</p>}
+      </section>
     </>
   );
 }

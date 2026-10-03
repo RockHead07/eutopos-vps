@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { api } from "@/lib/api";
+import { Rows } from "@/lib/Rows";
 import { usePoll } from "@/lib/usePoll";
 
 export default function MapsPage() {
@@ -31,41 +32,60 @@ export default function MapsPage() {
   const s = service.data;
   return (
     <>
-      <h1>Map versions</h1>
-      {s && (
-        <p>
-          Serving area <strong>{s.area_id ?? "-"}</strong> version {s.map_version ?? "-"}
-          {s.reloading && ", loading a new version..."}
-        </p>
-      )}
+      <div className="page-head">
+        <h1>Map versions</h1>
+        <p className="muted">Publishing loads the map in the background. /localize keeps the current map until the new one loads.</p>
+      </div>
+      <section className="stats">
+        <div className="card">
+          <span className="stat-label">Serving area</span>
+          <span className="stat-value">{s ? (s.area_id ?? "none") : <span className="skeleton row" />}</span>
+        </div>
+        <div className="card">
+          <span className="stat-label">Active version</span>
+          <span className="stat-value">{s ? (s.map_version ?? "-") : <span className="skeleton row" />}</span>
+          {s && <span>{reloading ? <span className="badge running">loading a new version</span> : <span className="badge done">ready</span>}</span>}
+        </div>
+      </section>
       {s?.reload_error && <p className="error">{s.reload_error}</p>}
-      {message && <p>{message}</p>}
+      {message && <p className="notice">{message}</p>}
       {(error || versions.error || service.error) && (
         <p className="error">{error ?? versions.error ?? service.error}</p>
       )}
-      <table>
-        <thead>
-          <tr><th>Area</th><th>Version</th><th>Status</th><th>Job</th><th>Published by</th><th></th></tr>
-        </thead>
-        <tbody>
-          {versions.data?.map((v) => (
-            <tr key={v.id}>
-              <td>{v.area_id}</td>
-              <td>{v.version}</td>
-              <td><span className={`badge ${v.status}`}>{v.status}</span></td>
-              <td>{v.job_id ? <Link href={`/job/?id=${v.job_id}`}>{v.job_id}</Link> : "-"}</td>
-              <td>{v.published_by ?? "-"}</td>
-              <td>
-                {v.status !== "published" && (
-                  <button onClick={() => publish(v.id, v.version)} disabled={reloading}>
-                    {v.status === "retired" ? "Restore" : "Publish"}
-                  </button>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <section className="card">
+        <h2>All versions</h2>
+        {!versions.data && !versions.error && <Rows />}
+        {versions.data && versions.data.length === 0 && (
+          <div className="empty"><p>No map versions yet. A finished job adds one.</p></div>
+        )}
+        {versions.data && versions.data.length > 0 && (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Area</th><th>Version</th><th>Status</th><th>Job</th><th>Published by</th><th></th></tr>
+              </thead>
+              <tbody>
+                {versions.data.map((v) => (
+                  <tr key={v.id}>
+                    <td>{v.area_id}</td>
+                    <td className="num">{v.version}</td>
+                    <td><span className={`badge ${v.status}`}>{v.status}</span></td>
+                    <td className="num">{v.job_id ? <Link href={`/job/?id=${v.job_id}`}>{v.job_id}</Link> : "-"}</td>
+                    <td className="muted">{v.published_by ?? "-"}</td>
+                    <td>
+                      {v.status !== "published" && (
+                        <button className="secondary" onClick={() => publish(v.id, v.version)} disabled={reloading}>
+                          {v.status === "retired" ? "Restore" : "Publish"}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </>
   );
 }
