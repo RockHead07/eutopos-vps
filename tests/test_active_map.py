@@ -63,7 +63,7 @@ def test_failed_load_keeps_old_map_and_database(engine, monkeypatch):
     st = state()
     active_map.reload_in_background(st, engine, v2, "bob").join(5)
     assert (st.localizer, st.map_version, st.reloading) == ("lama", 1, False)
-    assert "versi 2" in st.reload_error
+    assert "version 2" in st.reload_error
     with Session(engine) as s:
         assert (active_version(s, "floor10").id, active_version(s, "floor10").published_by) == (
             v1,

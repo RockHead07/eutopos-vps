@@ -57,7 +57,7 @@ def list_versions(user: uploads.User, s: uploads.DB) -> list[VersionOut]:
 def report(version_id: int, user: uploads.User, s: uploads.DB) -> FileResponse:
     v = s.get(MapVersion, version_id)
     if v is None or (path := _report(v)) is None:
-        raise HTTPException(404, "laporan tidak ada")
+        raise HTTPException(404, "report not found")
     return FileResponse(path, media_type="text/html")
 
 
@@ -66,16 +66,16 @@ def publish_version(version_id: int, request: Request, user: uploads.User, s: up
     # Tanpa isi, rute ini bisa dipicu formulir situs lain yang menumpang cookie Access (CSRF).
     # application/json butuh preflight CORS, dan layanan ini tidak mengizinkan CORS.
     if request.headers.get("content-type", "").split(";")[0].strip() != "application/json":
-        raise HTTPException(415, "kirim dengan Content-Type: application/json")
+        raise HTTPException(415, "send with Content-Type: application/json")
     v = s.get(MapVersion, version_id)
     if v is None:
-        raise HTTPException(404, "versi tidak ada")
+        raise HTTPException(404, "version not found")
     st = request.app.state
     serving = v.area_id == active_map.serving_area()
     # ponytail: pemeriksaan tanpa kunci, dua klik dalam milidetik yang sama masih bisa lolos.
     # Cukup untuk satu operator; kunci terbitkan kalau pengguna dashboard bertambah.
     if serving and st.reloading:
-        raise HTTPException(409, "peta sebelumnya masih dimuat, coba lagi sebentar")
+        raise HTTPException(409, "a map is still loading; try again shortly")
     if not serving:
         v = publish(s, version_id, by=user)
         return {"version": _out(s, v), "reload": "other_area"}

@@ -32,15 +32,15 @@ def create_job(
 ) -> MapJob:
     """Buat pekerjaan. Ditolak di sini, bukan di GPU, kalau videonya tidak bisa jadi peta."""
     if unknown := {v["role"] for v in videos} - ROLES:
-        raise ValueError(f"peran video tidak dikenal: {sorted(unknown)}, pakai peta atau uji")
+        raise ValueError(f"unknown video role: {sorted(unknown)}; use peta or uji")
     if not any(v["role"] == "peta" for v in videos):
-        raise ValueError("butuh minimal satu video berperan peta")
+        raise ValueError("at least one video with role peta is required")
     # Frame dinamai <nama video>_<nomor>.jpg: dua video bernama sama saling menimpa frame.
     # Video unggahan belum punya path saat dibuat; namanya dibuat unik oleh server (ID unggahan).
     paths = [Path(v["path"]) for v in videos if v.get("path")]
     stems = [p.stem for p in paths if p.suffix]
     if dup := sorted({s for s in stems if stems.count(s) > 1}):
-        raise ValueError(f"nama video kembar {dup}, ganti nama salah satunya")
+        raise ValueError(f"duplicate video names {dup}; rename one of them")
     if session.get(Area, area_id) is None:
         session.add(Area(id=area_id, name=area_name))
     job = MapJob(area_id=area_id, created_by=created_by, status=status, videos=videos)
@@ -86,7 +86,7 @@ def recover_stale(session: Session) -> int:
     """Saat pekerja mulai: pekerjaan running tidak punya pemilik lagi (hanya ada satu pekerja)."""
     stale = session.exec(select(MapJob).where(MapJob.status == "running")).all()
     for job in stale:
-        fail(session, job, "pekerja berhenti di tengah pekerjaan, unggah atau antrekan ulang")
+        fail(session, job, "the worker stopped mid-job; upload or queue it again")
     return len(stale)
 
 
@@ -98,5 +98,5 @@ def expire_uploading(session: Session, max_age: timedelta) -> list[MapJob]:
     stmt = stmt.with_for_update(skip_locked=True)
     stale = session.exec(stmt).all()
     for job in stale:
-        fail(session, job, "unggahan tidak selesai dalam 24 jam, buat sesi baru")
+        fail(session, job, "upload did not finish within 24 hours; start a new session")
     return stale

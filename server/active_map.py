@@ -46,11 +46,11 @@ def reload_in_background(state, engine, version_id: int, by: str | None):
     state.reloading, state.reload_error = True, None
 
     def run():
-        label = f"versi id {version_id}"
+        label = f"version id {version_id}"
         try:
             with Session(engine) as s:
                 v = s.get(MapVersion, version_id)
-                label, path = f"versi {v.version}", Path(v.path)
+                label, path = f"version {v.version}", Path(v.path)
             localizer = load_localizer(path)  # tanpa sesi database terbuka selama memuat
             with Session(engine) as s:
                 v = publish(s, version_id, by=by)
@@ -58,7 +58,7 @@ def reload_in_background(state, engine, version_id: int, by: str | None):
                 state.localizer, state.area_id, state.map_version = localizer, v.area_id, v.version
         except Exception as e:
             log.exception("gagal menerbitkan %s", label)
-            state.reload_error = f"{label} gagal diterbitkan ({e}), peta lama tetap dipakai"
+            state.reload_error = f"{label} failed to publish ({e}); still serving the previous map"
         finally:
             state.reloading = False
 

@@ -48,10 +48,10 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     r = await fetch(path, { ...init, headers: { "Content-Type": "application/json" } });
   } catch {
     // Sesi Cloudflare Access habis: permintaan diarahkan ke halaman login lain asal dan gagal.
-    throw new Error("Tidak bisa menghubungi server. Kalau sesi login habis, muat ulang halaman.");
+    throw new Error("Cannot reach the server. If your login session expired, reload the page.");
   }
   if (!r.ok) {
-    let detail = `galat ${r.status}`;
+    let detail = `error ${r.status}`;
     try {
       const body = await r.json();
       if (body?.detail) detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
@@ -73,16 +73,7 @@ export const api = {
   service: () => call<ServiceStatus>("/api/service"),
 };
 
-export const STATUS: Record<string, string> = {
-  uploading: "mengunggah",
-  queued: "antre",
-  running: "diproses",
-  done: "selesai",
-  failed: "gagal",
-  candidate: "kandidat",
-  published: "aktif",
-  retired: "lama",
-  rejected: "ditolak",
-};
+// Peran video di API tetap peta/uji (kontrak data); yang ditampilkan bahasa Inggris.
+export const ROLE: Record<string, string> = { peta: "map", uji: "test" };
 
 export const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(0)} MB`;

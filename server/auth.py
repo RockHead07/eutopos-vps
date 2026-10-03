@@ -45,18 +45,18 @@ def email_from_token(token: str | None) -> str:
     if not (team and aud):
         # Gagal tertutup: tanpa konfigurasi, rute terlindungi tidak terbuka.
         raise AuthError(
-            503, "autentikasi belum dikonfigurasi (CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD)"
+            503, "authentication is not configured (CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD)"
         )
     if not token:
-        raise AuthError(401, "tidak ada token Cloudflare Access")
+        raise AuthError(401, "missing Cloudflare Access token")
     try:
         claims = jwt.decode(
             token, signing_key(token, team), algorithms=["RS256"], audience=aud, issuer=team
         )
     except jwt.PyJWTError as e:
-        raise AuthError(403, f"token Cloudflare Access tidak sah: {e}") from e
+        raise AuthError(403, f"invalid Cloudflare Access token: {e}") from e
     if not claims.get("email"):
-        raise AuthError(403, "token tanpa email, service token tidak diizinkan")
+        raise AuthError(403, "token has no email; service tokens are not allowed")
     return claims["email"]
 
 

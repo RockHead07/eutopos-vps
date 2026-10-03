@@ -38,7 +38,7 @@ def _engine(url: str):
 def get_session():
     url = os.environ.get("DATABASE_URL")
     if not url:
-        raise HTTPException(503, "layanan berjalan tanpa database (EUTOPOS_MAP_DIR)")
+        raise HTTPException(503, "service is running without a database (EUTOPOS_MAP_DIR)")
     with Session(_engine(url)) as s:
         yield s
 
@@ -91,7 +91,7 @@ class JobOut(BaseModel):
 def create(body: JobIn, user: User, s: DB) -> JobOut:
     names = [v.name for v in body.videos]
     if len(set(names)) != len(names):
-        raise HTTPException(422, "nama video kembar dalam satu pekerjaan")
+        raise HTTPException(422, "duplicate video names in one job")
     videos = [
         {**v.model_dump(), "upload_id": None, "path": None, "uploaded": False} for v in body.videos
     ]
@@ -112,7 +112,7 @@ def list_jobs(user: User, s: DB, limit: int = Query(50, ge=1, le=200)) -> list[J
 def get(job_id: int, user: User, s: DB) -> JobOut:
     job = s.get(MapJob, job_id)
     if job is None:
-        raise HTTPException(404, "pekerjaan tidak ada")
+        raise HTTPException(404, "job not found")
     return JobOut.model_validate(job, from_attributes=True)
 
 
@@ -132,16 +132,16 @@ def _header(headers: dict, name: str) -> str | None:
 
 def _locked_job(s: Session, meta) -> MapJob:
     if not isinstance(meta, dict):
-        raise HookReject(400, "metadata tidak sah")
+        raise HookReject(400, "invalid metadata")
     try:
         job_id = int(meta.get("job_id", ""))
     except ValueError as e:
-        raise HookReject(400, "metadata job_id tidak ada") from e
+        raise HookReject(400, "missing job_id metadata") from e
     # Kunci baris: dua video yang selesai bersamaan tidak saling menimpa daftar videos.
     stmt = select(MapJob).where(MapJob.id == job_id).with_for_update()
     job = s.exec(stmt).first()
     if job is None:
-        raise HookReject(404, "pekerjaan tidak ada")
+        raise HookReject(404, "job not found")
     return job
 
 
@@ -153,17 +153,17 @@ def _pre_create(s: Session, upload: dict, headers: dict) -> dict:
     meta = upload.get("MetaData") or {}
     job = _locked_job(s, meta)
     if job.created_by != email:
-        raise HookReject(403, "pekerjaan ini milik pengguna lain")
+        raise HookReject(403, "this job belongs to another user")
     if job.status != "uploading":
-        raise HookReject(409, f"pekerjaan berstatus {job.status}, tidak menerima unggahan")
+        raise HookReject(409, f"job is {job.status}; it no longer accepts uploads")
     idx = next((i for i, v in enumerate(job.videos) if v["name"] == meta.get("name")), None)
     if idx is None:
-        raise HookReject(404, "nama video tidak terdaftar di pekerjaan ini")
+        raise HookReject(404, "video name is not registered in this job")
     video = job.videos[idx]
     if video.get("uploaded"):
-        raise HookReject(409, "video ini sudah lengkap diunggah")
+        raise HookReject(409, "this video is already fully uploaded")
     if upload.get("SizeIsDeferred") or upload.get("Size") != video["size"]:
-        raise HookReject(400, "ukuran berkas berbeda dari yang didaftarkan")
+        raise HookReject(400, "file size differs from the registered size")
     upload_id = f"job{job.id}-v{idx}-{secrets.token_hex(8)}"
     old = video.get("upload_id")
     videos = list(job.videos)  # JSON tidak dilacak per elemen: ganti seluruh daftar
@@ -184,11 +184,11 @@ def _pre_finish(s: Session, upload: dict) -> None:
     uid = upload.get("ID")
     idx = next((i for i, v in enumerate(videos) if uid and v["upload_id"] == uid), None)
     if idx is None:
-        raise HookReject(404, "ID unggahan tidak dikenal")
+        raise HookReject(404, "unknown upload ID")
     # Jangan percaya kata hook saja: berkas di disk harus sudah selengkap ukuran yang didaftarkan.
     data = UPLOADS / uid
     if not data.is_file() or data.stat().st_size != videos[idx]["size"]:
-        raise HookReject(409, "berkas unggahan belum lengkap")
+        raise HookReject(409, "upload is not complete yet")
     videos[idx] = {**videos[idx], "uploaded": True}
     job.videos = videos
     if job.status == "uploading" and all(v["uploaded"] for v in videos):
@@ -200,9 +200,9 @@ def _pre_finish(s: Session, upload: dict) -> None:
 def _hook_key(key: Annotated[str | None, Query()] = None) -> None:
     secret = os.environ.get("TUS_HOOK_SECRET", "")
     if not secret:
-        raise HTTPException(503, "TUS_HOOK_SECRET belum diisi, hook ditutup")
+        raise HTTPException(503, "TUS_HOOK_SECRET is not set; hook is closed")
     if not key or not secrets.compare_digest(key, secret):
-        raise HTTPException(403, "kunci hook salah")
+        raise HTTPException(403, "wrong hook key")
 
 
 @router.post("/internal/tus-hook", dependencies=[Depends(_hook_key)])
