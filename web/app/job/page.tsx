@@ -41,8 +41,8 @@ function JobDetail() {
         <tbody>
           {job.videos.map((v) => (
             <tr key={v.name}>
-              <td>{v.name}</td><td>{v.role}</td><td>{mb(v.size)}</td>
-              <td>{v.uploaded ? "terunggah" : "belum lengkap"}</td>
+              <td>{v.name}</td><td>{v.role}</td><td>{v.size === null ? "-" : mb(v.size)}</td>
+              <td>{v.uploaded === null ? "dari terminal" : v.uploaded ? "terunggah" : "belum lengkap"}</td>
             </tr>
           ))}
         </tbody>

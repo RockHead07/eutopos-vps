@@ -1,4 +1,5 @@
-export type Video = { name: string; role: "peta" | "uji"; size: number; uploaded: boolean };
+// size dan uploaded null: pekerjaan dari manage job (CLI), videonya tidak lewat unggahan.
+export type Video = { name: string; role: "peta" | "uji"; size: number | null; uploaded: boolean | null };
 export type Summary = {
   run?: { map_images?: number; map_registered?: number; queries?: number; queries_localized?: number };
   inspect?: {
