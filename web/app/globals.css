@@ -116,3 +116,37 @@ iframe { width: 100%; height: min(70vh, 640px); border: 0; border-radius: var(--
 /* Uppy mengikuti palet */
 .uppy-Dashboard-inner { background: var(--canvas) !important; border: 1px dashed var(--field) !important; border-radius: var(--radius-inner) !important; }
 .uppy-Dashboard-browse { color: var(--forest) !important; }
+
+/* Overview: kartu kiri tinggi, grafik dan jumlah di kanan, peta terbaru melebar di bawah (seperti referensi) */
+.overview { display: grid; gap: 1rem; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1fr); grid-template-areas: "active accept jobs" "active latest latest"; align-items: start; }
+.area-active { grid-area: active; }
+.area-accept { grid-area: accept; }
+.area-jobs { grid-area: jobs; }
+.area-latest { grid-area: latest; }
+@media (max-width: 960px) {
+  .overview { grid-template-columns: minmax(0, 1fr); grid-template-areas: "active" "accept" "jobs" "latest"; }
+}
+
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+.list li { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; background: var(--canvas); border-radius: var(--radius-inner); padding: 0.65rem 0.8rem; }
+.list li div { display: grid; }
+
+/* Grafik batang satu seri: tanpa legenda (judul kartu yang menamai), nilai hanya di batang terbaru */
+.bars { display: flex; align-items: stretch; gap: 2px; height: 180px; padding-top: 1.4rem; border-bottom: 1px solid var(--line); }
+.bar { position: relative; flex: 1 1 0; max-width: 48px; display: flex; flex-direction: column; justify-content: flex-end; text-decoration: none; }
+.bar-fill { display: block; width: 100%; background: var(--field); border-radius: 4px 4px 0 0; transition: filter var(--ease); }
+.bar.latest .bar-fill { background: var(--forest); }
+.bar:hover .bar-fill, .bar:focus-visible .bar-fill { filter: brightness(0.9); }
+.bar-value { position: absolute; top: -1.4rem; left: 50%; transform: translateX(-50%); font-size: 0.8rem; font-weight: 600; color: var(--ink); background: var(--mist); border-radius: 6px; padding: 0 0.35rem; white-space: nowrap; }
+.bar-label { position: absolute; bottom: -1.5rem; left: 50%; transform: translateX(-50%); font-size: 0.75rem; color: var(--slate); }
+.area-accept .bars { margin-bottom: 1.4rem; }
+
+/* Jumlah per status: identitas dari label, batang satu warna (validator: oker dan terakota tak terbedakan) */
+.status-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
+.status-bars li { display: grid; grid-template-columns: 7.5rem 1fr 2rem; align-items: center; gap: 0.6rem; }
+.status-bars .track { height: 10px; border-radius: 999px; background: repeating-linear-gradient(135deg, var(--line) 0 6px, var(--card) 6px 10px); overflow: hidden; }
+.status-bars .track > span { display: block; height: 100%; background: var(--forest); border-radius: 999px; }
+.status-bars .num { text-align: right; font-weight: 600; }
+
+.stats-inline { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.stats-inline > div { display: grid; gap: 0.3rem; }
