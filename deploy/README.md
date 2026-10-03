@@ -235,7 +235,8 @@ disajikan `api` dari `web/out`.
 
 | Halaman | Isi |
 |---|---|
-| `/` | Daftar pekerjaan, status diperbarui tiap 5 detik |
+| `/` | Overview: peta yang dilayani, persen foto uji diterima per pekerjaan, jumlah pekerjaan per status, ringkasan peta terbaru |
+| `/jobs/` | Daftar pekerjaan, status diperbarui tiap 5 detik |
 | `/new/` | Pilih area, tambah video, tentukan peran (peta atau uji), unggah dengan progress |
 | `/job/?id=N` | Status, ringkasan peta, galat, tampilan 3D, tombol **Publish** |
 | `/maps/` | Versi per area, versi yang dilayani, **Publish** atau **Restore** |

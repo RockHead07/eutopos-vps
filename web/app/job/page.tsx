@@ -53,7 +53,7 @@ function JobDetail() {
     <>
       {error && <p className="error">{error}</p>}
       <div className="page-head">
-        <p className="muted"><Link href="/">Jobs</Link> / {job.id}</p>
+        <p className="muted"><Link href="/jobs/">Jobs</Link> / {job.id}</p>
         <h1>Job {job.id} · {job.area_id}</h1>
         <p className="muted">
           <span className={`badge ${job.status}`}>{job.status}</span>{" "}
