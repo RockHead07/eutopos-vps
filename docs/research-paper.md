@@ -246,6 +246,50 @@ VPS" ditetapkan. Semuanya **bukan jalur utama**, tapi tetap berguna kalau spike 
 - **ProBuilder** ([manual](https://docs.unity3d.com/Packages/com.unity.probuilder@6.0/manual/index.html)):
   untuk memodelkan dinding dan lantai dari denah.
 
+## 10. Rujukan latar belakang Proposal PA (Bab 1)
+
+Dicari dan diverifikasi 2026-10-04. Metadata (penulis, tahun, venue, halaman, DOI) dicocokkan ke
+Crossref. Isi klaim dicocokkan ke abstrak atau teks paper, bukan dari judul saja.
+
+**Rantai argumen Bab 1** dan rujukan tiap mata rantainya:
+
+| Mata rantai | Rujukan | Yang benar-benar dikatakan sumbernya |
+|---|---|---|
+| Orang menghabiskan sebagian besar waktunya di dalam gedung | Klepeis dkk. 2001 | Responden rata-rata 87% waktunya di dalam gedung dan sekitar 6% di kendaraan (survei EPA, n = 9.386, AS dan Kanada) |
+| Mencari jalan di gedung bertingkat itu sulit | Hölscher dkk. 2006 | Studi strategi *wayfinding* di gedung bertingkat (perlu dibaca isinya sebelum dikutip lebih spesifik) |
+| Lokalisasi radio (Wi-Fi, BLE, UWB) butuh infrastruktur dan kurang akurat untuk AR | Zafari dkk. 2019; Tang dkk. 2025 | Zafari: survei teknik (AoA, ToF, RSS) dan teknologi (Wi-Fi, RFID, UWB, Bluetooth). Tang: lokalisasi berbasis Bluetooth dan Wi-Fi sulit mencapai akurasi yang dibutuhkan navigasi AR |
+| Navigasi AR membantu, tapi tidak otomatis | Qiu dkk. 2025; Zhang dkk. 2021 | Qiu (tinjauan 65 studi): AR dapat menurunkan beban kognitif dan membantu peta kognitif, tetapi dampaknya ke kinerja *wayfinding* tidak konsisten dan sebagian tampilan justru mengganggu. Zhang: AR imersif meningkatkan peta kognitif dan kinerja *wayfinding* di dalam gedung |
+| Riset navigasi AR terus berkembang dan banyak di dalam ruangan | Cheliotis dkk. 2023; Zhao dkk. 2026 | Cheliotis: 107 publikasi aplikasi navigasi AR selama 25 tahun. Zhao (79 artikel): separuh karya yang ditinjau untuk skenario dalam ruangan |
+| Lokalisasi visual berbasis peta 3D (SfM) mencapai akurasi tinggi di dalam ruangan | Tang dkk. 2025; Chen dkk. 2024 | Tang: SfM + retrieval + ARCore, galat di bawah 20 cm pada dataset publik, sekitar 10 cm saat navigasi AR. Chen: survei lokalisasi dan pemetaan visual berbasis *deep learning* |
+| Peta 3D dan foto yang dikirim ke layanan cloud membawa risiko privasi | Pittaluga dkk. 2019; Speciale dkk. 2019 | Pittaluga: gambar berwarna adegan bisa direkonstruksi dari *point cloud* SfM, padahal foto aslinya sudah dibuang. Speciale: sistem lokalisasi menyimpan *point cloud* yang mengungkap informasi adegan yang sensitif |
+| Model bahasa bisa berhalusinasi, sehingga jawaban perlu dipijakkan ke dokumen (RAG) | Ji dkk. 2023; Huang dkk. 2025; Lewis dkk. 2020 (bagian 7) | Ji dan Huang: survei halusinasi pada pembangkitan bahasa dan LLM, termasuk mitigasi berbasis *retrieval* |
+| Asisten dengan wujud visual dinilai lebih baik | Kim dkk. 2018 | Pengaruh wujud visual dan perilaku sosial asisten virtual di AR terhadap persepsi pengguna (perlu dibaca hasilnya sebelum dikutip angka) |
+| Celah: navigasi AR + RAG sudah ada, tapi lokalisasinya tidak lokal | Yang dkk. 2025 (bagian 7); INSUS 2023 dan 2024 (bagian 5) | Kebaruan PA ada di lokalisasi visual lokal tanpa QR dan tanpa layanan cloud |
+
+⚠️ **Belum terverifikasi:** klaim "GPS tidak bekerja di dalam ruangan". Tidak ada di abstrak dan dua
+halaman pertama Zafari dkk. Cari sumber yang menyatakannya eksplisit sebelum dipakai, atau tulis
+tanpa sitasi sebagai pengetahuan umum kalau pembimbing mengizinkan.
+
+**Daftar lengkap (gaya IEEE, urutan bebas, nomor ditentukan di dokumen):**
+
+- N. E. Klepeis *et al.*, "The National Human Activity Pattern Survey (NHAPS): a resource for assessing exposure to environmental pollutants," *J. Expo. Anal. Environ. Epidemiol.*, vol. 11, no. 3, pp. 231–252, 2001, doi: 10.1038/sj.jea.7500165.
+- C. Hölscher, T. Meilinger, G. Vrachliotis, M. Brösamle, and M. Knauff, "Up the down staircase: Wayfinding strategies in multi-level buildings," *J. Environ. Psychol.*, vol. 26, no. 4, pp. 284–299, 2006, doi: 10.1016/j.jenvp.2006.09.002.
+- F. Zafari, A. Gkelias, and K. K. Leung, "A survey of indoor localization systems and technologies," *IEEE Commun. Surveys Tuts.*, vol. 21, no. 3, pp. 2568–2599, 2019, doi: 10.1109/COMST.2019.2911558.
+- S. Tang *et al.*, "BIM-based indoor navigation using end-to-end visual localization and ARCore," *Trans. GIS*, vol. 29, no. 1, 2025, doi: 10.1111/tgis.13298.
+- Z. Qiu, A. Mostafavi, and S. Kalantari, "Use of augmented reality in human wayfinding: a systematic review," *Virtual Reality*, vol. 29, no. 4, 2025, doi: 10.1007/s10055-025-01226-w.
+- J. Zhang, X. Xia, R. Liu, and N. Li, "Enhancing human indoor cognitive map development and wayfinding performance with immersive augmented reality-based navigation systems," *Adv. Eng. Inform.*, vol. 50, p. 101432, 2021, doi: 10.1016/j.aei.2021.101432.
+- K. Cheliotis *et al.*, "A systematic review of application development in augmented reality navigation research," *Cartogr. Geogr. Inf. Sci.*, vol. 50, no. 3, pp. 249–271, 2023, doi: 10.1080/15230406.2023.2194032.
+- Y. Zhao, H. Gagnon, J. Stefanucci, S. Creem-Regehr, and B. Bodenheimer, "A systematic review of the use of augmented reality in pedestrian navigation," *ACM Comput. Surv.*, vol. 58, no. 5, pp. 1–32, 2026, doi: 10.1145/3770917.
+- C. Chen, B. Wang, C. X. Lu, N. Trigoni, and A. Markham, "Deep learning for visual localization and mapping: A survey," *IEEE Trans. Neural Netw. Learn. Syst.*, vol. 35, no. 12, pp. 17000–17020, 2024, doi: 10.1109/TNNLS.2023.3309809.
+- F. Pittaluga, S. J. Koppal, S. B. Kang, and S. N. Sinha, "Revealing scenes by inverting structure from motion reconstructions," in *Proc. IEEE/CVF CVPR*, 2019, pp. 145–154, doi: 10.1109/CVPR.2019.00023.
+- P. Speciale, J. L. Schönberger, S. B. Kang, S. N. Sinha, and M. Pollefeys, "Privacy preserving image-based localization," in *Proc. IEEE/CVF CVPR*, 2019, pp. 5488–5498, doi: 10.1109/CVPR.2019.00564.
+- Z. Ji *et al.*, "Survey of hallucination in natural language generation," *ACM Comput. Surv.*, vol. 55, no. 12, pp. 1–38, 2023, doi: 10.1145/3571730.
+- L. Huang *et al.*, "A survey on hallucination in large language models: Principles, taxonomy, challenges, and open questions," *ACM Trans. Inf. Syst.*, vol. 43, no. 2, pp. 1–55, 2025, doi: 10.1145/3703155.
+- K. Kim, L. Boelling, S. Haesler, J. Bailenson, G. Bruder, and G. F. Welch, "Does a digital assistant need a body? The influence of visual embodiment and social behavior on the perception of intelligent virtual agents in AR," in *Proc. IEEE ISMAR*, 2018, pp. 105–114, doi: 10.1109/ISMAR.2018.00039.
+
+**Usia rujukan:** 8 dari 14 terbit 2021 atau setelahnya. Klepeis 2001 dan Hölscher 2006 dipertahankan
+sebagai sumber dasar yang belum tergantikan.
+
 ## Yang belum diketahui
 
 1. Latensi hloc (dan varian XFeat) di server tanpa GPU. **Harus diukur sendiri lewat spike.**
