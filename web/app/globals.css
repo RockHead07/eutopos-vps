@@ -47,6 +47,15 @@ a { color: var(--forest); text-underline-offset: 3px; }
   text-decoration: none; font-size: 0.92rem; font-weight: 500; transition: background var(--ease), color var(--ease);
 }
 .pill:hover { background: var(--mist); }
+
+/* Ikon (lib/Icon.tsx): SVG sebagai mask, diwarnai warna teks */
+.icon {
+  display: inline-block; width: 1.15em; height: 1.15em; flex: none; vertical-align: -0.2em;
+  background: currentColor; mask-repeat: no-repeat; mask-position: center; mask-size: contain;
+}
+.brand, .pill, button, .badge { display: inline-flex; align-items: center; gap: 0.4em; }
+.brand .icon { width: 1.5em; height: 1.5em; color: var(--forest); }
+.badge .icon { width: 1em; height: 1em; }
 .pill[aria-current="page"] { background: var(--ink); color: var(--card); }
 
 main { max-width: 1200px; margin: 0 auto; padding: 0.5rem 1rem 3rem; display: grid; gap: 1rem; }

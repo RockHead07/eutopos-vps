@@ -1,5 +1,6 @@
 "use client";
-import Link from "next/link";
+import { Icon } from "@/lib/Icon";
+import Link from "@/lib/Link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { api, mb, ROLE } from "@/lib/api";
@@ -100,12 +101,12 @@ function JobDetail() {
       {job.map_version_id && (
         <section className="card">
           <div className="actions">
-            <h2>3D view</h2>
+            <h2><Icon name="view-3d" /> 3D view</h2>
             <span className="muted">Map and cameras in blue, accepted test photos in green, rejected in orange.</span>
           </div>
           <iframe src={`/api/versions/${job.map_version_id}/report`} title="3D map view" />
           <div className="actions">
-            <button onClick={() => publish(job.map_version_id!)}>Publish this version</button>
+            <button onClick={() => publish(job.map_version_id!)}><Icon name="publish" />Publish this version</button>
             <Link href="/maps/">Map versions</Link>
           </div>
           {message && <p className="notice">{message}</p>}

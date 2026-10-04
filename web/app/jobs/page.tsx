@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import Link from "@/lib/Link";
 import { api } from "@/lib/api";
 import { Rows } from "@/lib/Rows";
 import { usePoll } from "@/lib/usePoll";

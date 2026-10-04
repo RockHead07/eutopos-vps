@@ -1,5 +1,6 @@
 import { Plus_Jakarta_Sans } from "next/font/google";
-import Link from "next/link";
+import Link from "@/lib/Link";
+import { Icon } from "@/lib/Icon";
 import { Nav } from "./nav";
 import "./globals.css";
 
@@ -13,7 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={sans.variable}>
       <body>
         <header className="topbar">
-          <Link href="/" className="brand">eutopos</Link>
+          <Link href="/" className="brand"><Icon name="logo" />eutopos</Link>
           <Nav />
         </header>
         <main>{children}</main>

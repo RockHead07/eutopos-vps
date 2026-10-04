@@ -1,5 +1,6 @@
 "use client";
-import Link from "next/link";
+import { Icon, VersionBadge } from "@/lib/Icon";
+import Link from "@/lib/Link";
 import { api, type Job } from "@/lib/api";
 import { Rows } from "@/lib/Rows";
 import { usePoll } from "@/lib/usePoll";
@@ -48,7 +49,7 @@ export default function OverviewPage() {
           ) : (
             <span className="skeleton row" />
           )}
-          {s?.reload_error && <p className="error">{s.reload_error}</p>}
+          {s?.reload_error && <p className="error"><Icon name="error-map" /> {s.reload_error}</p>}
           <h2>Recent versions</h2>
           {!versions.data && <Rows n={3} />}
           {versions.data && versions.data.length === 0 && <p className="muted">No map versions yet.</p>}
@@ -62,11 +63,11 @@ export default function OverviewPage() {
                     <strong>{v.area_id} v{v.version}</strong>
                     <span className="muted">{v.job_id ? <Link href={`/job/?id=${v.job_id}`}>job {v.job_id}</Link> : "from CLI"}</span>
                   </div>
-                  <span className={`badge ${v.status}`}>{v.status}</span>
+                  <VersionBadge status={v.status} />
                 </li>
               ))}
           </ul>
-          <Link href="/maps/">All map versions</Link>
+          <Link href="/maps/">All map versions <Icon name="arrow-up-right" /></Link>
         </section>
 
         <section className="card area-accept">
@@ -79,7 +80,7 @@ export default function OverviewPage() {
             <p className="muted">No finished job with a test video yet. Add a test video to a map session to see this.</p>
           )}
           {scored.length > 0 && <AcceptChart jobs={scored} />}
-          <Link href="/jobs/">View as table</Link>
+          <Link href="/jobs/">View as table <Icon name="arrow-up-right" /></Link>
         </section>
 
         <section className="card area-jobs">
