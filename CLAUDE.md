@@ -120,6 +120,8 @@ Repo ini **publik** dan berlisensi **AGPL-3.0**.
 - `data/`, `outputs/`, dan `docs/papers/` sudah di-gitignore. Simpan PDF paper di `docs/papers/`
   secara lokal saja.
 - Koordinat titik acuan gedung ditanyakan dulu ke pembimbing sebelum dipublikasikan.
+- **Naskah PA (proposal, laporan, catatan administrasi) ada di repo privat terpisah**, bukan di sini.
+  Jangan menyalin isinya ke repo ini. Dokumen teknis dan hasil uji tetap di repo ini (`docs/`).
 
 ## Aturan git
 

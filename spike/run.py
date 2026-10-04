@@ -31,8 +31,14 @@ from hloc import (
 from hloc.localize_sfm import QueryLocalizer, do_covisibility_clustering, pose_from_cluster
 from hloc.utils.parsers import parse_retrieval
 
-LOCAL = extract_features.confs["aliked-n16"]  # bukan SuperPoint: lisensinya non-komersial
-MATCHER = match_features.confs["aliked+lightglue"]
+# Fitur lokal: (ekstraktor, pencocok).
+FEATURES = {
+    # Utama. Bukan SuperPoint: lisensinya non-komersial.
+    "aliked": (extract_features.confs["aliked-n16"], match_features.confs["aliked+lightglue"]),
+    # Pembanding klasik, setara bawaan COLMAP: SIFT (deskriptor RootSIFT, normalisasi bawaan
+    # COLMAP) + tetangga terdekat dengan uji rasio 0,8 dan cek dua arah.
+    "sift": (extract_features.confs["sift"], match_features.confs["NN-ratio"]),
+}
 GLOBAL = extract_features.confs["megaloc"]
 EXHAUSTIVE_MAX = 30  # bawaan --exhaustive-max: di bawahnya semua pasangan, di atasnya retrieval
 
@@ -112,6 +118,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("dataset", type=Path)
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--features", choices=FEATURES, default="aliked", help="fitur lokal")
     ap.add_argument("--k-map", type=int, default=20, help="tetangga retrieval saat membangun peta")
     ap.add_argument("--k-loc", type=int, default=10, help="kandidat retrieval per foto uji")
     # Bawaan hloc: keypoint tanpa batas (rata2 ~2.800/foto di data demo) -> ~12 s/pasangan di CPU.
@@ -140,11 +147,22 @@ def main():
     )
     a = ap.parse_args()
 
-    global LOCAL, GLOBAL
+    global GLOBAL
     GLOBAL = {**GLOBAL, "preprocessing": {**GLOBAL["preprocessing"], "resize_max": a.global_resize}}
+    LOCAL, MATCHER = FEATURES[a.features]
+    model = dict(LOCAL["model"])
+    if a.features == "sift":
+        # Opsi SIFT bawaan COLMAP (first_octave -1, peak_threshold 0,0067), bukan bawaan hloc
+        # (0 dan 0,01): hloc lebih ketat, dan di lorong dalam ruangan hanya dapat ~260 keypoint
+        # per gambar. Jumlahnya dibatasi lewat max_num_features pycolmap seperti COLMAP sendiri,
+        # karena opsi max_keypoints ekstraktor DoG hloc (commit c13273b) rusak: topk pada skor
+        # yang semuanya nol.
+        model["options"] = {"max_num_features": a.max_kp if a.max_kp > 0 else 8192}
+    else:
+        model["max_num_keypoints"] = a.max_kp
     LOCAL = {
         **LOCAL,
-        "model": {**LOCAL["model"], "max_num_keypoints": a.max_kp},
+        "model": model,
         "preprocessing": {**LOCAL["preprocessing"], "resize_max": a.resize},
     }
 
@@ -153,7 +171,9 @@ def main():
     # bergantung pada setelan fitur lokal masuk subfolder per setelan, supaya run dengan --max-kp
     # atau --resize lain tidak diam-diam memakai fitur lama. Fitur global dan daftar pasangan
     # tidak bergantung pada setelan itu, jadi dipakai bersama.
-    run_dir = out / f"kp{a.max_kp}-r{a.resize}"
+    # ALIKED tanpa awalan: jalur peta layanan (server/pipeline.py) tetap sama.
+    prefix = "" if a.features == "aliked" else f"{a.features}-"
+    run_dir = out / f"{prefix}kp{a.max_kp}-r{a.resize}"
     run_dir.mkdir(parents=True, exist_ok=True)
     refs, queries = images_in(root, "mapping"), images_in(root, "query")
     # hloc mengabaikan tag rotasi EXIF, jadi foto potret diproses miring 90 derajat dan
@@ -219,6 +239,7 @@ def main():
     )
 
     base = {
+        "features": a.features,
         "max_keypoints": a.max_kp,
         "resize_max": a.resize,
         "covisibility_clustering": a.covis,
