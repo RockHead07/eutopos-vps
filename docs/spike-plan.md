@@ -798,3 +798,56 @@ kalinya alur ujung ke ujung tanpa langkah manual. Foto uji: **46 frame Video 2 u
 
 **Belum ada:** akurasi dalam meter. Langkah berikutnya: rekam dengan pola ini sekaligus titik acuan
 (runbook bagian 2), lalu `eval_meter.py`.
+
+### SIFT lawan ALIKED pada data lantai 10 (PC lab, 2026-10-04)
+
+**Latar belakang.** Pembimbing 2 mengira pipeline memakai SIFT (bawaan COLMAP) dan meminta cara kerjanya
+dicek. Pipeline kita mengganti ekstraksi fitur dengan ALIKED dan pencocokan dengan LightGlue, dan COLMAP
+hanya dipakai untuk rekonstruksi. Perbandingan ini menjawab apakah penggantian itu beralasan.
+
+**Data dan setelan.** Job 2 (jalur keliling, 402 frame peta, 46 foto uji dari hari lain, bagian di atas).
+Semua tahap selain fitur lokal dan pencocok sama dengan produksi (`server/pipeline.py`): pasangan MegaLoc
+512 ditambah 10 frame berurutan, `--exhaustive-max 0`. Dijalankan di container pekerja PC lab (GPU).
+Perintah: `spike/run.py <dataset> --out <out> --features sift|aliked --max-kp N --resize N ...`.
+
+| Varian | Keypoint/gambar | Frame di peta utama | Potongan | Foto uji ≥ 50 inlier | Ekstraksi fitur peta |
+|---|---|---|---|---|---|
+| **ALIKED + LightGlue** (produksi, 1024 px, 1024 kp) | 632 | **401 / 402** | **1** | **36 / 46** | 17 s |
+| SIFT bawaan COLMAP, 1024 px, 1024 fitur | 716 | 135 / 402 | 6 | 0 / 46 | 112 s |
+| SIFT bawaan COLMAP, 2560 px (penuh), 8192 fitur | 3.188 | 133 / 402 | 6 | 0 / 46 | 811 s |
+| SIFT setelan hloc, 1024 px, 1024 fitur | ≈263 | 119 / 402 | 8 | 0 / 46 | 32 s |
+| SIFT setelan hloc, 1600 px, 8192 fitur | ≈419 | 134 / 402 | 7 | 0 / 46 | 99 s |
+
+Keypoint per gambar dihitung dari gambar peta; tanda ≈ = rata-rata gambar peta dan uji (selisih kecil).
+
+"Bawaan COLMAP": `first_octave` -1 dan `peak_threshold` 0,0067 (pycolmap 4.2.1), deskriptor RootSIFT, pencocokan
+tetangga terdekat dengan uji rasio 0,8 dan cek dua arah (`NN-ratio` hloc). Setelan hloc (`first_octave` 0,
+`peak_threshold` 0,01) lebih ketat dan menghasilkan lebih sedikit keypoint di lorong dalam ruangan, jadi
+dua baris terakhir hanya data pembanding, bukan wakil "SIFT COLMAP".
+
+**Cek kewajaran (bukan bug pada eksperimen).** Jumlah pasangan titik cocok antar-frame:
+
+| Varian | Frame berjarak 0,5 s, median | Frame berjarak 5 s, median | Pasangan 5 s dengan < 15 cocok |
+|---|---|---|---|
+| ALIKED + LightGlue | 443 | 201 | 14 |
+| SIFT bawaan COLMAP, 2560 px, 8192 | 572 | 117 | 47 |
+| SIFT bawaan COLMAP, 1024 px, 1024 | 276 | 67 | 58 |
+
+Untuk sudut pandang yang hampir sama, SIFT resolusi penuh justru menemukan lebih banyak kecocokan daripada
+ALIKED. Kelemahannya muncul saat sudut pandang bergeser (5 detik jalan): banyak pasangan nyaris tanpa
+kecocokan, dan di titik itulah rekonstruksi putus jadi 6 potongan. Foto uji berbeda sekitar 90 derajat dan
+hari, sehingga tidak satu pun melewati ambang 50 inlier.
+
+**Kesimpulan.**
+1. Penggantian SIFT dengan ALIKED + LightGlue beralasan **pada data kita**: satu peta utuh dan 78% foto uji
+   diterima, lawan peta pecah dan 0% (kedua varian SIFT COLMAP).
+2. Ini hasil satu lantai, satu ponsel, satu sesi rekam, dan satu per varian (tanpa pengulangan). Selisihnya
+   besar sekali, tapi tetap bukan klaim umum tentang SIFT.
+3. SIFT resolusi penuh juga paling lambat (811 s ekstraksi, sekitar 49 kali ALIKED).
+
+**Temuan hloc (commit c13273b).** Opsi `max_keypoints` pada ekstraktor DoG memanggil `torch.topk` pada skor
+yang semuanya nol dan gagal dengan `IndexError`. `spike/run.py --features sift` membatasi jumlah fitur lewat
+`max_num_features` pycolmap, seperti COLMAP sendiri.
+
+**Reproduksi.** Hasil mentah dan skrip ada di PC lab, `~/eutopos-data/work/experiments/sift-vs-aliked/`
+(tidak di repo: ukurannya besar). Gambar bukti (peta tampak atas, garis kecocokan) dibuat dari berkas itu.
