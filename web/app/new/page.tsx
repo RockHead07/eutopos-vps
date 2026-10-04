@@ -5,6 +5,7 @@ import Tus from "@uppy/tus";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api, mb, ROLE } from "@/lib/api";
+import { Icon } from "@/lib/Icon";
 import "@uppy/core/css/style.min.css";
 import "@uppy/dashboard/css/style.min.css";
 
@@ -134,6 +135,7 @@ export default function NewSessionPage() {
         <p className="muted">For a production map, mark every video as map. Keep this tab open until the upload finishes.</p>
         <div className="actions">
           <button onClick={start} disabled={busy || files.length === 0}>
+            <Icon name="upload" />
             {busy ? "Uploading..." : "Start upload"}
           </button>
         </div>

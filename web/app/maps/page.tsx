@@ -1,5 +1,6 @@
 "use client";
-import Link from "next/link";
+import { Icon, VersionBadge } from "@/lib/Icon";
+import Link from "@/lib/Link";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { Rows } from "@/lib/Rows";
@@ -47,7 +48,7 @@ export default function MapsPage() {
           {s && <span>{reloading ? <span className="badge running">loading a new version</span> : <span className="badge done">ready</span>}</span>}
         </div>
       </section>
-      {s?.reload_error && <p className="error">{s.reload_error}</p>}
+      {s?.reload_error && <p className="error"><Icon name="error-map" /> {s.reload_error}</p>}
       {message && <p className="notice">{message}</p>}
       {(error || versions.error || service.error) && (
         <p className="error">{error ?? versions.error ?? service.error}</p>
@@ -69,13 +70,13 @@ export default function MapsPage() {
                   <tr key={v.id}>
                     <td>{v.area_id}</td>
                     <td className="num">{v.version}</td>
-                    <td><span className={`badge ${v.status}`}>{v.status}</span></td>
+                    <td><VersionBadge status={v.status} /></td>
                     <td className="num">{v.job_id ? <Link href={`/job/?id=${v.job_id}`}>{v.job_id}</Link> : "-"}</td>
                     <td className="muted">{v.published_by ?? "-"}</td>
                     <td>
                       {v.status !== "published" && (
                         <button className="secondary" onClick={() => publish(v.id, v.version)} disabled={reloading}>
-                          {v.status === "retired" ? "Restore" : "Publish"}
+                          {v.status === "retired" ? <><Icon name="restore" />Restore</> : <><Icon name="publish" />Publish</>}
                         </button>
                       )}
                     </td>
