@@ -53,7 +53,7 @@ main() {
 		return 0
 	}
 
-	local branch cur new
+	local branch cur new deployed back
 	branch=$(git symbolic-ref --short -q HEAD || true)
 	if [[ $branch != main ]] || ! git diff --quiet HEAD --; then
 		say "skip: checkout is not a clean main (${branch:-detached HEAD}); someone is working by hand"
@@ -62,8 +62,11 @@ main() {
 	git fetch -q origin main
 	cur=$(git rev-parse HEAD)
 	new=$(git rev-parse origin/main)
-	if [[ $cur == "$new" ]]; then
-		note "up to date at ${cur:0:7}"
+	# Compared with what was last deployed, not with the checkout: a "git pull" by hand without a
+	# rebuild moves the checkout but leaves the old containers running.
+	deployed=$(cat "$STATE_DIR/deployed" 2>/dev/null || true)
+	if [[ $new == "$deployed" ]]; then
+		note "up to date at ${new:0:7}"
 		return 0
 	fi
 	if [[ $new == "$(cat "$STATE_DIR/bad" 2>/dev/null || true)" ]]; then
@@ -94,12 +97,14 @@ main() {
 		say "wait: $running map job(s) running; deploying ${new:0:7} would fail them"
 		return 0
 	fi
+	# Rollback target: the last deployed commit, or the checkout when nothing is recorded yet.
+	back=${deployed:-$cur}
 	if ((DRY)); then
-		say "would deploy ${cur:0:7} -> ${new:0:7}"
+		say "would deploy ${back:0:7} -> ${new:0:7}"
 		return 0
 	fi
 
-	say "deploying ${cur:0:7} -> ${new:0:7}"
+	say "deploying ${back:0:7} -> ${new:0:7}"
 	git merge -q --ff-only origin/main
 	cd deploy
 	if ! docker compose build; then
@@ -108,16 +113,21 @@ main() {
 		return 1
 	fi
 	if up; then
+		echo "$new" >"$STATE_DIR/deployed"
 		say "deployed ${new:0:7}"
 		return 0
 	fi
-	say "health check failed for ${new:0:7}; rolling back to ${cur:0:7}"
 	echo "$new" >"$STATE_DIR/bad"
-	git reset -q --hard "$cur"
+	if [[ $back == "$new" ]]; then
+		say "health check failed for ${new:0:7}; no earlier deployed commit to roll back to: the service needs a person"
+		return 1
+	fi
+	say "health check failed for ${new:0:7}; rolling back to ${back:0:7}"
+	git reset -q --hard "$back"
 	if docker compose build && up; then
-		say "rolled back to ${cur:0:7}"
+		say "rolled back to ${back:0:7}"
 	else
-		say "ROLLBACK FAILED at ${cur:0:7}: the service needs a person"
+		say "ROLLBACK FAILED at ${back:0:7}: the service needs a person"
 	fi
 	return 1
 }

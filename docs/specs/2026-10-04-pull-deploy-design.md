@@ -31,7 +31,10 @@ The PC lab builds its own image from the commit, the same way it is built by han
 1. **One run at a time** (`flock`). A run that finds the lock taken exits.
 2. **Refuse an unknown state.** The checkout must be on `main` with no tracked changes. Otherwise log
    and stop: somebody is working on the PC lab by hand.
-3. `git fetch origin main`. Nothing new: exit quietly.
+3. `git fetch origin main`. Nothing new: exit quietly. "New" is compared with the **last deployed
+   commit** (`~/.local/state/eutopos-deploy/deployed`, written after a healthy start), not with the
+   checkout: a `git pull` by hand moves the checkout but leaves the old containers running. Nothing
+   recorded yet (first run): deploy, which rebuilds from cache and recreates only what changed.
 4. **Skip a known bad commit.** A commit that failed the health check before is recorded and never
    retried; the next commit on `main` is.
 5. **Fast-forward only.** If `origin/main` is not a descendant of the running commit (history
@@ -47,8 +50,9 @@ The PC lab builds its own image from the commit, the same way it is built by han
    `/health`).
    - **Build fails:** reset the checkout to the previous commit. Containers were not touched. Retried
      next run (a network error is the usual cause).
-   - **Health check fails:** record the commit as bad, reset to the previous commit, rebuild and start
-     it again (rollback).
+   - **Health check fails:** record the commit as bad, reset to the last deployed commit, rebuild and
+     start it again (rollback). With no deployed commit recorded there is nothing to roll back to:
+     log it for a person.
 
 Everything is logged to the journal: `journalctl -u eutopos-deploy@<user>`.
 
