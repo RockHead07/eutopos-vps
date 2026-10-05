@@ -1,7 +1,9 @@
 "use client";
 import { Panel } from "@/components/Panel";
 import { StatusBadge } from "@/components/StatusBadge";
+import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Icon } from "@/lib/Icon";
 import Link from "@/lib/Link";
 import { api } from "@/lib/api";
 import { PageHead } from "@/lib/PageHead";
@@ -28,7 +30,12 @@ export default function JobsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>#</TableHead><TableHead>Area</TableHead><TableHead>Status</TableHead><TableHead>Stage</TableHead><TableHead>By</TableHead>
+                <TableHead>#</TableHead>
+                <TableHead>Area</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Stage</TableHead>
+                <TableHead>By</TableHead>
+                <TableHead className="text-right">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -39,6 +46,14 @@ export default function JobsPage() {
                   <TableCell><StatusBadge status={j.status} /></TableCell>
                   <TableCell className="text-muted-foreground">{j.status === "done" ? "-" : (j.stage ?? "-")}</TableCell>
                   <TableCell className="text-muted-foreground">{j.created_by}</TableCell>
+                  <TableCell className="text-right">
+                    <Button asChild variant="outline" size="sm" className="rounded-full gap-1.5 font-medium text-xs whitespace-nowrap">
+                      <Link href={`/job/?id=${j.id}`}>
+                        <Icon name={j.status === "done" ? "view-3d" : "arrow-up-right"} />
+                        <span>{j.status === "done" ? "Inspect map" : j.status === "failed" ? "View error" : "View progress"}</span>
+                      </Link>
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
