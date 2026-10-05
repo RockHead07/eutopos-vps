@@ -9,10 +9,11 @@ from pathlib import Path
 
 from sqlmodel import Session, select
 
-from server.db import Area, MapJob
+from server.db import Area, MapJob, MapVersion
 
 ROLES = {"peta", "uji"}
 ERROR_MAX = 4000  # cukup untuk 50 baris log terakhir
+DELETABLE = {"done", "failed"}  # pekerjaan yang sudah berhenti
 
 
 def _save(session: Session, job: MapJob) -> None:
@@ -100,3 +101,25 @@ def expire_uploading(session: Session, max_age: timedelta) -> list[MapJob]:
     for job in stale:
         fail(session, job, "upload did not finish within 24 hours; start a new session")
     return stale
+
+
+def delete_block_reason(session: Session, job: MapJob) -> str | None:
+    """Alasan pekerjaan belum boleh dihapus, atau None. 'deleting' lolos: permintaan ulang aman."""
+    if job.status == "deleting":
+        return None
+    if job.status not in DELETABLE:
+        return f"job is {job.status}; only finished or failed jobs can be deleted"
+    version = session.get(MapVersion, job.map_version_id) if job.map_version_id else None
+    if version is not None and version.status == "published":
+        return "its map version is published; publish another version first"
+    return None
+
+
+def request_delete(session: Session, job: MapJob) -> None:
+    """Tandai untuk dihapus. Folder peta baru hilang di pekerja: api memasang /maps hanya-baca."""
+    job.status = "deleting"
+    _save(session, job)
+
+
+def deleting(session: Session) -> list[MapJob]:
+    return list(session.exec(select(MapJob).where(MapJob.status == "deleting").order_by(MapJob.id)))

@@ -18,7 +18,7 @@ from pathlib import Path
 from sqlmodel import Session
 
 from server import jobs
-from server.db import Area, MapJob, engine_from_env, register
+from server.db import Area, MapJob, MapVersion, engine_from_env, register
 from server.map_layout import missing_files
 from server.pipeline import (
     GLOBAL_RESIZE,
@@ -139,6 +139,33 @@ def process(
         jobs.fail(session, job, f"{msg}\n{tail}".strip())
 
 
+def purge(session: Session, job: MapJob, maps: Path) -> None:
+    """Hapus peta hasil dan baris database sebuah pekerjaan yang diminta dihapus (DELETE /api/jobs).
+
+    Folder frame di data/jobs/<id> sengaja dibiarkan: itu masukan yang bisa membangun ulang peta
+    (video unggahan sudah dibuang setelah ekstraksi). Folder hanya dihapus kalau tepat
+    <maps>/<area>/job-<id>; jalur lain berarti baris database rusak dan pekerjaan ditandai gagal.
+    """
+    root = maps.resolve()
+    map_dir = (maps / job.area_id / f"job-{job.id}").resolve()
+    try:
+        version = session.get(MapVersion, job.map_version_id) if job.map_version_id else None
+        if version is not None and version.status == "published":
+            raise StageError("its map version is published; not deleted")
+        if map_dir.parent.parent != root:
+            raise StageError(f"refusing to delete outside the maps folder: {map_dir}")
+        if map_dir.exists():
+            shutil.rmtree(map_dir)
+        session.delete(job)
+        session.flush()  # job merujuk versi: baris job harus hilang lebih dulu
+        if version is not None:
+            session.delete(version)
+        session.commit()
+    except Exception as e:  # tetap hidup: pekerjaan ditandai gagal dan bisa dicoba hapus lagi
+        session.rollback()
+        jobs.fail(session, job, f"delete failed: {e}")
+
+
 def main() -> None:
     from server.localizer import trust_megaloc_hub_repo  # impor berat (torch, hloc), hanya di sini
 
@@ -157,6 +184,9 @@ def main() -> None:
                 for stale in jobs.expire_uploading(s, UPLOAD_MAX_AGE):
                     ids = [v["upload_id"] for v in stale.videos if v.get("upload_id")]
                     delete_upload_files(ids, DATA / "uploads")
+                for gone in jobs.deleting(s):
+                    print(f"pekerjaan {gone.id}: dihapus", flush=True)
+                    purge(s, gone, MAPS)
                 time.sleep(POLL_S)
                 continue
             print(f"pekerjaan {job.id} ({job.area_id}) mulai", flush=True)

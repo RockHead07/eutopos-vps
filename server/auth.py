@@ -7,6 +7,7 @@ diketahui siapa yang mengunggah atau menerbitkan.
     CF_ACCESS_TEAM_DOMAIN   https://<team>.cloudflareaccess.com (sama dengan klaim iss)
     CF_ACCESS_AUD           Application Audience (AUD) Tag aplikasi Access
     EUTOPOS_DEV_NO_AUTH=1   hanya untuk uji lokal: semua permintaan dianggap dev@local
+    EUTOPOS_ADMINS          email dipisah koma yang boleh menghapus. Kosong = tidak ada yang boleh.
 """
 
 import os
@@ -58,6 +59,14 @@ def email_from_token(token: str | None) -> str:
     if not claims.get("email"):
         raise AuthError(403, "token has no email; service tokens are not allowed")
     return claims["email"]
+
+
+def is_admin(email: str) -> bool:
+    """Admin = email di EUTOPOS_ADMINS. Kosong berarti tidak ada (gagal tertutup)."""
+    if os.environ.get("EUTOPOS_DEV_NO_AUTH") == "1" and email == DEV_USER:
+        return True
+    admins = {a.strip().lower() for a in os.environ.get("EUTOPOS_ADMINS", "").split(",")}
+    return email.lower() in admins - {""}
 
 
 def current_user(request: Request) -> str:

@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlmodel import select
 
-from server import active_map, uploads
+from server import active_map, auth, uploads
 from server.db import MapJob, MapVersion, publish
 
 MAPS_ROOT = Path("/maps")  # jalur peta di dalam container (deploy/compose.yaml)
@@ -70,6 +70,10 @@ def publish_version(version_id: int, request: Request, user: uploads.User, s: up
     v = s.get(MapVersion, version_id)
     if v is None:
         raise HTTPException(404, "version not found")
+    if s.exec(
+        select(MapJob.id).where(MapJob.map_version_id == v.id, MapJob.status == "deleting")
+    ).first():
+        raise HTTPException(409, "its job is being deleted")
     st = request.app.state
     serving = v.area_id == active_map.serving_area()
     # ponytail: pemeriksaan tanpa kunci, dua klik dalam milidetik yang sama masih bisa lolos.
@@ -82,6 +86,12 @@ def publish_version(version_id: int, request: Request, user: uploads.User, s: up
     # Diterbitkan oleh thread setelah peta terbukti bisa dimuat (server/active_map.py).
     active_map.reload_in_background(st, s.get_bind(), v.id, user)
     return {"version": _out(s, v), "reload": "started"}
+
+
+@router.get("/api/me")
+def me(user: uploads.User) -> dict:
+    """Identitas untuk menu akun. is_admin hanya menentukan tombol hapus, server tetap memeriksa."""
+    return {"email": user, "is_admin": auth.is_admin(user)}
 
 
 @router.get("/api/service")

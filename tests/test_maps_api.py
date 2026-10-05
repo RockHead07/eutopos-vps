@@ -8,8 +8,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlmodel import Session, SQLModel, create_engine
 
-from server import active_map, jobs, maps_api, uploads
-from server.db import register
+from server import active_map, auth, jobs, maps_api, uploads
+from server.db import publish, register
 
 
 @pytest.fixture
@@ -139,3 +139,80 @@ def test_jobs_from_cli_are_listed(client):
     )
     videos = client.get("/api/jobs").json()[0]["videos"]
     assert videos == [{"name": "a.mp4", "role": "peta", "size": None, "uploaded": None}]
+
+
+def only_job_id(client):
+    return client.get("/api/jobs").json()[0]["id"]
+
+
+def test_jobs_expose_dates(client):
+    make_version(client)
+    j = client.get("/api/jobs").json()[0]
+    assert j["created_at"] and j["finished_at"]
+    assert "started_at" in j  # null untuk pekerjaan yang tidak lewat pekerja
+
+
+def test_me_reports_email_and_admin(client):
+    assert client.get("/api/me").json() == {"email": "dev@local", "is_admin": True}
+
+
+def test_me_for_a_non_admin(client, monkeypatch):
+    monkeypatch.setenv("EUTOPOS_ADMINS", "boss@x.id")
+    client.app.dependency_overrides[auth.current_user] = lambda: "tamu@x.id"
+    assert client.get("/api/me").json() == {"email": "tamu@x.id", "is_admin": False}
+
+
+def test_delete_needs_admin(client, monkeypatch):
+    make_version(client)
+    jid = only_job_id(client)
+    monkeypatch.setenv("EUTOPOS_ADMINS", "boss@x.id")
+    client.app.dependency_overrides[auth.current_user] = lambda: "tamu@x.id"
+    assert client.delete(f"/api/jobs/{jid}").status_code == 403
+    assert client.get(f"/api/jobs/{jid}").json()["status"] == "done"
+
+
+def test_delete_only_marks_the_job_and_never_touches_disk(client):
+    # api memasang /maps hanya-baca: penghapusan sungguhan dikerjakan pekerja.
+    v = make_version(client)
+    jid = only_job_id(client)
+    r = client.delete(f"/api/jobs/{jid}")
+    assert r.status_code == 202 and r.json() == {"status": "deleting"}
+    assert client.get(f"/api/jobs/{jid}").json()["status"] == "deleting"
+    assert (client.maps / "floor10").exists() and v.path
+    assert client.delete(f"/api/jobs/{jid}").status_code == 202  # diulang aman
+
+
+def test_delete_unknown_job_is_404(client):
+    assert client.delete("/api/jobs/999").status_code == 404
+
+
+@pytest.mark.parametrize("status", ["uploading", "queued", "running"])
+def test_delete_refuses_unfinished_jobs(client, status):
+    j = jobs.create_job(
+        client.db,
+        "floor10",
+        "L10",
+        "dev@local",
+        [{"name": "a.mp4", "role": "peta", "size": 1}],
+        status=status,
+    )
+    r = client.delete(f"/api/jobs/{j.id}")
+    assert r.status_code == 409 and status in r.json()["detail"]
+
+
+def test_delete_refuses_a_published_version(client):
+    v = make_version(client)
+    publish(client.db, v.id, by="dev@local")
+    jid = only_job_id(client)
+    r = client.delete(f"/api/jobs/{jid}")
+    assert r.status_code == 409 and "published" in r.json()["detail"]
+    assert client.get(f"/api/jobs/{jid}").json()["status"] == "done"
+
+
+def test_publish_is_refused_while_its_job_is_being_deleted(client):
+    v = make_version(client)
+    client.delete(f"/api/jobs/{only_job_id(client)}")
+    r = client.post(
+        f"/api/versions/{v.id}/publish", json={}, headers={"content-type": "application/json"}
+    )
+    assert r.status_code == 409 and "deleted" in r.json()["detail"]
