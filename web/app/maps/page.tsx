@@ -41,11 +41,13 @@ export default function MapsPage() {
   }, [versions.data]);
 
   const handleSort = (col: string) => {
-    if (sortKey === col) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
+    if (sortKey !== col) {
       setSortKey(col);
       setSortDir("asc");
+    } else if (sortDir === "asc") {
+      setSortDir("desc");
+    } else {
+      setSortKey(null);
     }
   };
 

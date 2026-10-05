@@ -25,11 +25,13 @@ export function SortableHead({
   const iconName = isActive ? (direction === "asc" ? "sort-asc" : "sort-desc") : "sort";
 
   return (
-    <TableHead className={`text-left select-none ${className}`}>
+    <TableHead
+      aria-sort={isActive ? (direction === "asc" ? "ascending" : "descending") : "none"}
+      className={`text-left select-none ${className}`}
+    >
       <button
         type="button"
         onClick={() => onSort(column)}
-        aria-sort={isActive ? (direction === "asc" ? "ascending" : "descending") : "none"}
         className="inline-flex items-center gap-1.5 text-left font-medium text-foreground hover:text-ink transition-colors group focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded py-1 -my-1 cursor-pointer"
       >
         <span>{label}</span>
