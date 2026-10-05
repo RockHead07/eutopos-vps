@@ -68,9 +68,9 @@ Tanda ⚠️ berarti belum terverifikasi. Tanggal pengecekan: September 2026.
   Computer Vision 60(2), 91-110, 2004. [DOI 10.1023/B:VISI.0000029664.99615.94](https://doi.org/10.1023/B:VISI.0000029664.99615.94) (Crossref).
 - **Arandjelović, Zisserman.** *Three things everyone should know to improve object retrieval* (RootSIFT).
   CVPR 2012, 2911-2918. [DOI 10.1109/CVPR.2012.6248018](https://doi.org/10.1109/CVPR.2012.6248018) (Crossref).
-- **Peran:** pembanding. Pada data lantai 10, hasil ditentukan pencocoknya, bukan fiturnya: SIFT dan ALIKED
-  sama-sama 401/402 frame dan 36/46 foto uji dengan LightGlue, dan sama-sama gagal (0/46) dengan tetangga
-  terdekat + rasio (`docs/sift-vs-aliked.md`, `docs/spike-plan.md`).
+- **Peran:** pembanding. Di data lantai 10, hasil ditentukan matcher-nya, bukan feature-nya: SIFT dan ALIKED
+  sama-sama 401/402 frame dan 36/46 foto uji dengan LightGlue, dan sama-sama gagal (0/46) dengan nearest neighbor +
+  ratio test (`docs/sift-vs-aliked.md`, `docs/spike-plan.md`).
 
 ### DISK (ekstraktor pembanding)
 - **Tyszkiewicz dkk.** *DISK: Learning local features with policy gradient.* NeurIPS 2020.
@@ -275,7 +275,7 @@ belum dibaca, jadi klaim hanya sekuat abstraknya.
 | Akurasi navigasi AR berbasis sensor ponsel terukur dan masih punya kendala | [6] Hořejší dkk. 2024 | ARCore, AR Foundation, dan ZXing di gudang: 83% mencapai target, akurasi rata-rata 0,48 m, dan kegagalan atau ketidakstabilan akibat pencahayaan. Lingkungan gudang, bukan gedung kampus |
 | Pelacakan visual-inersia (VIO) akan melenceng seiring waktu, jadi perlu koreksi berkala | [8] Kim dkk. 2022 | Membandingkan ARKit, ARCore, RealSense T265, dan ZED 2: ARKit paling stabil dengan galat *drift* sekitar 0,02 m per detik. **Angka ARCore sendiri tidak ada di abstrak**, jangan dikutip |
 | Evaluasi lokalisasi untuk AR butuh benchmark yang realistis dan *ground truth* yang akurat | [9] Sarlin dkk. 2022 (LaMAR) | Benchmark lama berskala kecil, keragaman rendah, direkam dari kamera diam, dan akurasi *ground truth*-nya umumnya tidak cukup untuk kebutuhan AR |
-| Pencocokan fitur adalah inti lokalisasi visual dan rekonstruksi 3D | [10] Huang dkk. 2024 | Survei deteksi, deskripsi, dan pencocokan fitur beserta penerapannya pada lokalisasi visual dan SLAM, dibandingkan lewat eksperimen. Dasar untuk Bab 2 (ALIKED, LightGlue) |
+| Feature matching adalah inti lokalisasi visual dan rekonstruksi 3D | [10] Huang dkk. 2024 | Survei deteksi, deskripsi, dan pencocokan fitur beserta penerapannya pada lokalisasi visual dan SLAM, dibandingkan lewat eksperimen. Dasar untuk Bab 2 (ALIKED, LightGlue) |
 | Lokalisasi visual berbasis cloud menimbulkan masalah privasi | [11] Geppert dkk. 2021; [12] Kim dkk. 2025 | Geppert: "privacy concerns arising from cloud-based solutions in mixed reality and robotics". Kim: pada lokalisasi klien-server, pengiriman data visual ke penyedia layanan punya tantangan privasi; studi pengguna menunjukkan rasa tidak aman. Keduanya mengusulkan solusi teknis lain (garis fitur, kamera peristiwa), bukan lokalisasi di server lokal seperti eutopos |
 | RAG menjawab keterbatasan LLM (pengetahuan usang, jawaban meyakinkan tapi salah) | [13] Huang dan Huang 2026; [14] Zhao dkk. 2026; [15] Lewis dkk. 2020 | Huang: RAG menggabungkan *retrieval* dengan LLM untuk menekan jawaban yang tampak masuk akal tapi bisa salah. Zhao: survei RAG yang juga membahas keterbatasan sistem RAG saat ini, jadi RAG mengurangi masalah tanpa menghapusnya. Lewis: makalah RAG asli |
 | Celah: asisten navigasi AR berbahasa alami dengan RAG sudah ada, tetapi lokalisasinya bukan lokal tanpa penanda | [16] Yang dkk. 2025; [17] [18] Fajrianti dkk. 2023, 2024 | Yang: sistem AR yang menggabungkan BIM dengan RAG multi-agen dan agen AR berwujud (suara, gerak); SUS 80,5. INSUS (pembimbing): navigasi indoor dengan Unity dan ponsel; posisi awal dari QR code, dan versi 2024 mereset posisi lewat pengenalan papan nama |
