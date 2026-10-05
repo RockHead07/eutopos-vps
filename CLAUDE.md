@@ -37,7 +37,7 @@ Riwayat: 2026-09-20 tidak ada pengembangan sebelum ACC; 2026-09-25 pengecualian 
 lantai 10; 2026-09-29 dicabut dengan penghalang per pekerjaan di atas; 2026-09-30 judul diterima.
 Kode uji coba ada di `spike/`, data di `data/` (tidak masuk git).
 
-**Posisi terakhir (2026-10-04):**
+**Posisi terakhir (2026-10-05):**
 - Spike: pipeline, pengukuran latensi hangat, dan penilai galat meter jalan di data contoh (laptop dan
   PC lab). Rincian: `docs/spike-plan.md`.
 - Uji video lantai 10 (tanpa titik acuan): jalur ular (2026-09-30) membuat peta pecah 3 potongan,
@@ -51,13 +51,27 @@ Kode uji coba ada di `spike/`, data di `data/` (tidak masuk git).
   2026-10-02 dengan `server.upload_client`), dan **akses dari internet** lewat Cloudflare Tunnel +
   Access di `eutopos.rockhead07.tech` (`deploy/compose.tunnel.yaml`). **Dashboard** (PR 3) di `web/`,
   disajikan FastAPI dari `/`, berbahasa Inggris: Overview, daftar pekerjaan, unggah video, detail
-  pekerjaan dengan tampilan 3D, versi peta dan Publish. Tampil lewat Access di PC lab 2026-10-03;
-  unggah dari `/new/` lewat Cloudflare belum diuji.
+  pekerjaan dengan tampilan 3D, versi peta dan Publish. Tampil lewat Access di PC lab 2026-10-03.
+  **Unggah dari `/new/` lulus 2026-10-04** (video 540 MB dari HP lewat Cloudflare Access, 11 potongan 50 MiB,
+  satu koneksi putus dilanjutkan otomatis, peta 157/172 frame dalam 3 menit 26 detik).
   `/localize` lewat container terverifikasi di PC lab dengan peta demo: 405 inlier, 1,94 s CPU.
   Website unggah (PR 2 sampai 4) mengikuti `docs/specs/2026-10-01-web-upload-and-map-build-design.md`.
 - PC lab sudah jadi host: WSL2 Ubuntu 24.04, Docker Engine, NVIDIA Container Toolkit, GPU terlihat
   dari dalam container. WSL menyala sendiri setelah boot tanpa login (Task Scheduler), dan SSH masuk lewat
   Tunnel + Access di `ssh-eutopos.rockhead07.tech` (`deploy/README.md` bagian 8).
+- **CI/CD (2026-10-04):** CI menjalankan lint, audit workflow, dan unit test di dalam image Docker yang sama
+  dengan yang dijalankan PC lab (`docs/ci-cd.md`). **Deploy otomatis model pull**: timer systemd di PC lab
+  menjalankan `deploy/autodeploy.sh` tiap 5 menit, men-deploy `main` hanya kalau tiga check lolos dan tidak ada
+  pekerjaan bangun peta yang berjalan, membandingkan dengan commit yang terakhir ter-deploy (bukan checkout),
+  dan rollback kalau `/health` gagal (`deploy/README.md` bagian 9,
+  `docs/specs/2026-10-04-pull-deploy-design.md`). GitHub tidak pernah memegang kunci ke PC lab.
+- **Dashboard:** palet sage, Plus Jakarta Sans, ikon native `web/public/icons` lewat `web/lib/Icon.tsx`
+  (CSS mask), favicon dari logo proyek. Hanya data nyata dari `/api/*`.
+- **SIFT vs ALIKED (2026-10-05):** uji 2 x 2 di data lantai 10 menunjukkan **matcher yang menentukan**, bukan
+  feature: SIFT dan ALIKED sama-sama gagal dengan nearest neighbor + ratio test (0/46) dan sama-sama berhasil dengan
+  LightGlue (401/402 frame, 36/46 foto uji, 36 foto yang sama). Penjelasan: `docs/sift-vs-aliked.md`.
+- **Rujukan Proposal PA:** `docs/research-paper.md` bagian 10, 18 rujukan 2021-2026 yang diverifikasi ke Crossref
+  dan abstrak.
 - Rancangan setelahnya: `docs/specs/2026-09-29-capture-and-map-pipeline-design.md`.
 
 **Prioritas tetap spike satu koridor** (`docs/spike-plan.md`). Spike menjawab dua hal: apakah akurasi
@@ -127,8 +141,8 @@ Repo ini **publik** dan berlisensi **AGPL-3.0**.
 
 - Commit hanya kalau pemilik repo memintanya. Push hanya dengan perintah terpisah.
 - **`main` hanya lewat pull request** (keputusan pemilik repo, 2026-09-27). Ruleset `main-protection`
-  menolak push langsung dari siapa pun dan mewajibkan check `Python lint and format` serta
-  `Workflow security audit` lolos. Alurnya: branch, push, `gh pr create`, tunggu CI hijau, lalu
+  menolak push langsung dari siapa pun dan mewajibkan tiga check lolos: `Python lint and format`,
+  `Workflow security audit`, dan `Tests (Docker)` (84 unit test dijalankan di dalam image layanan). Alurnya: branch, push, `gh pr create`, tunggu CI hijau, lalu
   `gh pr merge --rebase --delete-branch`. Tanpa reviewer wajib. Jangan menyalakan auto-merge.
 - **Branch berumur pendek** (trunk-based development, keputusan pemilik repo, 2026-09-27). Satu unit
   kerja yang sudah terverifikasi = satu branch = satu PR, di-merge **hari itu juga**. Perbaikan kecil
@@ -156,6 +170,49 @@ Repo ini **publik** dan berlisensi **AGPL-3.0**.
   yang bukan milikmu, jangan commit berkas itu dan tanyakan ke pemilik repo.
 - **Jangan pernah mencantumkan atribusi AI** di commit atau PR: tanpa `Co-Authored-By`, tanpa footer
   "Generated with", tanpa tautan sesi. Author dan committer selalu pemilik repo.
+
+## Aturan untuk semua asisten AI (termasuk Antigravity / agy)
+
+Berlaku untuk setiap agen yang bekerja di repo ini. Aturan ini lahir dari kejadian nyata: dashboard yang menampilkan
+angka karangan (92,4%, 1.420 query, VRAM 4,2 GB, daftar job palsu, banner "cached telemetry" padahal tidak ada
+cache, dan label "96,8% (36/46)" padahal 36/46 = 78%), laporan "berhasil" untuk hal yang tidak dijalankan,
+perintah tambahan yang tidak dilaporkan (`Stop-Process -Name git -Force`, percobaan elevasi), dan penambahan
+Tailwind dan `lucide-react` tanpa izin.
+
+1. **Tidak ada data karangan.** Setiap angka, nama, tanggal, status, atau grafik di UI, dokumen, dan laporan harus
+   berasal dari data nyata (API, berkas hasil, log) atau sumber yang disebut. **Dilarang:** nilai cadangan yang
+   tampak nyata (`?? 401`, `|| 1420`), array grafik tulisan tangan, daftar contoh yang menyerupai data, status
+   tetap ("Online", "Welcome back, Admin"), dan banner yang menyatakan hal yang tidak terjadi. Kalau datanya belum
+   ada: tampilkan keadaan kosong yang jujur ("No data yet") atau jangan tampilkan kartunya. Mockup hanya boleh
+   dengan label "contoh" yang jelas dan tidak boleh di-merge.
+2. **Tidak ada rujukan gaib.** Setiap paper yang dikutip harus punya DOI yang cocok di Crossref (penulis, tahun,
+   venue, halaman) dan isi klaimnya dicocokkan ke abstrak atau teks. Tulis tingkat verifikasinya. Kalau tidak
+   bisa diverifikasi, katakan, jangan menebak.
+3. **Bedakan yang diukur dari yang diduga.** Tandai dugaan sebagai dugaan. Jangan menyimpulkan sebab dari satu
+   eksperimen yang mengubah dua hal sekaligus (contoh: kesimpulan "ALIKED lebih baik" yang ternyata soal matcher).
+4. **Laporan berisi bukti mentah.** Setiap klaim "selesai" atau "berhasil" disertai output perintah apa adanya,
+   bukan ringkasan. **Setiap penyimpangan dan perintah tambahan wajib dilaporkan.** Jangan menulis "berhasil"
+   untuk hal yang tidak dijalankan. "Tidak tahu" atau "tidak bisa memverifikasi" lebih baik daripada tebakan yang
+   meyakinkan.
+5. **Verifikasi sebelum klaim.** Baca berkas sebelum menyebut isinya, jalankan kodenya, buka halamannya, cek lognya.
+   Perubahan UI diperiksa di browser (lebar desktop dan ponsel), bukan hanya `tsc` dan `build`.
+6. **Prinsip Ponytail: tanpa dependensi baru tanpa izin pemilik repo.** Dashboard memakai Tailwind v4 dan
+   shadcn/ui resmi (disetujui pemilik repo, 2026-10-05). Komponen baru ditambahkan lewat CLI
+   (`npx shadcn@latest add <nama>`), bukan ditulis ulang tangan. Palet eutopos ada di `web/app/globals.css` dan
+   variabel shadcn dipetakan ke sana, jangan memakai warna bawaan shadcn. Ikon aplikasi tetap dari
+   `web/public/icons/*.svg` lewat `web/lib/Icon.tsx`. **Dilarang** menambah pustaka UI atau chart lain di luar
+   shadcn (grafik tetap SVG/CSS buatan sendiri). Dependensi lain di `web/package.json` hanya bila diminta.
+7. **Kerjakan tepat yang diminta.** Gagasan lain disampaikan sebagai usulan, bukan dikerjakan. Jangan mengubah
+   arah desain, arsitektur, atau cakupan sendiri.
+8. **Git:** satu sesi satu worktree di `D:/wt/<nama>`, **jangan membuat atau berpindah cabang di checkout utama**.
+   Commit dan push hanya atas perintah. **Jangan merge PR, jangan menghapus cabang, jangan mematikan proses
+   (`Stop-Process`, `kill`) tanpa izin.** Cabang lokal yang berisi commit belum di-push dicadangkan dulu
+   (`git bundle`) sebelum dihapus.
+9. **PC lab, Cloudflare, dan rahasia:** membaca boleh, mengubah (docker, systemd, Task Scheduler, `cf`) tanya dulu.
+   Jangan mencetak isi `deploy/.env`, awal `docker compose logs tusd` (memuat rahasia hook), token, atau kunci.
+   Jangan meminta atau menangani password. Jangan mengangkat hak akses atau membuat akun.
+10. **Istilah teknis tetap bahasa Inggris** (nearest neighbor, ratio test, matcher, descriptor, keypoint). Jangan
+    menerjemahkannya paksa ke bahasa Indonesia.
 
 ## Cara kerja yang diharapkan
 
