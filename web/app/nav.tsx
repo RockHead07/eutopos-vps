@@ -2,13 +2,7 @@
 import Link from "@/lib/Link";
 import { usePathname } from "next/navigation";
 import { Icon } from "@/lib/Icon";
-
-const LINKS = [
-  { href: "/", label: "Overview", icon: "overview", match: (p: string) => p === "/" },
-  { href: "/jobs/", label: "Jobs", icon: "stack", match: (p: string) => p.startsWith("/job") },
-  { href: "/new/", label: "New map session", icon: "new-session", match: (p: string) => p.startsWith("/new") },
-  { href: "/maps/", label: "Map versions", icon: "map-versions", match: (p: string) => p.startsWith("/maps") },
-];
+import { LINKS } from "@/lib/links";
 
 export function Nav() {
   const path = usePathname();

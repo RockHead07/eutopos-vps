@@ -1,11 +1,22 @@
 "use client";
 import { Icon, VersionBadge } from "@/lib/Icon";
+import { Panel } from "@/components/Panel";
+import { StatusBadge } from "@/components/StatusBadge";
 import Link from "@/lib/Link";
 import { api, type Job } from "@/lib/api";
+import { PageHead } from "@/lib/PageHead";
 import { Rows } from "@/lib/Rows";
+import { Sparkline, type SparkPoint } from "@/lib/Sparkline";
 import { usePoll } from "@/lib/usePoll";
 
 const BUSY = ["uploading", "queued", "running"];
+
+const fmtDuration = (s: number) => (s < 60 ? `${Math.round(s)} s` : `${Math.floor(s / 60)} min ${Math.round(s % 60)} s`);
+/** Waktu dari ekstraksi fitur sampai rekonstruksi (tanpa mengekstrak frame dari video). Null kalau tidak tercatat. */
+const buildSeconds = (j: Job) => {
+  const t = j.summary?.run?.t_map_s;
+  return t ? Object.values(t).reduce((a, b) => a + b, 0) : null;
+};
 
 export default function OverviewPage() {
   const jobs = usePoll(api.jobs, 5000);
@@ -25,16 +36,26 @@ export default function OverviewPage() {
     { status: "failed", label: "Failed", n: all.filter((j) => j.status === "failed").length },
   ];
   const s = service.data;
+  // Maksimal 8 job selesai terakhir yang punya waktu tercatat, urut lama ke baru
+  const builds: SparkPoint[] = all
+    .filter((j) => j.status === "done" && buildSeconds(j) !== null)
+    .sort((a, b) => a.id - b.id)
+    .slice(-8)
+    .map((j) => ({
+      id: j.id,
+      value: buildSeconds(j)!,
+      tip: `Job ${j.id} (${j.area_id}): ${fmtDuration(buildSeconds(j)!)}, ${j.summary?.run?.map_registered ?? "?"} of ${j.summary?.run?.map_images ?? "?"} frames registered`,
+    }));
+  const lastBuild = builds[builds.length - 1];
 
   return (
     <>
-      <div className="page-head">
-        <h1>Overview</h1>
-        <p className="muted">Map builds, map quality, and the map /localize is serving.</p>
-      </div>
+      <PageHead crumbs={[{ label: "Overview" }]} title="Overview">
+        Map builds, map quality, and the map /localize is serving.
+      </PageHead>
       {error && <p className="error">{error}</p>}
       <div className="overview">
-        <section className="card area-active">
+        <Panel className="area-active">
           <span className="stat-label">Active map</span>
           {s ? (
             <>
@@ -43,7 +64,7 @@ export default function OverviewPage() {
                 {s.map_version !== null && <small> v{s.map_version}</small>}
               </span>
               <span>
-                {s.reloading ? <span className="badge running">loading a new version</span> : <span className="badge done">ready</span>}
+                {s.reloading ? <StatusBadge status="running">loading a new version</StatusBadge> : <StatusBadge status="done">ready</StatusBadge>}
               </span>
             </>
           ) : (
@@ -68,9 +89,9 @@ export default function OverviewPage() {
               ))}
           </ul>
           <Link href="/maps/">All map versions <Icon name="arrow-up-right" /></Link>
-        </section>
+        </Panel>
 
-        <section className="card area-accept">
+        <Panel className="area-accept">
           <div>
             <h2>Test photos accepted</h2>
             <p className="muted">Share of each job&apos;s test photos localized with at least 50 inliers.</p>
@@ -81,15 +102,15 @@ export default function OverviewPage() {
           )}
           {scored.length > 0 && <AcceptChart jobs={scored} />}
           <Link href="/jobs/">View as table <Icon name="arrow-up-right" /></Link>
-        </section>
+        </Panel>
 
-        <section className="card area-jobs">
+        <Panel className="area-jobs">
           <span className="stat-label">Jobs</span>
           <span className="stat-value">{jobs.data ? all.length : <span className="skeleton row" />}</span>
           <ul className="status-bars">
             {counts.map((c) => (
               <li key={c.status}>
-                <span className={`badge ${c.status}`}>{c.label}</span>
+                <StatusBadge status={c.status}>{c.label}</StatusBadge>
                 <span className="track" aria-hidden="true">
                   <span style={{ width: all.length ? `${(c.n / all.length) * 100}%` : "0%" }} />
                 </span>
@@ -97,9 +118,24 @@ export default function OverviewPage() {
               </li>
             ))}
           </ul>
-        </section>
+        </Panel>
 
-        <section className="card area-latest">
+        <Panel className="area-build">
+          <div>
+            <h2>Map build time</h2>
+            <p className="muted">From feature extraction to reconstruction, per finished job (GPU).</p>
+          </div>
+          {!jobs.data && <div className="skeleton block" />}
+          {jobs.data && !lastBuild && <p className="muted">No finished job has a recorded build time yet.</p>}
+          {lastBuild && (
+            <>
+              <span className="stat-value">{fmtDuration(lastBuild.value)}</span>
+              <Sparkline points={builds} />
+            </>
+          )}
+        </Panel>
+
+        <Panel className="area-latest">
           <div className="actions">
             <h2>Latest map</h2>
             {latest && <Link href={`/job/?id=${latest.id}`}>Job {latest.id} · {latest.area_id}</Link>}
@@ -107,7 +143,7 @@ export default function OverviewPage() {
           {!jobs.data && <div className="skeleton block" />}
           {jobs.data && !latest && <p className="muted">No finished job yet.</p>}
           {latest && <LatestStats job={latest} />}
-        </section>
+        </Panel>
       </div>
     </>
   );
@@ -123,7 +159,7 @@ function AcceptChart({ jobs }: { jobs: Job[] }) {
         const pct = Math.round(((ins.accepted ?? 0) / (ins.queries ?? 1)) * 100);
         const tip = `Job ${j.id} (${j.area_id}): ${ins.accepted} of ${ins.queries} accepted, ${pct}%`;
         return (
-          <Link key={j.id} href={`/job/?id=${j.id}`} className={j.id === last ? "bar latest" : "bar"} title={tip} aria-label={tip}>
+          <Link key={j.id} href={`/job/?id=${j.id}`} className={j.id === last ? "bar latest" : "bar"} data-tip={tip} aria-label={tip}>
             {j.id === last && <span className="bar-value num">{pct}%</span>}
             <span className="bar-fill" style={{ height: `${Math.max(pct, 2)}%` }} />
             <span className="bar-label num">#{j.id}</span>
@@ -137,10 +173,11 @@ function AcceptChart({ jobs }: { jobs: Job[] }) {
 function LatestStats({ job }: { job: Job }) {
   const run = job.summary?.run;
   const ins = job.summary?.inspect;
+  const noTest = !ins?.queries; // 0 diterima dari 0 foto uji bukan hasil, hanya tidak ada video uji
   const items = [
     { label: "Registered frames", value: run?.map_registered, of: run?.map_images },
     { label: "Map pieces", value: ins?.parts?.length },
-    { label: "Test photos accepted", value: ins?.accepted, of: ins?.queries || undefined },
+    { label: "Test photos accepted", value: noTest ? undefined : ins?.accepted, of: ins?.queries || undefined, note: noTest ? "No test video in this job" : undefined },
   ];
   return (
     <div className="stats-inline">
@@ -151,6 +188,7 @@ function LatestStats({ job }: { job: Job }) {
             {it.value ?? "-"}
             {it.of !== undefined && <small> / {it.of}</small>}
           </span>
+          {it.note && <span className="muted">{it.note}</span>}
         </div>
       ))}
     </div>

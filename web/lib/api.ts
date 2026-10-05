@@ -1,7 +1,13 @@
 // size dan uploaded null: pekerjaan dari manage job (CLI), videonya tidak lewat unggahan.
 export type Video = { name: string; role: "peta" | "uji"; size: number | null; uploaded: boolean | null };
 export type Summary = {
-  run?: { map_images?: number; map_registered?: number; queries?: number; queries_localized?: number };
+  run?: {
+    map_images?: number;
+    map_registered?: number;
+    queries?: number;
+    queries_localized?: number;
+    t_map_s?: Record<string, number>; // detik per tahap peta (feature, pairs, matching, reconstruction)
+  };
   inspect?: {
     parts?: { label: string; frames: number; ranges: string[] }[];
     queries?: number;
