@@ -1,16 +1,21 @@
 "use client";
+import { Panel } from "@/components/Panel";
+import { StatusBadge } from "@/components/StatusBadge";
+import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Icon } from "@/lib/Icon";
 import Link from "@/lib/Link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { api, mb, ROLE } from "@/lib/api";
+import { PageHead } from "@/lib/PageHead";
 import { Rows } from "@/lib/Rows";
 import { usePoll } from "@/lib/usePoll";
 
 function Stat({ label, value, of, note }: { label: string; value?: number; of?: number; note?: string }) {
   const pct = value !== undefined && of ? Math.round((value / of) * 100) : null;
   return (
-    <div className="card">
+    <Panel>
       <span className="stat-label">{label}</span>
       <span className="stat-value">
         {value ?? "-"}
@@ -22,7 +27,7 @@ function Stat({ label, value, of, note }: { label: string; value?: number; of?: 
         </div>
       )}
       {note && <span className="muted">{note}</span>}
-    </div>
+    </Panel>
   );
 }
 
@@ -53,14 +58,10 @@ function JobDetail() {
   return (
     <>
       {error && <p className="error">{error}</p>}
-      <div className="page-head">
-        <p className="muted"><Link href="/jobs/">Jobs</Link> / {job.id}</p>
-        <h1>Job {job.id} · {job.area_id}</h1>
-        <p className="muted">
-          <span className={`badge ${job.status}`}>{job.status}</span>{" "}
-          {job.status !== "done" && job.stage && <>stage {job.stage} · </>}by {job.created_by}
-        </p>
-      </div>
+      <PageHead crumbs={[{ label: "Jobs", href: "/jobs/" }, { label: `Job ${job.id}` }]} title={`Job ${job.id} · ${job.area_id}`}>
+        <StatusBadge status={job.status} />{" "}
+        {job.status !== "done" && job.stage && <>stage {job.stage} · </>}by {job.created_by}
+      </PageHead>
       {job.error && <pre className="error">{job.error}</pre>}
       {run && ins && (
         <section className="stats">
@@ -78,39 +79,37 @@ function JobDetail() {
           />
         </section>
       )}
-      <section className="card">
+      <Panel>
         <h2>Videos</h2>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr><th>Name</th><th>Role</th><th>Size</th><th>Upload</th></tr>
-            </thead>
-            <tbody>
-              {job.videos.map((v) => (
-                <tr key={v.name}>
-                  <td>{v.name}</td>
-                  <td>{ROLE[v.role] ?? v.role}</td>
-                  <td className="num">{v.size === null ? "-" : mb(v.size)}</td>
-                  <td className="muted">{v.uploaded === null ? "from CLI" : v.uploaded ? "uploaded" : "incomplete"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+        <Table>
+          <TableHeader>
+            <TableRow><TableHead>Name</TableHead><TableHead>Role</TableHead><TableHead>Size</TableHead><TableHead>Upload</TableHead></TableRow>
+          </TableHeader>
+          <TableBody>
+            {job.videos.map((v) => (
+              <TableRow key={v.name}>
+                <TableCell>{v.name}</TableCell>
+                <TableCell>{ROLE[v.role] ?? v.role}</TableCell>
+                <TableCell className="num">{v.size === null ? "-" : mb(v.size)}</TableCell>
+                <TableCell className="text-muted-foreground">{v.uploaded === null ? "from CLI" : v.uploaded ? "uploaded" : "incomplete"}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Panel>
       {job.map_version_id && (
-        <section className="card">
+        <Panel>
           <div className="actions">
             <h2><Icon name="view-3d" /> 3D view</h2>
             <span className="muted">Map and cameras in blue, accepted test photos in green, rejected in orange.</span>
           </div>
           <iframe src={`/api/versions/${job.map_version_id}/report`} title="3D map view" />
           <div className="actions">
-            <button onClick={() => publish(job.map_version_id!)}><Icon name="publish" />Publish this version</button>
+            <Button className="rounded-full" onClick={() => publish(job.map_version_id!)}><Icon name="publish" />Publish this version</Button>
             <Link href="/maps/">Map versions</Link>
           </div>
           {message && <p className="notice">{message}</p>}
-        </section>
+        </Panel>
       )}
     </>
   );
@@ -125,7 +124,7 @@ function Loading() {
         <div className="skeleton block" />
         <div className="skeleton block" />
       </section>
-      <section className="card"><Rows /></section>
+      <Panel><Rows /></Panel>
     </>
   );
 }

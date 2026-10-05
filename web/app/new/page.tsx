@@ -5,7 +5,14 @@ import Tus from "@uppy/tus";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api, mb, ROLE } from "@/lib/api";
+import { Panel } from "@/components/Panel";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Icon } from "@/lib/Icon";
+import { PageHead } from "@/lib/PageHead";
 import "@uppy/core/css/style.min.css";
 import "@uppy/dashboard/css/style.min.css";
 
@@ -89,58 +96,57 @@ export default function NewSessionPage() {
 
   return (
     <>
-      <div className="page-head">
-        <h1>New map session</h1>
-        <p className="muted">Walk the area with your back to the wall, camera facing the room. Videos are uploaded in 50 MiB chunks.</p>
-      </div>
-      <section className="card">
+      <PageHead crumbs={[{ label: "New map session" }]} title="New map session">
+        Walk the area with your back to the wall, camera facing the room. Videos are uploaded in 50 MiB chunks.
+      </PageHead>
+      <div className="split">
+      <Panel>
         <h2>Area</h2>
-        <div className="fields">
-          <label>
-            Area ID (lowercase letters, digits, hyphens)
-            <input value={areaId} onChange={(e) => setAreaId(e.target.value)} pattern="[a-z0-9][a-z0-9-]{0,39}" />
-          </label>
-          <label>
-            Area name
-            <input value={areaName} onChange={(e) => setAreaName(e.target.value)} />
-          </label>
+        <div className="grid gap-3.5">
+          <div className="grid gap-1.5">
+            <Label htmlFor="area-id">Area ID (lowercase letters, digits, hyphens)</Label>
+            <Input id="area-id" value={areaId} onChange={(e) => setAreaId(e.target.value)} pattern="[a-z0-9][a-z0-9-]{0,39}" />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="area-name">Area name</Label>
+            <Input id="area-name" value={areaName} onChange={(e) => setAreaName(e.target.value)} />
+          </div>
         </div>
-      </section>
-      <section className="card">
+      </Panel>
+      <Panel>
         <h2>Videos</h2>
         <Dashboard uppy={uppy} hideUploadButton proudlyDisplayPoweredByUppy={false} height={300} width="100%" />
         {files.length > 0 && (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr><th>Video</th><th>Size</th><th>Role</th></tr>
-              </thead>
-              <tbody>
-                {files.map((f, i) => (
-                  <tr key={f.id}>
-                    <td>{f.name}</td>
-                    <td className="num">{mb(f.size)}</td>
-                    <td>
-                      <select value={roleOf(f, i)} onChange={(e) => setRoles({ ...roles, [f.id]: e.target.value as Role })}>
-                        <option value="peta">{ROLE.peta}</option>
-                        <option value="uji">{ROLE.uji}</option>
-                      </select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Table>
+            <TableHeader>
+              <TableRow><TableHead>Video</TableHead><TableHead>Size</TableHead><TableHead>Role</TableHead></TableRow>
+            </TableHeader>
+            <TableBody>
+              {files.map((f, i) => (
+                <TableRow key={f.id}>
+                  <TableCell>{f.name}</TableCell>
+                  <TableCell className="num">{mb(f.size)}</TableCell>
+                  <TableCell>
+                    <NativeSelect value={roleOf(f, i)} onChange={(e) => setRoles({ ...roles, [f.id]: e.target.value as Role })}>
+                      <NativeSelectOption value="peta">{ROLE.peta}</NativeSelectOption>
+                      <NativeSelectOption value="uji">{ROLE.uji}</NativeSelectOption>
+                    </NativeSelect>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
         <p className="muted">For a production map, mark every video as map. Keep this tab open until the upload finishes.</p>
         <div className="actions">
-          <button onClick={start} disabled={busy || files.length === 0}>
+          <Button className="rounded-full" onClick={start} disabled={busy || files.length === 0}>
             <Icon name="upload" />
             {busy ? "Uploading..." : "Start upload"}
-          </button>
+          </Button>
         </div>
         {error && <p className="error">{error}</p>}
-      </section>
+      </Panel>
+      </div>
     </>
   );
 }
