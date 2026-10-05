@@ -799,63 +799,63 @@ kalinya alur ujung ke ujung tanpa langkah manual. Foto uji: **46 frame Video 2 u
 **Belum ada:** akurasi dalam meter. Langkah berikutnya: rekam dengan pola ini sekaligus titik acuan
 (runbook bagian 2), lalu `eval_meter.py`.
 
-### Fitur lawan pencocok: SIFT dan ALIKED pada data lantai 10 (PC lab, 2026-10-04 dan 2026-10-05)
+### Feature vs matcher: SIFT dan ALIKED di data lantai 10 (PC lab, 2026-10-04 dan 2026-10-05)
 
-**Latar belakang.** Pembimbing 2 mengira pipeline memakai SIFT (bawaan COLMAP) dan meminta cara kerjanya
-dicek, lalu meminta perbandingan. Penjelasan lengkap cara kerja keduanya, tabel, dan batas kesimpulan ada di
+**Latar belakang.** Pembimbing 2 mengira pipeline memakai SIFT (bawaan COLMAP), meminta cara kerjanya dicek, lalu
+meminta perbandingan. Penjelasan lengkap cara kerja keduanya, tabel, dan batas kesimpulan ada di
 `docs/sift-vs-aliked.md`. Bagian ini mencatat pengukurannya.
 
-**Koreksi 2026-10-05.** Catatan pertama (2026-10-04) membandingkan "SIFT bawaan COLMAP" (SIFT + tetangga
-terdekat) dengan "ALIKED + LightGlue" dan menyimpulkan bahwa ALIKED yang membuat hasilnya berbeda. Itu
-**salah atribusi**: dua hal berubah sekaligus (fitur dan pencocok). Uji 2 x 2 di bawah memisahkannya.
+**Koreksi 2026-10-05.** Catatan pertama (2026-10-04) membandingkan "SIFT bawaan COLMAP" (SIFT + nearest neighbor)
+dengan "ALIKED + LightGlue" dan menyimpulkan bahwa ALIKED yang membuat hasilnya beda. Itu **salah atribusi**: dua
+hal berubah sekaligus (feature dan matcher). Uji 2 x 2 di bawah memisahkannya.
 
-**Data dan setelan.** Job 2 (jalur keliling, 402 frame peta, 46 foto uji dari hari lain, bagian di atas).
-Semua tahap selain fitur lokal dan pencocok sama dengan produksi (`server/pipeline.py`): pasangan MegaLoc
-512 ditambah 10 frame berurutan, `--exhaustive-max 0`, 1.024 titik pada 1.024 piksel. Dijalankan di
-container pekerja PC lab (GPU). Perintah: `spike/run.py <dataset> --out <out> --features sift|aliked
---matcher nn-ratio|lightglue --max-kp N --resize N ...`.
+**Data dan setelan.** Job 2 (jalur keliling, 402 frame peta, 46 foto uji dari hari lain, bagian di atas). Semua
+tahap selain local feature dan matcher sama dengan produksi (`server/pipeline.py`): pasangan MegaLoc 512 ditambah 10
+frame berurutan, `--exhaustive-max 0`, 1.024 keypoint pada 1.024 piksel. Dijalankan di container worker PC lab
+(GPU). Perintah: `spike/run.py <dataset> --out <out> --features sift|aliked --matcher nn-ratio|lightglue
+--max-kp N --resize N ...`.
 
-| Fitur | Pencocok | Keypoint/gambar | Frame di peta utama | Titik 3D | Potongan | Foto uji >= 50 inlier | Median inlier |
+| Feature | Matcher | Keypoint/gambar | Frame di peta utama | Titik 3D | Bagian peta | Foto uji >= 50 inlier | Median inlier |
 |---|---|---|---|---|---|---|---|
-| SIFT (setelan COLMAP) | tetangga terdekat + rasio 0,8 | 716 | 135 / 402 | 4.945 | 6 | 0 / 46 | 0 |
-| ALIKED | tetangga terdekat + rasio 0,8 | 632 | 131 / 402 | 3.088 | 6 | 0 / 46 | 0 |
-| SIFT (setelan COLMAP) | LightGlue | 716 | **401 / 402** | 23.645 | **1** | **36 / 46** | 244 |
+| SIFT (setting COLMAP) | nearest neighbor + ratio 0,8 | 716 | 135 / 402 | 4.945 | 6 | 0 / 46 | 0 |
+| ALIKED | nearest neighbor + ratio 0,8 | 632 | 131 / 402 | 3.088 | 6 | 0 / 46 | 0 |
+| SIFT (setting COLMAP) | LightGlue | 716 | **401 / 402** | 23.645 | **1** | **36 / 46** | 244 |
 | ALIKED (produksi) | LightGlue | 632 | **401 / 402** | 24.615 | **1** | **36 / 46** | 220 |
 
-Pembanding tambahan, semuanya dengan tetangga terdekat + rasio: SIFT setelan COLMAP pada resolusi penuh
-(2.560 piksel, hingga 8.192 fitur, rata-rata 3.188 titik): 133 / 402, 6 potongan, 0 / 46. SIFT setelan hloc
-(lebih ketat, 263 sampai 419 titik): 119 sampai 134 / 402, 7 sampai 8 potongan, 0 / 46.
+Pembanding tambahan, semuanya dengan nearest neighbor + ratio test: SIFT setting COLMAP pada resolusi penuh (2.560
+piksel, hingga 8.192 fitur, rata-rata 3.188 keypoint): 133 / 402, 6 bagian, 0 / 46. SIFT setting hloc (lebih ketat,
+263 sampai 419 keypoint): 119 sampai 134 / 402, 7 sampai 8 bagian, 0 / 46.
 
-"Setelan COLMAP": `first_octave` -1, `peak_threshold` 0,0067 (pycolmap 4.2.1), deskriptor RootSIFT.
-Setelan hloc (`first_octave` 0, `peak_threshold` 0,01) menghasilkan lebih sedikit keypoint di lorong dalam
-ruangan, jadi hanya data pembanding. Jumlah keypoint ditentukan fiturnya, bukan pencocoknya.
+"Setting COLMAP": `first_octave` -1, `peak_threshold` 0,0067 (pycolmap 4.2.1), descriptor RootSIFT. Setting hloc
+(`first_octave` 0, `peak_threshold` 0,01) menghasilkan lebih sedikit keypoint di lorong indoor, jadi hanya data
+pembanding. Jumlah keypoint ditentukan feature-nya, bukan matcher-nya.
 
-**Pasangan titik cocok antar-frame (median):**
+**Jumlah match antar-frame (median):**
 
-| Fitur + pencocok | Frame berjarak 0,5 s | Frame berjarak 5 s | Pasangan 5 s dengan < 15 cocok |
+| Feature + matcher | Frame berjarak 0,5 s | Frame berjarak 5 s | Pasangan 5 s dengan < 15 match |
 |---|---|---|---|
-| SIFT + tetangga terdekat | 276 | 67 | 58 |
-| ALIKED + tetangga terdekat | 251 | 43 | 89 |
+| SIFT + nearest neighbor | 276 | 67 | 58 |
+| ALIKED + nearest neighbor | 251 | 43 | 89 |
 | SIFT + LightGlue | 358 | 151 | 34 |
 | ALIKED + LightGlue | 443 | 201 | 14 |
-| SIFT resolusi penuh + tetangga terdekat | 572 | 117 | 47 |
+| SIFT resolusi penuh + nearest neighbor | 572 | 117 | 47 |
 
 **Kesimpulan.**
-1. **Pencocoklah yang menentukan.** Dengan tetangga terdekat + rasio, kedua fitur gagal (peta 6 potongan,
-   0 / 46). Dengan LightGlue, kedua fitur berhasil sama persis, dan **36 foto uji yang diterima identik**.
-2. Pada data ini tidak ada bukti bahwa ALIKED menghasilkan peta atau penerimaan foto yang lebih baik daripada
-   SIFT. Yang terlihat: ALIKED + LightGlue punya lebih banyak titik cocok pada frame yang sudutnya bergeser
-   (201 lawan 151, dan 14 lawan 34 pasangan lemah), dan ekstraksinya lebih cepat (17 s lawan 110 s, tetapi
-   SIFT berjalan di CPU karena pycolmap yang terpasang tanpa CUDA, jadi itu bukan perbedaan intrinsik).
+1. **Matcher yang menentukan.** Dengan nearest neighbor + ratio test, kedua feature gagal (peta 6 bagian, 0 / 46).
+   Dengan LightGlue, kedua feature berhasil sama persis, dan **36 foto uji yang diterima identik**.
+2. Di data ini tidak ada bukti bahwa ALIKED menghasilkan peta atau penerimaan foto yang lebih baik daripada SIFT.
+   Yang terlihat: ALIKED + LightGlue punya lebih banyak match pada frame yang viewpoint-nya bergeser (201 vs 151, dan
+   14 vs 34 pasangan lemah), dan extraction-nya lebih cepat (17 s vs 110 s, tapi SIFT jalan di CPU karena pycolmap
+   yang terpasang tanpa CUDA, jadi itu bukan perbedaan intrinsik).
 3. Satu lantai, satu ponsel, satu sesi rekam, satu kali jalan per varian. Akurasi meter belum diukur.
 
-**Dugaan yang belum diuji:** pencocok klasik gagal karena permukaan berulang dan mengkilap membuat uji rasio
-membuang pasangan yang benar. Uji pembuktian: variasikan ambang rasio.
+**Dugaan yang belum diuji:** nearest neighbor gagal karena permukaan berulang dan mengkilap membuat ratio test
+membuang pasangan yang benar. Uji pembuktian: variasikan threshold ratio.
 
-**Temuan hloc (commit c13273b).** Opsi `max_keypoints` pada ekstraktor DoG memanggil `torch.topk` pada skor
-yang semuanya nol dan gagal dengan `IndexError`. `spike/run.py --features sift` membatasi jumlah fitur lewat
-`max_num_features` pycolmap, seperti COLMAP sendiri. hloc juga menyimpan orientasi SIFT dalam derajat,
-sedangkan bobot SIFT LightGlue dilatih dengan radian, jadi `--matcher lightglue` dengan SIFT mengonversinya.
+**Temuan hloc (commit c13273b).** Opsi `max_keypoints` pada extractor DoG memanggil `torch.topk` pada skor yang
+semuanya nol dan gagal dengan `IndexError`. `spike/run.py --features sift` membatasi jumlah fitur lewat
+`max_num_features` pycolmap, seperti COLMAP sendiri. hloc juga menyimpan orientation SIFT dalam derajat, sedangkan
+bobot SIFT LightGlue dilatih dengan radian, jadi `--matcher lightglue` dengan SIFT mengonversinya.
 
-**Reproduksi.** Hasil mentah dan skrip ada di PC lab, `~/eutopos-data/work/experiments/sift-vs-aliked/`
-(tidak di repo: ukurannya besar).
+**Reproduksi.** Hasil mentah dan skrip ada di PC lab, `~/eutopos-data/work/experiments/sift-vs-aliked/` (tidak di
+repo: ukurannya besar).
