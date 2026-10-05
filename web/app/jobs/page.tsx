@@ -24,6 +24,7 @@ export default function JobsPage() {
 
   const statusOptions = [
     { value: "done", label: "Done" },
+    { value: "uploading", label: "Uploading" },
     { value: "running", label: "Running" },
     { value: "queued", label: "Queued" },
     { value: "failed", label: "Failed" },

@@ -68,7 +68,7 @@ body {
 h1, h2, h3 { color: var(--ink); letter-spacing: -0.02em; line-height: 1.15; text-wrap: balance; margin: 0; }
 h1 { font-size: clamp(1.6rem, 4vw, 2.2rem); font-weight: 600; }
 h2 { font-size: 1.1rem; font-weight: 600; }
-a { color: var(--forest); text-decoration: underline; text-underline-offset: 3px; }
+a:where(:not([data-slot="button"])) { color: var(--forest); text-decoration: underline; text-underline-offset: 3px; } /* tombol shadcn berupa <a> memakai gayanya sendiri */
 :focus-visible { outline: 2px solid var(--forest); outline-offset: 2px; }
 .num { font-variant-numeric: tabular-nums; }
 
@@ -215,6 +215,11 @@ iframe { width: 100%; height: min(70vh, 640px); border: 0; border-radius: var(--
 
 @theme inline {
   --font-heading: var(--font-sans);
+  /* Warna eutopos sebagai utilitas Tailwind (text-forest, border-line, ...) */
+  --color-forest: var(--forest);
+  --color-forest-hover: var(--forest-hover);
+  --color-ink: var(--ink);
+  --color-line: var(--line);
   --font-sans: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
