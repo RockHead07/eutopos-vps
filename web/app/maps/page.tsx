@@ -1,11 +1,13 @@
 "use client";
+import { useMemo, useState } from "react";
 import { Panel } from "@/components/Panel";
+import { SortableHead, type SortDirection } from "@/components/SortableHead";
 import { StatusBadge } from "@/components/StatusBadge";
+import { TableFilterBar } from "@/components/TableFilterBar";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Icon, VersionBadge } from "@/lib/Icon";
 import Link from "@/lib/Link";
-import { useState } from "react";
 import { api } from "@/lib/api";
 import { PageHead } from "@/lib/PageHead";
 import { Rows } from "@/lib/Rows";
@@ -19,6 +21,71 @@ export default function MapsPage() {
   const versions = usePoll(api.versions, 10000, [tick, reloading]);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [areaFilter, setAreaFilter] = useState("all");
+  const [sortKey, setSortKey] = useState<string | null>("version");
+  const [sortDir, setSortDir] = useState<SortDirection>("desc");
+
+  const statusOptions = [
+    { value: "published", label: "Published" },
+    { value: "candidate", label: "Candidate" },
+    { value: "retired", label: "Retired" },
+    { value: "rejected", label: "Rejected" },
+  ];
+
+  const areaOptions = useMemo(() => {
+    if (!versions.data) return [];
+    return Array.from(new Set(versions.data.map((v) => v.area_id))).sort();
+  }, [versions.data]);
+
+  const handleSort = (col: string) => {
+    if (sortKey === col) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(col);
+      setSortDir("asc");
+    }
+  };
+
+  const handleReset = () => {
+    setSearch("");
+    setStatusFilter("all");
+    setAreaFilter("all");
+    setSortKey("version");
+    setSortDir("desc");
+  };
+
+  const filteredAndSortedVersions = useMemo(() => {
+    if (!versions.data) return [];
+    const q = search.trim().toLowerCase();
+    const filtered = versions.data.filter((v) => {
+      if (statusFilter !== "all" && v.status !== statusFilter) return false;
+      if (areaFilter !== "all" && v.area_id !== areaFilter) return false;
+      if (q) {
+        const matchVersion = v.version.toString().includes(q);
+        const matchArea = v.area_id.toLowerCase().includes(q);
+        const matchStatus = v.status.toLowerCase().includes(q);
+        const matchJob = v.job_id ? v.job_id.toString().includes(q) : false;
+        const matchPublished = v.published_by ? v.published_by.toLowerCase().includes(q) : false;
+        return matchVersion || matchArea || matchStatus || matchJob || matchPublished;
+      }
+      return true;
+    });
+
+    if (!sortKey) return filtered;
+
+    return filtered.slice().sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === "version") cmp = a.version - b.version;
+      else if (sortKey === "area_id") cmp = a.area_id.localeCompare(b.area_id);
+      else if (sortKey === "status") cmp = a.status.localeCompare(b.status);
+      else if (sortKey === "job_id") cmp = (a.job_id ?? 0) - (b.job_id ?? 0);
+      else if (sortKey === "published_by") cmp = (a.published_by ?? "").localeCompare(b.published_by ?? "");
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [versions.data, search, statusFilter, areaFilter, sortKey, sortDir]);
 
   async function publish(id: number, version: number) {
     if (!window.confirm(`Make version ${version} active?`)) return;
@@ -64,31 +131,63 @@ export default function MapsPage() {
           <div className="empty"><p>No map versions yet. A finished job adds one.</p></div>
         )}
         {versions.data && versions.data.length > 0 && (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Area</TableHead><TableHead>Version</TableHead><TableHead>Status</TableHead><TableHead>Job</TableHead><TableHead>Published by</TableHead><TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {versions.data.map((v) => (
-                <TableRow key={v.id}>
-                  <TableCell>{v.area_id}</TableCell>
-                  <TableCell className="num">{v.version}</TableCell>
-                  <TableCell><VersionBadge status={v.status} /></TableCell>
-                  <TableCell className="num">{v.job_id ? <Link href={`/job/?id=${v.job_id}`}>{v.job_id}</Link> : "-"}</TableCell>
-                  <TableCell className="text-muted-foreground">{v.published_by ?? "-"}</TableCell>
-                  <TableCell>
-                    {v.status !== "published" && (
-                      <Button variant="outline" className="rounded-full" onClick={() => publish(v.id, v.version)} disabled={reloading}>
-                        {v.status === "retired" ? <><Icon name="restore" />Restore</> : <><Icon name="publish" />Publish</>}
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <>
+            <TableFilterBar
+              search={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Search map versions..."
+              statusFilter={statusFilter}
+              onStatusChange={setStatusFilter}
+              statusOptions={statusOptions}
+              areaFilter={areaFilter}
+              onAreaChange={setAreaFilter}
+              areaOptions={areaOptions}
+              totalCount={versions.data.length}
+              filteredCount={filteredAndSortedVersions.length}
+              onReset={handleReset}
+            />
+            {filteredAndSortedVersions.length === 0 ? (
+              <div className="py-8 text-center text-xs text-muted-foreground">
+                <p>No map versions match your filter criteria.</p>
+                <Button variant="link" size="sm" onClick={handleReset} className="text-xs text-forest mt-1">
+                  Clear filters
+                </Button>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <SortableHead column="area_id" label="Area" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
+                    <SortableHead column="version" label="Version" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
+                    <SortableHead column="status" label="Status" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
+                    <SortableHead column="job_id" label="Job" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
+                    <SortableHead column="published_by" label="Published by" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
+                    <TableHead className="text-left">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredAndSortedVersions.map((v) => (
+                    <TableRow key={v.id}>
+                      <TableCell className="text-left">{v.area_id}</TableCell>
+                      <TableCell className="text-left">{v.version}</TableCell>
+                      <TableCell className="text-left"><VersionBadge status={v.status} /></TableCell>
+                      <TableCell className="text-left">{v.job_id ? <Link href={`/job/?id=${v.job_id}`}>{v.job_id}</Link> : "-"}</TableCell>
+                      <TableCell className="text-left text-muted-foreground">{v.published_by ?? "-"}</TableCell>
+                      <TableCell className="text-left">
+                        {v.status !== "published" ? (
+                          <Button variant="outline" className="rounded-full" onClick={() => publish(v.id, v.version)} disabled={reloading}>
+                            {v.status === "retired" ? <><Icon name="restore" />Restore</> : <><Icon name="publish" />Publish</>}
+                          </Button>
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </>
         )}
       </Panel>
     </>
