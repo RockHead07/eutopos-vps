@@ -39,8 +39,39 @@ FEATURES = {
     # COLMAP) + tetangga terdekat dengan uji rasio 0,8 dan cek dua arah.
     "sift": (extract_features.confs["sift"], match_features.confs["NN-ratio"]),
 }
+# Pencocok yang bisa dipasangkan dengan fitur mana pun (uji 2x2 fitur lawan pencocok).
+MATCHERS = {
+    "nn-ratio": match_features.confs["NN-ratio"],
+    "lightglue": {
+        "lightglue-aliked": match_features.confs["aliked+lightglue"],
+        "lightglue-sift": {
+            "output": "matches-sift-lightglue",
+            "model": {"name": "lightglue", "features": "sift"},
+        },
+    },
+}
+DEFAULT_MATCHER = {"aliked": "lightglue", "sift": "nn-ratio"}
 GLOBAL = extract_features.confs["megaloc"]
 EXHAUSTIVE_MAX = 30  # bawaan --exhaustive-max: di bawahnya semua pasangan, di atasnya retrieval
+
+
+def sift_orientations_in_radians():
+    """hloc menyimpan orientasi SIFT dalam derajat, bobot SIFT LightGlue dilatih dengan radian.
+
+    Tanpa konversi ini SIFT + LightGlue dirugikan oleh masukan di luar sebaran latihnya.
+    """
+    import torch
+    from hloc.matchers import lightglue as hloc_lightglue
+
+    forward = hloc_lightglue.LightGlue._forward
+
+    def converted(self, data):
+        for k in ("oris0", "oris1"):
+            if k in data:
+                data[k] = torch.deg2rad(data[k])
+        return forward(self, data)
+
+    hloc_lightglue.LightGlue._forward = converted
 
 
 def images_in(root: Path, sub: str) -> list[str]:
@@ -119,6 +150,12 @@ def main():
     ap.add_argument("dataset", type=Path)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--features", choices=FEATURES, default="aliked", help="fitur lokal")
+    ap.add_argument(
+        "--matcher",
+        choices=["auto", *MATCHERS],
+        default="auto",
+        help="pencocok fitur; auto = pasangan bawaan fitur (aliked: lightglue, sift: nn-ratio)",
+    )
     ap.add_argument("--k-map", type=int, default=20, help="tetangga retrieval saat membangun peta")
     ap.add_argument("--k-loc", type=int, default=10, help="kandidat retrieval per foto uji")
     # Bawaan hloc: keypoint tanpa batas (rata2 ~2.800/foto di data demo) -> ~12 s/pasangan di CPU.
@@ -150,6 +187,13 @@ def main():
     global GLOBAL
     GLOBAL = {**GLOBAL, "preprocessing": {**GLOBAL["preprocessing"], "resize_max": a.global_resize}}
     LOCAL, MATCHER = FEATURES[a.features]
+    matcher_name = DEFAULT_MATCHER[a.features] if a.matcher == "auto" else a.matcher
+    if matcher_name == "lightglue":
+        MATCHER = MATCHERS["lightglue"][f"lightglue-{a.features}"]
+        if a.features == "sift":
+            sift_orientations_in_radians()
+    else:
+        MATCHER = MATCHERS[matcher_name]
     model = dict(LOCAL["model"])
     if a.features == "sift":
         # Opsi SIFT bawaan COLMAP (first_octave -1, peak_threshold 0,0067), bukan bawaan hloc
@@ -173,6 +217,8 @@ def main():
     # tidak bergantung pada setelan itu, jadi dipakai bersama.
     # ALIKED tanpa awalan: jalur peta layanan (server/pipeline.py) tetap sama.
     prefix = "" if a.features == "aliked" else f"{a.features}-"
+    if matcher_name != DEFAULT_MATCHER[a.features]:
+        prefix = f"{a.features}-{matcher_name}-"
     run_dir = out / f"{prefix}kp{a.max_kp}-r{a.resize}"
     run_dir.mkdir(parents=True, exist_ok=True)
     refs, queries = images_in(root, "mapping"), images_in(root, "query")
@@ -240,6 +286,7 @@ def main():
 
     base = {
         "features": a.features,
+        "matcher": matcher_name,
         "max_keypoints": a.max_kp,
         "resize_max": a.resize,
         "covisibility_clustering": a.covis,

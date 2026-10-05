@@ -68,9 +68,9 @@ Tanda ⚠️ berarti belum terverifikasi. Tanggal pengecekan: September 2026.
   Computer Vision 60(2), 91-110, 2004. [DOI 10.1023/B:VISI.0000029664.99615.94](https://doi.org/10.1023/B:VISI.0000029664.99615.94) (Crossref).
 - **Arandjelović, Zisserman.** *Three things everyone should know to improve object retrieval* (RootSIFT).
   CVPR 2012, 2911-2918. [DOI 10.1109/CVPR.2012.6248018](https://doi.org/10.1109/CVPR.2012.6248018) (Crossref).
-- **Peran:** pembanding. Pada data lantai 10, SIFT bawaan COLMAP memetakan 133 dari 402 frame dalam 6
-  potongan dan 0 dari 46 foto uji diterima, lawan ALIKED 401/402 dan 36/46
-  (`docs/spike-plan.md`, "SIFT lawan ALIKED pada data lantai 10").
+- **Peran:** pembanding. Pada data lantai 10, hasil ditentukan pencocoknya, bukan fiturnya: SIFT dan ALIKED
+  sama-sama 401/402 frame dan 36/46 foto uji dengan LightGlue, dan sama-sama gagal (0/46) dengan tetangga
+  terdekat + rasio (`docs/sift-vs-aliked.md`, `docs/spike-plan.md`).
 
 ### DISK (ekstraktor pembanding)
 - **Tyszkiewicz dkk.** *DISK: Learning local features with policy gradient.* NeurIPS 2020.
