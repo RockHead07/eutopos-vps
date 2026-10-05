@@ -46,6 +46,7 @@ Most documents below are written in Indonesian.
 | [`docs/research-paper.md`](docs/research-paper.md) | Research references, licenses, and method selection rationale |
 | [`docs/specs/`](docs/specs/) | Design specifications (capture and map pipeline, web upload and map build) |
 | [`docs/plans/`](docs/plans/) | Implementation plans that were executed |
+| [`docs/prd/`](docs/prd/) | Product requirements for planned work (360 video support) |
 | [`deploy/README.md`](deploy/README.md) | Host setup (WSL2, Docker, GPU) and running the service, uploads, tunnel, dashboard, autostart after boot, and SSH |
 | [`docs/ci-cd.md`](docs/ci-cd.md) | Automated checks (CI) and the deployment plan |
 
