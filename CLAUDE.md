@@ -196,10 +196,12 @@ Tailwind dan `lucide-react` tanpa izin.
    meyakinkan.
 5. **Verifikasi sebelum klaim.** Baca berkas sebelum menyebut isinya, jalankan kodenya, buka halamannya, cek lognya.
    Perubahan UI diperiksa di browser (lebar desktop dan ponsel), bukan hanya `tsc` dan `build`.
-6. **Prinsip Ponytail: tanpa dependensi baru tanpa izin pemilik repo.** Dashboard memakai CSS biasa di
-   `web/app/globals.css` dan palet di sana. Ikon hanya dari `web/public/icons/*.svg` lewat `web/lib/Icon.tsx`.
-   **Dilarang** menambah Tailwind, shadcn, `lucide-react`, atau pustaka UI dan chart lain. Tidak ada perubahan di
-   `web/package.json` kecuali diminta.
+6. **Prinsip Ponytail: tanpa dependensi baru tanpa izin pemilik repo.** Dashboard memakai Tailwind v4 dan
+   shadcn/ui resmi (disetujui pemilik repo, 2026-10-05). Komponen baru ditambahkan lewat CLI
+   (`npx shadcn@latest add <nama>`), bukan ditulis ulang tangan. Palet eutopos ada di `web/app/globals.css` dan
+   variabel shadcn dipetakan ke sana, jangan memakai warna bawaan shadcn. Ikon aplikasi tetap dari
+   `web/public/icons/*.svg` lewat `web/lib/Icon.tsx`. **Dilarang** menambah pustaka UI atau chart lain di luar
+   shadcn (grafik tetap SVG/CSS buatan sendiri). Dependensi lain di `web/package.json` hanya bila diminta.
 7. **Kerjakan tepat yang diminta.** Gagasan lain disampaikan sebagai usulan, bukan dikerjakan. Jangan mengubah
    arah desain, arsitektur, atau cakupan sendiri.
 8. **Git:** satu sesi satu worktree di `D:/wt/<nama>`, **jangan membuat atau berpindah cabang di checkout utama**.
