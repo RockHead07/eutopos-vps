@@ -72,3 +72,27 @@ def test_dev_mode_never_overrides_real_config(key, monkeypatch):
     with pytest.raises(auth.AuthError) as e:
         auth.email_from_token(None)
     assert e.value.status == 401
+
+
+def test_admins_come_from_env_ignoring_case_and_spaces(monkeypatch):
+    monkeypatch.delenv("EUTOPOS_DEV_NO_AUTH", raising=False)
+    monkeypatch.setenv("EUTOPOS_ADMINS", " Ada@x.id , b@x.id ")
+    assert auth.is_admin("ada@x.id") and auth.is_admin("B@X.ID")
+    assert not auth.is_admin("c@x.id")
+
+
+def test_nobody_is_admin_without_configuration(monkeypatch):
+    # Gagal tertutup: daftar kosong berarti tidak ada yang boleh menghapus.
+    monkeypatch.delenv("EUTOPOS_DEV_NO_AUTH", raising=False)
+    monkeypatch.delenv("EUTOPOS_ADMINS", raising=False)
+    assert not auth.is_admin("a@x.id")
+    monkeypatch.setenv("EUTOPOS_ADMINS", " , ")
+    assert not auth.is_admin("a@x.id")
+
+
+def test_dev_user_is_admin_only_in_dev_mode(monkeypatch):
+    monkeypatch.delenv("EUTOPOS_ADMINS", raising=False)
+    monkeypatch.setenv("EUTOPOS_DEV_NO_AUTH", "1")
+    assert auth.is_admin(auth.DEV_USER)
+    monkeypatch.delenv("EUTOPOS_DEV_NO_AUTH")
+    assert not auth.is_admin(auth.DEV_USER)

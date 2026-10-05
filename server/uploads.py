@@ -11,6 +11,7 @@ api terbuka di jaringan lab, dan hook palsu bisa mengantrekan atau merusak peker
 import json
 import os
 import secrets
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
@@ -85,6 +86,9 @@ class JobOut(BaseModel):
     summary: dict | None
     error: str | None
     map_version_id: int | None
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
 
 
 @router.post("/api/jobs", status_code=201)
@@ -114,6 +118,21 @@ def get(job_id: int, user: User, s: DB) -> JobOut:
     if job is None:
         raise HTTPException(404, "job not found")
     return JobOut.model_validate(job, from_attributes=True)
+
+
+@router.delete("/api/jobs/{job_id}", status_code=202)
+def delete(job_id: int, user: User, s: DB) -> dict:
+    """Minta penghapusan: hanya admin. Berkasnya dihapus pekerja, bukan api (/maps hanya-baca)."""
+    if not auth.is_admin(user):
+        raise HTTPException(403, "only admins can delete jobs")
+    job = s.get(MapJob, job_id)
+    if job is None:
+        raise HTTPException(404, "job not found")
+    if reason := jobs.delete_block_reason(s, job):
+        raise HTTPException(409, reason)
+    if job.status != "deleting":
+        jobs.request_delete(s, job)
+    return {"status": "deleting"}
 
 
 class HookReject(Exception):

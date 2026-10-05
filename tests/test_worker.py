@@ -1,5 +1,6 @@
 """Uji pekerja dengan perintah subprocess palsu: tanpa GPU, tanpa hloc."""
 
+import shutil
 import sys
 from pathlib import Path
 
@@ -7,7 +8,7 @@ import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
 from server import jobs, pipeline, worker
-from server.db import MapVersion
+from server.db import MapJob, MapVersion, publish, register
 from server.map_layout import required_files
 
 
@@ -191,3 +192,74 @@ def test_failed_job_still_deletes_uploaded_videos(session, tmp_path):
 def test_inspect_command_links_plotly_once(tmp_path):
     cmd = pipeline.inspect_command(tmp_path / "map")
     assert cmd[cmd.index("--plotly-url") + 1] == "/assets/plotly.min.js"
+
+
+def finished_job(session, maps, area="floor10"):
+    videos = [{"name": "a", "role": "peta", "size": 1}]
+    job = jobs.create_job(session, area, "L10", "a@x.id", videos)
+    map_dir = maps / area / f"job-{job.id}"
+    map_dir.mkdir(parents=True)
+    (map_dir / "report.html").write_text("peta")
+    version = register(session, area, "L10", str(map_dir))
+    jobs.finish(session, job, version.id, {})
+    return job, version, map_dir
+
+
+def test_purge_removes_the_map_and_rows_but_keeps_the_frames(session, tmp_path):
+    data, maps = tmp_path / "data", tmp_path / "maps"
+    job, version, map_dir = finished_job(session, maps)
+    frames = data / "jobs" / str(job.id) / "dataset"
+    frames.mkdir(parents=True)
+    (frames / "f.jpg").write_text("jpg")
+    jobs.request_delete(session, job)
+    assert [j.id for j in jobs.deleting(session)] == [job.id]
+
+    worker.purge(session, job, maps)
+
+    assert not map_dir.exists()
+    assert (frames / "f.jpg").exists()  # masukan yang bisa membangun ulang peta tetap ada
+    assert session.get(MapJob, job.id) is None
+    assert session.get(MapVersion, version.id) is None
+    assert jobs.deleting(session) == []
+
+
+def test_purge_never_deletes_outside_the_maps_folder(session, tmp_path):
+    maps = tmp_path / "maps"
+    maps.mkdir()
+    outside = tmp_path / "outside" / "job-1"
+    outside.mkdir(parents=True)
+    (outside / "penting.txt").write_text("jangan hapus")
+    job = MapJob(area_id="../outside", created_by="a@x.id", status="deleting", videos=[])
+    session.add(job)
+    session.commit()
+
+    worker.purge(session, job, maps)
+
+    assert (outside / "penting.txt").exists()
+    assert session.get(MapJob, job.id).status == "failed"
+    assert "outside the maps folder" in session.get(MapJob, job.id).error
+
+
+def test_purge_refuses_a_published_version(session, tmp_path):
+    maps = tmp_path / "maps"
+    job, version, map_dir = finished_job(session, maps)
+    publish(session, version.id, by="a@x.id")
+    jobs.request_delete(session, job)
+
+    worker.purge(session, job, maps)
+
+    assert (map_dir / "report.html").exists()
+    assert session.get(MapVersion, version.id) is not None
+    assert session.get(MapJob, job.id).status == "failed"
+    assert "published" in session.get(MapJob, job.id).error
+
+
+def test_purge_survives_a_missing_map_folder(session, tmp_path):
+    maps = tmp_path / "maps"
+    job, _, map_dir = finished_job(session, maps)
+    shutil.rmtree(map_dir)
+    jobs.request_delete(session, job)
+
+    worker.purge(session, job, maps)
+
+    assert session.get(MapJob, job.id) is None

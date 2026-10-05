@@ -38,6 +38,8 @@ services:
       CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:-}
       CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
       EUTOPOS_DEV_NO_AUTH: ${EUTOPOS_DEV_NO_AUTH:-0}
+      # Email admin (dipisah koma) yang boleh menghapus job. Kosong = tidak ada yang boleh.
+      EUTOPOS_ADMINS: ${EUTOPOS_ADMINS:-}
       # Rahasia kanal hook tusd -> api. Kosong = hook ditutup (503).
       TUS_HOOK_SECRET: ${TUS_HOOK_SECRET:-}
     volumes:
