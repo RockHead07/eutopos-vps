@@ -32,9 +32,13 @@ ditampilkan. Datanya sebagian sudah ada di database (`created_at`, `started_at`,
 | `GET /api/jobs`, `GET /api/jobs/{id}` | sekarang memuat `created_at`, `started_at` (null bila tidak lewat pekerja), `finished_at` (ISO 8601, UTC) |
 | `DELETE /api/jobs/{id}` | `202 {"status": "deleting"}`; `403` bukan admin; `404`; `409` dengan alasan (belum selesai, atau versi sedang terbit). Diulang aman. |
 | `POST /api/versions/{id}/publish` | `409 "its job is being deleted"` selama job-nya `deleting` |
+| `DELETE /api/versions/{id}` | Khusus admin. Versi hasil job: `202 {"status":"deleting","job_id":n}`, job-nya ditandai dan dikerjakan pekerja persis seperti `DELETE /api/jobs/{id}` (peta, baris job, dan baris versi hilang bersama, frame tetap). Versi tanpa job (CLI): `200 {"status":"deleted"}`, hanya barisnya yang hilang dan berkasnya tidak disentuh. `403` bukan admin, `404`, `409` bila versi sedang published atau job-nya belum selesai. Ditambahkan 2026-10-06. |
 
 Status baru `deleting` muncul di `status` job sampai pekerja selesai (baris hilang dari daftar). Kalau
 penghapusan gagal, job menjadi `failed` dengan `error` yang menjelaskan, dan bisa dihapus lagi.
+
+Nomor versi baru diambil dari `max(version) + 1` per area, jadi menghapus versi tertinggi membuat nomornya dipakai lagi
+oleh peta berikutnya (indeks uniknya tetap aman).
 
 Keluar (sign out) bukan bagian API ini: Cloudflare Access menyediakan `<domain>/cdn-cgi/access/logout`.
 

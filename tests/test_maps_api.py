@@ -284,3 +284,77 @@ def test_recorded_time_is_exposed_per_video(client):
     videos = client.get("/api/jobs").json()[0]["videos"]
     assert videos[0]["recorded_at"].startswith("2026-10-01T04:15:49")
     assert videos[1]["recorded_at"] is None and videos[2]["recorded_at"] is None
+
+
+def version_ids(client):
+    return [v["id"] for v in client.get("/api/versions").json()]
+
+
+def as_guest(client, monkeypatch):
+    monkeypatch.setenv("EUTOPOS_ADMINS", "boss@x.id")
+    client.app.dependency_overrides[auth.current_user] = lambda: "tamu@x.id"
+
+
+def test_delete_version_needs_admin(client, monkeypatch):
+    v = make_version(client)
+    as_guest(client, monkeypatch)
+    assert client.delete(f"/api/versions/{v.id}").status_code == 403
+    assert v.id in version_ids(client)
+
+
+def test_delete_unknown_version_is_404(client):
+    assert client.delete("/api/versions/999").status_code == 404
+
+
+def test_delete_refuses_the_published_version(client):
+    v = make_version(client)
+    publish(client.db, v.id, by="dev@local")
+    r = client.delete(f"/api/versions/{v.id}")
+    assert r.status_code == 409 and "published" in r.json()["detail"]
+    assert v.id in version_ids(client)
+
+
+def test_delete_refuses_a_published_version_that_has_no_job(client):
+    # Versi dari CLI tidak punya job yang bisa menolak: pengaman milik versi satu-satunya penjaga.
+    v = make_version(client, job=False)
+    publish(client.db, v.id, by="dev@local")
+    r = client.delete(f"/api/versions/{v.id}")
+    assert r.status_code == 409 and "published" in r.json()["detail"]
+    assert v.id in version_ids(client)
+
+
+def test_delete_version_with_a_job_hands_the_job_to_the_worker(client):
+    # Sama dengan Delete di Jobs: api memasang /maps hanya-baca, pekerja yang menghapus berkas.
+    v = make_version(client)
+    jid = only_job_id(client)
+    r = client.delete(f"/api/versions/{v.id}")
+    assert r.status_code == 202 and r.json() == {"status": "deleting", "job_id": jid}
+    assert client.get(f"/api/jobs/{jid}").json()["status"] == "deleting"
+    assert v.id in version_ids(client)  # barisnya baru hilang setelah pekerja selesai
+    assert client.delete(f"/api/versions/{v.id}").status_code == 202  # diulang aman
+
+
+def test_delete_version_of_a_retired_map_with_a_job(client):
+    old = make_version(client)
+    new = make_version(client)
+    publish(client.db, old.id, by="dev@local")
+    publish(client.db, new.id, by="dev@local")  # old menjadi retired
+    assert client.delete(f"/api/versions/{old.id}").status_code == 202
+
+
+def test_delete_version_without_a_job_removes_only_the_row(client):
+    # Peta dari CLI milik pemiliknya: barisnya hilang, berkasnya tidak pernah disentuh.
+    v = make_version(client, job=False)
+    r = client.delete(f"/api/versions/{v.id}")
+    assert r.status_code == 200 and r.json() == {"status": "deleted"}
+    assert v.id not in version_ids(client)
+    assert any((client.maps / "floor10").rglob("report.html"))
+
+
+def test_deleted_version_cannot_be_published(client):
+    v = make_version(client, job=False)
+    client.delete(f"/api/versions/{v.id}")
+    r = client.post(
+        f"/api/versions/{v.id}/publish", json={}, headers={"content-type": "application/json"}
+    )
+    assert r.status_code == 404
