@@ -25,6 +25,9 @@ export type Job = {
   summary: Summary | null;
   error: string | null;
   map_version_id: number | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
 };
 export type Version = {
   id: number;
@@ -47,6 +50,10 @@ export type NewJob = {
   area_name: string;
   videos: { name: string; role: "peta" | "uji"; size: number }[];
 };
+export type Me = {
+  email: string;
+  is_admin: boolean;
+};
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   let r: Response;
@@ -68,9 +75,11 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  me: () => call<Me>("/api/me"),
   jobs: () => call<Job[]>("/api/jobs"),
   job: (id: number) => call<Job>(`/api/jobs/${id}`),
   createJob: (body: NewJob) => call<Job>("/api/jobs", { method: "POST", body: JSON.stringify(body) }),
+  deleteJob: (id: number) => call<{ status: string }>(`/api/jobs/${id}`, { method: "DELETE" }),
   versions: () => call<Version[]>("/api/versions"),
   publish: (id: number) =>
     call<{ version: Version; reload: "started" | "other_area" }>(`/api/versions/${id}/publish`, {
@@ -83,3 +92,41 @@ export const api = {
 export const ROLE: Record<string, string> = { peta: "map", uji: "test" };
 
 export const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(0)} MB`;
+
+const dtf = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+});
+
+export function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "-";
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "-";
+    return dtf.format(d);
+  } catch {
+    return "-";
+  }
+}
+
+export function formatDuration(started: string | null | undefined, finished: string | null | undefined): string {
+  if (!started || !finished) return "-";
+  try {
+    const s = new Date(started).getTime();
+    const f = new Date(finished).getTime();
+    if (isNaN(s) || isNaN(f) || f < s) return "-";
+    const totalSec = Math.floor((f - s) / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const sec = totalSec % 60;
+    if (h > 0) return `${h}h ${m}m ${sec}s`;
+    if (m > 0) return `${m}m ${sec}s`;
+    return `${sec}s`;
+  } catch {
+    return "-";
+  }
+}

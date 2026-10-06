@@ -1,14 +1,28 @@
 "use client";
 import { useMemo, useState } from "react";
+import { MoreHorizontal } from "lucide-react";
 import { Panel } from "@/components/Panel";
 import { SortableHead, type SortDirection } from "@/components/SortableHead";
 import { StatusBadge } from "@/components/StatusBadge";
 import { TableFilterBar } from "@/components/TableFilterBar";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Icon, VersionBadge } from "@/lib/Icon";
 import Link from "@/lib/Link";
-import { api } from "@/lib/api";
+import { api, formatDate, type Version } from "@/lib/api";
 import { PageHead } from "@/lib/PageHead";
 import { Rows } from "@/lib/Rows";
 import { usePoll } from "@/lib/usePoll";
@@ -21,6 +35,8 @@ export default function MapsPage() {
   const versions = usePoll(api.versions, 10000, [tick, reloading]);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  const [selectedVersion, setSelectedVersion] = useState<Version | null>(null);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -85,6 +101,7 @@ export default function MapsPage() {
       else if (sortKey === "status") cmp = a.status.localeCompare(b.status);
       else if (sortKey === "job_id") cmp = (a.job_id ?? 0) - (b.job_id ?? 0);
       else if (sortKey === "published_by") cmp = (a.published_by ?? "").localeCompare(b.published_by ?? "");
+      else if (sortKey === "created_at") cmp = (a.created_at || "").localeCompare(b.created_at || "");
       return sortDir === "asc" ? cmp : -cmp;
     });
   }, [versions.data, search, statusFilter, areaFilter, sortKey, sortDir]);
@@ -164,7 +181,9 @@ export default function MapsPage() {
                     <SortableHead column="status" label="Status" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
                     <SortableHead column="job_id" label="Job" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
                     <SortableHead column="published_by" label="Published by" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
+                    <SortableHead column="created_at" label="Created" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
                     <TableHead className="text-left">Action</TableHead>
+                    <TableHead className="w-10 text-right"><span className="sr-only">Actions</span></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -175,6 +194,9 @@ export default function MapsPage() {
                       <TableCell className="text-left"><VersionBadge status={v.status} /></TableCell>
                       <TableCell className="text-left">{v.job_id ? <Link href={`/job/?id=${v.job_id}`}>{v.job_id}</Link> : "-"}</TableCell>
                       <TableCell className="text-left text-muted-foreground">{v.published_by ?? "-"}</TableCell>
+                      <TableCell className="text-left text-muted-foreground whitespace-nowrap" title={v.created_at || undefined}>
+                        {formatDate(v.created_at)}
+                      </TableCell>
                       <TableCell className="text-left">
                         {v.status !== "published" ? (
                           <Button variant="outline" className="rounded-full" onClick={() => publish(v.id, v.version)} disabled={reloading}>
@@ -184,6 +206,38 @@ export default function MapsPage() {
                           "-"
                         )}
                       </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="rounded-full"
+                              aria-label={`Actions for version ${v.version}`}
+                            >
+                              <MoreHorizontal className="size-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setSelectedVersion(v)}>
+                              Properties
+                            </DropdownMenuItem>
+                            {v.job_id ? (
+                              <DropdownMenuItem asChild>
+                                <Link href={`/job/?id=${v.job_id}`}>View job</Link>
+                              </DropdownMenuItem>
+                            ) : null}
+                            {v.status !== "published" ? (
+                              <DropdownMenuItem
+                                onClick={() => publish(v.id, v.version)}
+                                disabled={reloading}
+                              >
+                                {v.status === "retired" ? "Restore" : "Publish"}
+                              </DropdownMenuItem>
+                            ) : null}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -192,6 +246,51 @@ export default function MapsPage() {
           </>
         )}
       </Panel>
+
+      {/* Version Properties Sheet */}
+      <Sheet open={!!selectedVersion} onOpenChange={(open) => !open && setSelectedVersion(null)}>
+        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Version {selectedVersion?.version} Properties</SheetTitle>
+            <SheetDescription>Read-only details from the server.</SheetDescription>
+          </SheetHeader>
+          {selectedVersion && (
+            <div className="grid gap-4 py-4 text-sm">
+              <div className="grid grid-cols-[140px_1fr] gap-2 items-start">
+                <span className="text-muted-foreground">ID</span>
+                <span className="font-mono">{selectedVersion.id}</span>
+
+                <span className="text-muted-foreground">Area</span>
+                <span>{selectedVersion.area_id}</span>
+
+                <span className="text-muted-foreground">Version</span>
+                <span className="font-semibold">{selectedVersion.version}</span>
+
+                <span className="text-muted-foreground">Status</span>
+                <div><VersionBadge status={selectedVersion.status} /></div>
+
+                <span className="text-muted-foreground">Created</span>
+                <span title={selectedVersion.created_at || undefined}>{formatDate(selectedVersion.created_at)}</span>
+
+                <span className="text-muted-foreground">Published by</span>
+                <span>{selectedVersion.published_by ?? "-"}</span>
+
+                <span className="text-muted-foreground">Job ID</span>
+                <span>
+                  {selectedVersion.job_id ? (
+                    <Link href={`/job/?id=${selectedVersion.job_id}`}>{selectedVersion.job_id}</Link>
+                  ) : (
+                    "-"
+                  )}
+                </span>
+
+                <span className="text-muted-foreground">Has report</span>
+                <span>{selectedVersion.has_report ? "Yes" : "No"}</span>
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </>
   );
 }
