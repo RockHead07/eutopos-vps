@@ -15,7 +15,7 @@ from collections.abc import Callable
 from datetime import timedelta
 from pathlib import Path
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from server import jobs
 from server.db import Area, MapJob, MapVersion, engine_from_env, register
@@ -31,6 +31,8 @@ from server.pipeline import (
     missing_inputs,
     run_dir,
 )
+from server.previews import make_preview
+from server.video_meta import recorded_at
 
 DATA, MAPS = Path("/data"), Path("/maps")  # jalur di dalam container (deploy/compose.yaml)
 UPLOAD_MAX_AGE = timedelta(hours=24)
@@ -90,6 +92,39 @@ def delete_uploaded_videos(videos: list[dict], uploads: Path) -> None:
             delete_upload_files([p.name], uploads)
 
 
+def stamp_recorded(session: Session, job: MapJob) -> None:
+    """Catat waktu rekam tiap video sebelum videonya dihapus: waktu itu hanya ada di dalam berkas.
+
+    None berarti tidak diketahui (folder frame, tanpa metadata, atau nilai tak masuk akal).
+    """
+    stamped = []
+    for v in job.videos:
+        p = Path(v["path"])
+        when = recorded_at(p) if p.is_file() else None
+        stamped.append({**v, "recorded_at": when.isoformat() if when else None})
+    jobs.set_videos(session, job, stamped)
+
+
+def backfill_previews(session: Session, data: Path, maps: Path) -> tuple[int, int]:
+    """Buat pratinjau untuk job selesai yang belum punya, dari frame yang masih tersimpan.
+
+    Hasil: (dibuat, dilewati). Waktu rekam tidak bisa diisi ulang: videonya sudah dihapus.
+    """
+    made = skipped = 0
+    root = maps.resolve()
+    for job in session.exec(select(MapJob).where(MapJob.status == "done")).all():
+        map_dir = (maps / job.area_id / f"job-{job.id}").resolve()
+        out = map_dir / "preview.jpg"
+        if map_dir.parent.parent != root or not map_dir.is_dir() or out.exists():
+            continue
+        mapping = data / "jobs" / str(job.id) / "dataset" / "mapping"
+        if make_preview(mapping, job.videos, out):
+            made += 1
+        else:
+            skipped += 1
+    return made, skipped
+
+
 def process(
     session: Session,
     job: MapJob,
@@ -108,6 +143,7 @@ def process(
             raise StageError("less than 20 GB of free disk; job not started")
         if missing := missing_inputs(job.videos):
             raise StageError(f"input files not found: {', '.join(missing)}")
+        stamp_recorded(session, job)
         for sub in ("mapping", "query"):
             (dataset / sub).mkdir(parents=True, exist_ok=True)
         copy_frame_dirs(job.videos, dataset)
@@ -120,6 +156,7 @@ def process(
 
         jobs.set_stage(session, job, "inspect")
         runner(inspect_command(map_dir), log)
+        make_preview(dataset / "mapping", job.videos, map_dir / "preview.jpg")
 
         jobs.set_stage(session, job, "register")
         if missing := missing_files(map_dir, MAX_KP, RESIZE, GLOBAL_RESIZE):

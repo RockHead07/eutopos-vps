@@ -66,6 +66,9 @@ class VideoOut(BaseModel):
     role: str
     size: int | None = None  # None: pekerjaan dari manage job (CLI), videonya tidak diunggah
     uploaded: bool | None = None
+    # Waktu rekam dari dalam berkas video (server/video_meta.py). None: tidak diketahui, termasuk
+    # semua pekerjaan yang dibuat sebelum fitur ini (videonya sudah dihapus).
+    recorded_at: datetime | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -89,6 +92,15 @@ class JobOut(BaseModel):
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
+    has_preview: bool = False  # GET /api/jobs/{id}/preview
+
+
+def _job_out(job: MapJob) -> JobOut:
+    from server import maps_api  # impor tertunda: maps_api mengimpor modul ini
+
+    out = JobOut.model_validate(job, from_attributes=True)
+    out.has_preview = maps_api.preview_path(job) is not None
+    return out
 
 
 @router.post("/api/jobs", status_code=201)
@@ -103,13 +115,13 @@ def create(body: JobIn, user: User, s: DB) -> JobOut:
         job = jobs.create_job(s, body.area_id, body.area_name, user, videos)
     except ValueError as e:
         raise HTTPException(422, str(e)) from e
-    return JobOut.model_validate(job, from_attributes=True)
+    return _job_out(job)
 
 
 @router.get("/api/jobs")
 def list_jobs(user: User, s: DB, limit: int = Query(50, ge=1, le=200)) -> list[JobOut]:
     stmt = select(MapJob).order_by(MapJob.id.desc()).limit(limit)
-    return [JobOut.model_validate(j, from_attributes=True) for j in s.exec(stmt)]
+    return [_job_out(j) for j in s.exec(stmt)]
 
 
 @router.get("/api/jobs/{job_id}")
@@ -117,7 +129,7 @@ def get(job_id: int, user: User, s: DB) -> JobOut:
     job = s.get(MapJob, job_id)
     if job is None:
         raise HTTPException(404, "job not found")
-    return JobOut.model_validate(job, from_attributes=True)
+    return _job_out(job)
 
 
 @router.delete("/api/jobs/{job_id}", status_code=202)

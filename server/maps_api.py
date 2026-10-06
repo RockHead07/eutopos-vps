@@ -36,6 +36,12 @@ def _report(v: MapVersion) -> Path | None:
     return None
 
 
+def preview_path(job: MapJob) -> Path | None:
+    """Pratinjau job (preview.jpg di folder petanya), hanya kalau tepat di bawah /maps."""
+    p = (MAPS_ROOT / job.area_id / f"job-{job.id}" / "preview.jpg").resolve()
+    return p if p.is_relative_to(MAPS_ROOT.resolve()) and p.is_file() else None
+
+
 def _out(s, v: MapVersion) -> VersionOut:
     job = s.exec(select(MapJob.id).where(MapJob.map_version_id == v.id)).first()
     return VersionOut(
@@ -51,6 +57,16 @@ def _out(s, v: MapVersion) -> VersionOut:
 def list_versions(user: uploads.User, s: uploads.DB) -> list[VersionOut]:
     stmt = select(MapVersion).order_by(MapVersion.area_id, MapVersion.version.desc())
     return [_out(s, v) for v in s.exec(stmt)]
+
+
+@router.get("/api/jobs/{job_id}/preview")
+def job_preview(job_id: int, user: uploads.User, s: uploads.DB) -> FileResponse:
+    job = s.get(MapJob, job_id)
+    if job is None or (path := preview_path(job)) is None:
+        raise HTTPException(404, "preview not found")
+    return FileResponse(
+        path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"}
+    )
 
 
 @router.get("/api/versions/{version_id}/report")

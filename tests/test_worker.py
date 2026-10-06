@@ -2,9 +2,13 @@
 
 import shutil
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
+import cv2
+import numpy as np
 import pytest
+from mp4_builder import mp4
 from sqlmodel import Session, SQLModel, create_engine
 
 from server import jobs, pipeline, worker
@@ -263,3 +267,121 @@ def test_purge_survives_a_missing_map_folder(session, tmp_path):
     worker.purge(session, job, maps)
 
     assert session.get(MapJob, job.id) is None
+
+
+WHEN = datetime(2026, 10, 1, 4, 15, 49, tzinfo=UTC)
+
+
+def real_jpeg(path, w=1280, h=720):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(path), np.full((h, w, 3), 90, dtype=np.uint8))
+
+
+def test_process_records_when_each_video_was_shot_before_deleting_it(session, tmp_path):
+    data, maps, uploaded, _, videos = make_inputs(tmp_path)
+    uploaded.write_bytes(mp4(WHEN))  # video unggahan yang membawa waktu rekam
+    job = queued(session, videos)
+
+    worker.process(session, job, data, maps, runner=fake_runner([]), free_bytes=lambda p: 10**12)
+
+    assert job.status == "done", job.error
+    assert not uploaded.exists()  # videonya tetap dihapus, waktunya sudah tercatat
+    got = {Path(v["path"]).name: v["recorded_at"] for v in job.videos}
+    assert got["abc"] == WHEN.isoformat()
+    assert got["v2.mp4"] is None  # "video" CLI tanpa metadata: tidak diketahui, bukan tebakan
+    assert got["frames"] is None  # folder frame tidak punya waktu rekam
+
+
+def test_recorded_time_survives_a_failed_job(session, tmp_path):
+    data, maps, uploaded, _, videos = make_inputs(tmp_path)
+    uploaded.write_bytes(mp4(WHEN))
+    job = queued(session, videos)
+
+    worker.process(
+        session,
+        job,
+        data,
+        maps,
+        runner=fake_runner([], fail_on="run.py"),
+        free_bytes=lambda p: 10**12,
+    )
+
+    assert job.status == "failed"
+    assert job.videos[0]["recorded_at"] == WHEN.isoformat()
+
+
+def test_process_writes_a_small_preview_next_to_the_map(session, tmp_path):
+    data, maps, _, _, videos = make_inputs(tmp_path)
+    real_jpeg(tmp_path / "frames" / "f_00000.jpg")
+    job = queued(session, videos)
+
+    worker.process(session, job, data, maps, runner=fake_runner([]), free_bytes=lambda p: 10**12)
+
+    preview = maps / "floor10" / f"job-{job.id}" / "preview.jpg"
+    assert job.status == "done", job.error
+    assert cv2.imread(str(preview)).shape[1] == 640
+
+
+def test_job_still_succeeds_when_no_preview_can_be_made(session, tmp_path):
+    data, maps, _, _, videos = make_inputs(tmp_path)  # frame palsu: bukan gambar sungguhan
+    job = queued(session, videos)
+
+    worker.process(session, job, data, maps, runner=fake_runner([]), free_bytes=lambda p: 10**12)
+
+    assert job.status == "done", job.error
+    assert not (maps / "floor10" / f"job-{job.id}" / "preview.jpg").exists()
+
+
+def keep_frames(data, job, name="v_00000.jpg", real=True):
+    frame = data / "jobs" / str(job.id) / "dataset" / "mapping" / name
+    if real:
+        real_jpeg(frame)
+    else:
+        frame.parent.mkdir(parents=True, exist_ok=True)
+        frame.write_bytes(b"bukan gambar")
+
+
+def test_backfill_makes_previews_only_where_missing(session, tmp_path):
+    data, maps = tmp_path / "data", tmp_path / "maps"
+    a, _, a_dir = finished_job(session, maps)
+    b, _, b_dir = finished_job(session, maps)
+    keep_frames(data, a)
+    keep_frames(data, b)
+    (b_dir / "preview.jpg").write_bytes(b"sudah ada")
+
+    assert worker.backfill_previews(session, data, maps) == (1, 0)
+
+    assert (a_dir / "preview.jpg").stat().st_size > 20
+    assert (b_dir / "preview.jpg").read_bytes() == b"sudah ada"  # tidak ditimpa
+    assert worker.backfill_previews(session, data, maps) == (0, 0)  # aman diulang
+
+
+def test_backfill_counts_jobs_whose_frames_are_gone(session, tmp_path):
+    data, maps = tmp_path / "data", tmp_path / "maps"
+    _, _, gone_dir = finished_job(session, maps)  # frame sudah tidak ada
+    bad, _, _ = finished_job(session, maps)
+    keep_frames(data, bad, real=False)
+    assert worker.backfill_previews(session, data, maps) == (0, 2)
+    assert not (gone_dir / "preview.jpg").exists()
+
+
+def test_backfill_never_recreates_a_deleted_map_folder(session, tmp_path):
+    data, maps = tmp_path / "data", tmp_path / "maps"
+    job, _, map_dir = finished_job(session, maps)
+    keep_frames(data, job)
+    shutil.rmtree(map_dir)
+    assert worker.backfill_previews(session, data, maps) == (0, 0)
+    assert not map_dir.exists()
+
+
+def test_backfill_ignores_jobs_outside_the_maps_folder(session, tmp_path):
+    data, maps = tmp_path / "data", tmp_path / "maps"
+    maps.mkdir()
+    outside = tmp_path / "outside" / "job-1"
+    outside.mkdir(parents=True)
+    job = MapJob(area_id="../outside", created_by="a@x.id", status="done", videos=[])
+    session.add(job)
+    session.commit()
+    keep_frames(data, job)
+    assert worker.backfill_previews(session, data, maps) == (0, 0)
+    assert list(outside.iterdir()) == []

@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, SQLModel, create_engine
 
 from server import active_map, auth, jobs, maps_api, uploads
-from server.db import publish, register
+from server.db import MapJob, publish, register
 
 
 @pytest.fixture
@@ -138,7 +138,9 @@ def test_jobs_from_cli_are_listed(client):
         "queued",
     )
     videos = client.get("/api/jobs").json()[0]["videos"]
-    assert videos == [{"name": "a.mp4", "role": "peta", "size": None, "uploaded": None}]
+    assert videos == [
+        {"name": "a.mp4", "role": "peta", "size": None, "uploaded": None, "recorded_at": None}
+    ]
 
 
 def only_job_id(client):
@@ -216,3 +218,69 @@ def test_publish_is_refused_while_its_job_is_being_deleted(client):
         f"/api/versions/{v.id}/publish", json={}, headers={"content-type": "application/json"}
     )
     assert r.status_code == 409 and "deleted" in r.json()["detail"]
+
+
+WHEN_ISO = "2026-10-01T04:15:49+00:00"
+JPEG = bytes([0xFF, 0xD8, 0xFF, 0xE0]) + b"preview" * 20
+
+
+def job_with_preview(client, area="floor10", write=True):
+    j = jobs.create_job(
+        client.db, area, "L10", "dev@local", [{"name": "a.mp4", "role": "peta", "size": 1}]
+    )
+    if write:
+        d = client.maps / area / f"job-{j.id}"
+        d.mkdir(parents=True)
+        (d / "preview.jpg").write_bytes(JPEG)
+    return j
+
+
+def test_preview_is_served_as_a_cached_jpeg(client):
+    j = job_with_preview(client)
+    r = client.get(f"/api/jobs/{j.id}/preview")
+    assert r.status_code == 200 and r.content == JPEG
+    assert r.headers["content-type"] == "image/jpeg"
+    assert r.headers["cache-control"] == "private, max-age=3600"
+
+
+def test_preview_is_404_when_missing_or_job_unknown(client):
+    j = job_with_preview(client, write=False)
+    assert client.get(f"/api/jobs/{j.id}/preview").status_code == 404
+    assert client.get("/api/jobs/999/preview").status_code == 404
+
+
+def test_preview_never_leaves_the_maps_folder(client):
+    # area_id dari baris yang rusak (atau CLI) tidak boleh menyeret berkas di luar /maps.
+    outside = client.maps.parent / "outside"
+    j = MapJob(area_id="../outside", created_by="a@x.id", status="done", videos=[])
+    client.db.add(j)
+    client.db.commit()
+    (outside / f"job-{j.id}").mkdir(parents=True)
+    (outside / f"job-{j.id}" / "preview.jpg").write_bytes(b"rahasia")
+    assert client.get(f"/api/jobs/{j.id}/preview").status_code == 404
+    assert client.get(f"/api/jobs/{j.id}").json()["has_preview"] is False
+
+
+def test_jobs_say_whether_they_have_a_preview(client):
+    with_p = job_with_preview(client)
+    without = job_with_preview(client, write=False)
+    flags = {j["id"]: j["has_preview"] for j in client.get("/api/jobs").json()}
+    assert flags == {with_p.id: True, without.id: False}
+    assert client.get(f"/api/jobs/{with_p.id}").json()["has_preview"] is True
+
+
+def test_recorded_time_is_exposed_per_video(client):
+    jobs.create_job(
+        client.db,
+        "floor10",
+        "L10",
+        "dev@local",
+        [
+            {"name": "a.mp4", "role": "peta", "size": 1, "recorded_at": WHEN_ISO},
+            {"name": "b.mp4", "role": "uji", "size": 1, "recorded_at": None},
+            {"name": "c.mp4", "role": "uji", "size": 1},  # pekerjaan lama: tanpa kunci sama sekali
+        ],
+    )
+    videos = client.get("/api/jobs").json()[0]["videos"]
+    assert videos[0]["recorded_at"].startswith("2026-10-01T04:15:49")
+    assert videos[1]["recorded_at"] is None and videos[2]["recorded_at"] is None
