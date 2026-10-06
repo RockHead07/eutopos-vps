@@ -67,6 +67,12 @@ def claim_next(session: Session) -> MapJob | None:
     return job
 
 
+def set_videos(session: Session, job: MapJob, videos: list[dict]) -> None:
+    """Ganti daftar video (list baru, supaya perubahan kolom JSON terdeteksi)."""
+    job.videos = videos
+    _save(session, job)
+
+
 def set_stage(session: Session, job: MapJob, stage: str) -> None:
     job.stage = stage
     _save(session, job)

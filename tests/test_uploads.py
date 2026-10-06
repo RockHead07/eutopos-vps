@@ -87,7 +87,7 @@ def test_full_upload_flow_queues_after_last_video(client):
     out = client.get(f"/api/jobs/{job['id']}").json()
     assert out["status"] == "queued"
     # ID unggahan dan path tidak dibocorkan ke klien: dengan ID itu orang bisa mengganggu unggahan
-    assert all(set(v) == {"name", "role", "size", "uploaded"} for v in out["videos"])
+    assert all(set(v) == {"name", "role", "size", "uploaded", "recorded_at"} for v in out["videos"])
 
 
 @pytest.mark.parametrize(

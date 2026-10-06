@@ -7,6 +7,7 @@ Contoh (di dalam container):
     python -m server.manage job floor10 "Lantai 10" --map /data/inbox/video1.mp4 \
         --query /data/inbox/video2.mp4
     python -m server.manage jobs
+    python -m server.manage previews    # pratinjau untuk job lama, dari frame yang tersimpan
 Setelah menerbitkan versi baru, muat ulang layanan: docker compose restart api
 """
 
@@ -20,6 +21,7 @@ from server import jobs
 from server.db import MapJob, MapVersion, engine_from_env, publish, register
 from server.map_layout import missing_files
 from server.pipeline import missing_inputs
+from server.worker import DATA, MAPS, backfill_previews
 
 
 def main():
@@ -40,6 +42,9 @@ def main():
     j.add_argument("--query", nargs="*", default=[], help="video atau folder frame untuk uji")
     j.add_argument("--by", default="cli", help="dicatat sebagai pembuat pekerjaan")
     sub.add_parser("jobs", help="tampilkan antrean pekerjaan")
+    sub.add_parser(
+        "previews", help="buat pratinjau job selesai yang belum punya, dari frame tersimpan"
+    )
     a = ap.parse_args()
 
     with Session(engine_from_env()) as s:
@@ -80,6 +85,9 @@ def main():
                 version = f"  versi id {job.map_version_id}" if job.map_version_id else ""
                 stage = job.stage or "-"
                 print(f"{job.id:4d}  {job.area_id}  {job.status:9}  {stage:8}  {when}{version}")
+        elif a.cmd == "previews":
+            made, skipped = backfill_previews(s, DATA, MAPS)
+            print(f"{made} pratinjau dibuat, {skipped} dilewati (frame tidak ditemukan)")
         else:
             for v in s.exec(select(MapVersion).order_by(MapVersion.area_id, MapVersion.version)):
                 print(f"id {v.id}  {v.area_id} v{v.version}  {v.status:9}  {v.path}")
