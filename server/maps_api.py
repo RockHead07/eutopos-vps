@@ -4,12 +4,12 @@ from datetime import datetime
 from pathlib import Path
 
 import plotly
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlmodel import select
 
-from server import active_map, auth, uploads
+from server import active_map, auth, jobs, uploads
 from server.db import MapJob, MapVersion, publish
 
 MAPS_ROOT = Path("/maps")  # jalur peta di dalam container (deploy/compose.yaml)
@@ -102,6 +102,35 @@ def publish_version(version_id: int, request: Request, user: uploads.User, s: up
     # Diterbitkan oleh thread setelah peta terbukti bisa dimuat (server/active_map.py).
     active_map.reload_in_background(st, s.get_bind(), v.id, user)
     return {"version": _out(s, v), "reload": "started"}
+
+
+@router.delete("/api/versions/{version_id}", status_code=202)
+def delete_version(version_id: int, response: Response, user: uploads.User, s: uploads.DB) -> dict:
+    """Hapus sebuah versi peta (khusus admin).
+
+    Versi hasil job ikut menghapus job-nya, lewat jalur yang sama dengan DELETE /api/jobs/{id}:
+    api hanya menandai, pekerja yang menghapus folder petanya (api memasang /maps hanya-baca).
+    Versi tanpa job (didaftarkan lewat CLI) hanya dihapus barisnya. Berkasnya milik pemilik dan
+    tidak pernah disentuh, sama seperti berkas CLI di pekerja.
+    """
+    if not auth.is_admin(user):
+        raise HTTPException(403, "only admins can delete map versions")
+    v = s.get(MapVersion, version_id)
+    if v is None:
+        raise HTTPException(404, "version not found")
+    if v.status == "published":
+        raise HTTPException(409, "this version is published; publish another version first")
+    job = s.exec(select(MapJob).where(MapJob.map_version_id == v.id)).first()
+    if job is None:
+        s.delete(v)
+        s.commit()
+        response.status_code = 200
+        return {"status": "deleted"}
+    if reason := jobs.delete_block_reason(s, job):
+        raise HTTPException(409, reason)
+    if job.status != "deleting":
+        jobs.request_delete(s, job)
+    return {"status": "deleting", "job_id": job.id}
 
 
 @router.get("/api/me")
