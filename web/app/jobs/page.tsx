@@ -1,20 +1,13 @@
 "use client";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { MoreHorizontal } from "lucide-react";
 import { Panel } from "@/components/Panel";
 import { SortableHead, type SortDirection } from "@/components/SortableHead";
 import { StatusBadge } from "@/components/StatusBadge";
 import { TableFilterBar } from "@/components/TableFilterBar";
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { DeleteConsentDialog } from "@/components/DeleteConsentDialog";
+import { Thumbnail } from "@/components/Thumbnail";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -31,13 +24,26 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Icon } from "@/lib/Icon";
 import Link from "@/lib/Link";
 import { api, formatDate, formatDuration, mb, ROLE, type Job } from "@/lib/api";
 import { PageHead } from "@/lib/PageHead";
 import { Rows } from "@/lib/Rows";
 import { usePoll } from "@/lib/usePoll";
+
+function compareWithNullLast(
+  valA: string | null | undefined,
+  valB: string | null | undefined,
+  dir: SortDirection
+): number {
+  const emptyA = !valA || valA === "-";
+  const emptyB = !valB || valB === "-";
+  if (emptyA && emptyB) return 0;
+  if (emptyA) return 1;
+  if (emptyB) return -1;
+  const cmp = valA.localeCompare(valB);
+  return dir === "asc" ? cmp : -cmp;
+}
 
 function JobsContent() {
   const searchParams = useSearchParams();
@@ -55,6 +61,8 @@ function JobsContent() {
   const [jobToDelete, setJobToDelete] = useState<Job | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const lastActionTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const actionButtonRefs = useRef<Record<number, HTMLButtonElement | null>>({});
 
   const [search, setSearch] = useState("");
 
@@ -146,7 +154,13 @@ function JobsContent() {
       else if (sortKey === "area_id") cmp = a.area_id.localeCompare(b.area_id);
       else if (sortKey === "status") cmp = a.status.localeCompare(b.status);
       else if (sortKey === "created_by") cmp = a.created_by.localeCompare(b.created_by);
-      else if (sortKey === "created_at") cmp = (a.created_at || "").localeCompare(b.created_at || "");
+      else if (sortKey === "recorded_at") {
+        const recA = a.videos?.find((v) => v.role === "peta" && v.recorded_at)?.recorded_at ?? null;
+        const recB = b.videos?.find((v) => v.role === "peta" && v.recorded_at)?.recorded_at ?? null;
+        return compareWithNullLast(recA, recB, sortDir);
+      } else if (sortKey === "created_at") {
+        return compareWithNullLast(a.created_at, b.created_at, sortDir);
+      }
       return sortDir === "asc" ? cmp : -cmp;
     });
   }, [jobs, search, statusFilter, areaFilter, sortKey, sortDir]);
@@ -192,15 +206,17 @@ function JobsContent() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-16"><span className="sr-only">Preview</span></TableHead>
                     <SortableHead column="id" label="#" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
                     <SortableHead column="area_id" label="Area" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
                     <SortableHead column="status" label="Status" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
                     <TableHead className="text-left">Stage</TableHead>
                     <SortableHead column="created_by" label="By" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
-                    <SortableHead column="created_at" label="Created" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
+                    <SortableHead column="recorded_at" label="Recorded" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
+                    <SortableHead column="created_at" label="Uploaded" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
                     <TableHead className="text-left">Duration</TableHead>
-                    <TableHead className="text-left">Action</TableHead>
-                    <TableHead className="w-10 text-right"><span className="sr-only">Actions</span></TableHead>
+                    <TableHead className="text-left sticky right-12 bg-card border-l border-line/70 z-20">Action</TableHead>
+                    <TableHead className="w-12 min-w-12 text-right sticky right-0 bg-card z-20"><span className="sr-only">Actions</span></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -211,21 +227,34 @@ function JobsContent() {
                     const deleteDisabledReason = isDeletingStatus
                       ? "Job is already being deleted"
                       : "Only completed or failed jobs can be deleted";
+                    const petaVideo = j.videos?.find((v) => v.role === "peta" && v.recorded_at);
+                    const recordedAt = petaVideo?.recorded_at ?? null;
 
                     return (
-                      <TableRow key={j.id}>
+                      <TableRow key={j.id} className="group">
+                        <TableCell className="w-16 p-2">
+                          <Thumbnail
+                            jobId={j.id}
+                            hasPreview={j.has_preview}
+                            alt={`Preview for job ${j.id}`}
+                            onClick={() => setSelectedJob(j)}
+                          />
+                        </TableCell>
                         <TableCell className="text-left"><Link href={`/job/?id=${j.id}`}>{j.id}</Link></TableCell>
                         <TableCell className="text-left">{j.area_id}</TableCell>
                         <TableCell className="text-left"><StatusBadge status={j.status} /></TableCell>
                         <TableCell className="text-left text-muted-foreground">{j.status === "done" ? "-" : (j.stage ?? "-")}</TableCell>
                         <TableCell className="text-left text-muted-foreground">{j.created_by}</TableCell>
+                        <TableCell className="text-left text-muted-foreground whitespace-nowrap" title={recordedAt || undefined}>
+                          {formatDate(recordedAt)}
+                        </TableCell>
                         <TableCell className="text-left text-muted-foreground whitespace-nowrap" title={j.created_at || undefined}>
                           {formatDate(j.created_at)}
                         </TableCell>
                         <TableCell className="text-left text-muted-foreground whitespace-nowrap">
                           {formatDuration(j.started_at, j.finished_at)}
                         </TableCell>
-                        <TableCell className="text-left">
+                        <TableCell className="text-left sticky right-12 bg-card group-hover:bg-muted/50 border-l border-line/70 z-10">
                           <Button asChild variant="outline" size="sm" className="rounded-full gap-1.5 font-medium text-xs whitespace-nowrap">
                             <Link href={`/job/?id=${j.id}`}>
                               <Icon name={j.status === "done" ? "view-3d" : "arrow-up-right"} />
@@ -233,13 +262,16 @@ function JobsContent() {
                             </Link>
                           </Button>
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="w-12 min-w-12 text-right sticky right-0 bg-card group-hover:bg-muted/50 z-10">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button
+                                ref={(el) => {
+                                  actionButtonRefs.current[j.id] = el;
+                                }}
                                 variant="ghost"
                                 size="icon-sm"
-                                className="rounded-full"
+                                className="rounded-full cursor-pointer"
                                 aria-label={`Actions for job ${j.id}`}
                               >
                                 <MoreHorizontal className="size-4" />
@@ -256,25 +288,23 @@ function JobsContent() {
                                 <>
                                   <DropdownMenuSeparator />
                                   {isDeleteDisabled ? (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <div className="w-full">
-                                          <DropdownMenuItem
-                                            disabled
-                                            variant="destructive"
-                                            className="w-full cursor-not-allowed opacity-50"
-                                          >
-                                            Delete
-                                          </DropdownMenuItem>
-                                        </div>
-                                      </TooltipTrigger>
-                                      <TooltipContent>{deleteDisabledReason}</TooltipContent>
-                                    </Tooltip>
+                                    <DropdownMenuItem
+                                      disabled
+                                      className="flex flex-col items-start gap-0.5 opacity-50 cursor-not-allowed"
+                                    >
+                                      <span className="text-destructive font-medium">Delete</span>
+                                      <span className="text-[11px] text-muted-foreground font-normal">
+                                        {deleteDisabledReason}
+                                      </span>
+                                    </DropdownMenuItem>
                                   ) : (
                                     <DropdownMenuItem
                                       variant="destructive"
+                                      className="cursor-pointer"
                                       onClick={() => {
                                         setDeleteError(null);
+                                        lastActionTriggerRef.current =
+                                          actionButtonRefs.current[j.id] || null;
                                         setJobToDelete(j);
                                       }}
                                     >
@@ -494,36 +524,47 @@ function JobsContent() {
                 <Button asChild variant="outline" className="rounded-full">
                   <Link href={`/job/?id=${selectedJob.id}`}>Open job</Link>
                 </Button>
+                {me?.is_admin && (
+                  <Button
+                    variant="outline"
+                    className="rounded-full text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive hover:border-destructive cursor-pointer"
+                    disabled={
+                      selectedJob.status === "deleting" ||
+                      (selectedJob.status !== "done" && selectedJob.status !== "failed")
+                    }
+                    onClick={() => {
+                      const j = selectedJob;
+                      setSelectedJob(null);
+                      setTimeout(() => setJobToDelete(j), 100);
+                    }}
+                  >
+                    Delete
+                  </Button>
+                )}
               </div>
             </>
           )}
         </SheetContent>
       </Sheet>
 
-      {/* Delete Confirmation AlertDialog */}
-      <AlertDialog open={!!jobToDelete} onOpenChange={(open) => !open && setJobToDelete(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Delete job {jobToDelete?.id} ({jobToDelete?.area_id})?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This will remove the generated map and database rows. Extracted frames in data/jobs/ will be kept.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {deleteError && <p className="error text-sm">{deleteError}</p>}
-          <AlertDialogFooter>
-            <AlertDialogCancel autoFocus disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <Button
-              variant="destructive"
-              disabled={isDeleting}
-              onClick={handleConfirmDelete}
-            >
-              {isDeleting ? "Deleting..." : "Delete"}
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Delete Confirmation Dialog */}
+      <DeleteConsentDialog
+        open={!!jobToDelete}
+        onOpenChange={(open) => !open && setJobToDelete(null)}
+        target={
+          jobToDelete
+            ? {
+                type: "job",
+                id: jobToDelete.id,
+                area_id: jobToDelete.area_id,
+              }
+            : null
+        }
+        onConfirm={handleConfirmDelete}
+        isDeleting={isDeleting}
+        error={deleteError}
+        triggerRef={lastActionTriggerRef}
+      />
     </>
   );
 }

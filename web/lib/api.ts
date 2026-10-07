@@ -87,6 +87,8 @@ export const api = {
   job: (id: number) => call<Job>(`/api/jobs/${id}`),
   createJob: (body: NewJob) => call<Job>("/api/jobs", { method: "POST", body: JSON.stringify(body) }),
   deleteJob: (id: number) => call<{ status: string }>(`/api/jobs/${id}`, { method: "DELETE" }),
+  deleteVersion: (id: number) =>
+    call<{ status: string; job_id?: number }>(`/api/versions/${id}`, { method: "DELETE" }),
   versions: () => call<Version[]>("/api/versions"),
   publish: (id: number) =>
     call<{ version: Version; reload: "started" | "other_area" }>(`/api/versions/${id}/publish`, {

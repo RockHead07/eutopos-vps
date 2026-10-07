@@ -220,6 +220,7 @@ iframe { width: 100%; height: min(70vh, 640px); border: 0; border-radius: var(--
   --color-forest-hover: var(--forest-hover);
   --color-ink: var(--ink);
   --color-line: var(--line);
+  --color-mist: var(--mist);
   --font-sans: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
