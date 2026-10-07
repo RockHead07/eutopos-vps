@@ -105,15 +105,9 @@ function Calendar({
           "group/day relative size-10 p-0 text-center select-none touch-none",
           defaultClassNames.day
         ),
-        range_start: cn(
-          "relative isolate z-0 p-0 [&:not(.rdp-range_end)]:after:absolute [&:not(.rdp-range_end)]:after:inset-y-0 [&:not(.rdp-range_end)]:after:right-0 [&:not(.rdp-range_end)]:after:w-1/2 [&:not(.rdp-range_end)]:after:bg-forest/15 [&:not(.rdp-range_end)]:after:z-0",
-          defaultClassNames.range_start
-        ),
-        range_middle: cn("rounded-none bg-forest/15 p-0", defaultClassNames.range_middle),
-        range_end: cn(
-          "relative isolate z-0 p-0 [&:not(.rdp-range_start)]:before:absolute [&:not(.rdp-range_start)]:before:inset-y-0 [&:not(.rdp-range_start)]:before:left-0 [&:not(.rdp-range_start)]:before:w-1/2 [&:not(.rdp-range_start)]:before:bg-forest/15 [&:not(.rdp-range_start)]:before:z-0",
-          defaultClassNames.range_end
-        ),
+        range_start: cn("p-0", defaultClassNames.range_start),
+        range_middle: cn("p-0", defaultClassNames.range_middle),
+        range_end: cn("p-0", defaultClassNames.range_end),
         today: cn(
           "[&:not([data-selected=true])_button]:ring-1 [&:not([data-selected=true])_button]:ring-forest/60 [&:not([data-selected=true])_button]:text-forest font-semibold",
           defaultClassNames.today
@@ -155,6 +149,26 @@ function Calendar({
 
           return (
             <ChevronDownIcon className={cn("size-4", className)} {...props} />
+          )
+        },
+        Day: ({ className, day, modifiers, ...props }) => {
+          const isStart = Boolean(modifiers.range_start && !modifiers.range_end)
+          const isEnd = Boolean(modifiers.range_end && !modifiers.range_start)
+          const isMiddle = Boolean(modifiers.range_middle)
+
+          return (
+            <td
+              className={cn(
+                className,
+                isStart &&
+                  "relative isolate z-0 p-0 after:absolute after:inset-y-0 after:right-0 after:w-1/2 after:bg-forest/15 after:z-0 last:after:rounded-r-full",
+                isMiddle &&
+                  "relative isolate z-0 p-0 bg-forest/15 first:rounded-l-full last:rounded-r-full",
+                isEnd &&
+                  "relative isolate z-0 p-0 before:absolute before:inset-y-0 before:left-0 before:w-1/2 before:bg-forest/15 before:z-0 first:before:rounded-l-full"
+              )}
+              {...props}
+            />
           )
         },
         DayButton: ({ ...props }) => (
@@ -206,12 +220,12 @@ function CalendarDayButton({
       data-range-end={modifiers.range_end}
       data-range-middle={modifiers.range_middle}
       className={cn(
-        "relative isolate z-10 flex size-10 items-center justify-center p-0 border-0 leading-none text-sm font-normal text-foreground cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest",
+        "relative isolate z-10 flex size-10 items-center justify-center p-0 rounded-full border-0 leading-none text-sm font-normal text-foreground cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest",
         "data-[range-start=true]:rounded-full data-[range-start=true]:bg-forest data-[range-start=true]:text-white data-[range-start=true]:font-medium data-[range-start=true]:hover:bg-forest-hover data-[range-start=true]:shadow-xs",
         "data-[range-end=true]:rounded-full data-[range-end=true]:bg-forest data-[range-end=true]:text-white data-[range-end=true]:font-medium data-[range-end=true]:hover:bg-forest-hover data-[range-end=true]:shadow-xs",
-        "data-[range-middle=true]:rounded-none data-[range-middle=true]:bg-transparent data-[range-middle=true]:text-foreground data-[range-middle=true]:hover:bg-forest/20 data-[range-middle=true]:font-normal",
+        "data-[range-middle=true]:rounded-full data-[range-middle=true]:bg-transparent data-[range-middle=true]:text-foreground data-[range-middle=true]:hover:bg-forest/20 data-[range-middle=true]:font-normal",
         "data-[selected-single=true]:rounded-full data-[selected-single=true]:bg-forest data-[selected-single=true]:text-white data-[selected-single=true]:font-medium data-[selected-single=true]:hover:bg-forest-hover data-[selected-single=true]:shadow-xs",
-        "[&:not([data-range-start=true]):not([data-range-end=true]):not([data-range-middle=true]):not([data-selected-single=true])]:rounded-full [&:not([data-range-start=true]):not([data-range-end=true]):not([data-range-middle=true]):not([data-selected-single=true])]:hover:bg-mist",
+        "[&:not([data-range-start=true]):not([data-range-end=true]):not([data-range-middle=true]):not([data-selected-single=true])]:hover:bg-mist",
         className
       )}
       {...props}

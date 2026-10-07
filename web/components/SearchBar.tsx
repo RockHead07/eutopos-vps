@@ -122,7 +122,7 @@ export function SearchBar({
         aria-keyshortcuts="Control+/ Meta+/ /"
         autoFocus={autoFocus}
         className={cn(
-          "w-full min-w-0 bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none [appearance:textfield] [&::-webkit-search-cancel-button]:hidden",
+          "w-full min-w-0 bg-transparent text-foreground placeholder:text-muted-foreground outline-none border-0 shadow-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 [appearance:textfield] [&::-webkit-search-cancel-button]:hidden",
           variant === "hero" ? "text-xs sm:text-sm" : "text-xs"
         )}
       />

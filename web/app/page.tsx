@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { SearchBar } from "@/components/SearchBar";
@@ -21,7 +21,13 @@ import { Rows } from "@/lib/Rows";
 import { Thumbnail } from "@/components/Thumbnail";
 import { Sparkline, type SparkPoint } from "@/lib/Sparkline";
 import { api, formatDate, type Job } from "@/lib/api";
-import { extractNameFromEmail, greetingFor } from "@/lib/greeting";
+import {
+  extractNameFromEmail,
+  formatGreeting,
+  getHourBucket,
+  GREETINGS,
+  type HourBucket,
+} from "@/lib/greeting";
 import { usePoll } from "@/lib/usePoll";
 
 const BUSY = ["uploading", "queued", "running"];
@@ -62,23 +68,80 @@ export default function OverviewPage() {
   const { data: me, error: meError } = usePoll(api.me, 60000);
   const error = jobs.error ?? versions.error ?? service.error;
 
-  const [currentHour, setCurrentHour] = useState<number | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
+  const currentBucketRef = useRef<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [areaFilter, setAreaFilter] = useState("all");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
   useEffect(() => {
-    setCurrentHour(new Date().getHours());
+    setMounted(true);
+
+    const pick = (bucket: HourBucket, weekday: number) => {
+      let lastIndex: number | null = null;
+      try {
+        const stored = sessionStorage.getItem("eutopos.greeting.last");
+        if (stored !== null) lastIndex = parseInt(stored, 10);
+      } catch {
+        // sessionStorage not available
+      }
+
+      const extras = GREETINGS.WEEKDAY[weekday];
+      const hasExtras = Boolean(extras && extras.length > 0);
+      const pickExtra = hasExtras && Math.random() < 0.25;
+
+      let chosenTemplate: string;
+      let chosenIndex: number;
+
+      if (pickExtra && extras) {
+        let idx = Math.floor(Math.random() * extras.length);
+        if (lastIndex !== null && !isNaN(lastIndex) && idx === lastIndex && extras.length > 1) {
+          idx = (idx + 1) % extras.length;
+        }
+        chosenIndex = idx;
+        chosenTemplate = extras[idx];
+      } else {
+        const pool = GREETINGS[bucket];
+        let idx = Math.floor(Math.random() * pool.length);
+        if (lastIndex !== null && !isNaN(lastIndex) && idx === lastIndex && pool.length > 1) {
+          idx = (idx + 1) % pool.length;
+        }
+        chosenIndex = idx;
+        chosenTemplate = pool[idx];
+      }
+
+      try {
+        sessionStorage.setItem("eutopos.greeting.last", String(chosenIndex));
+      } catch {
+        // ignore
+      }
+
+      currentBucketRef.current = bucket;
+      setSelectedTemplate(chosenTemplate);
+    };
+
+    const now = new Date();
+    const initialBucket = getHourBucket(now.getHours());
+    pick(initialBucket, now.getDay());
+
     const interval = setInterval(() => {
-      setCurrentHour(new Date().getHours());
+      const currentNow = new Date();
+      const b = getHourBucket(currentNow.getHours());
+      if (b !== currentBucketRef.current) {
+        pick(b, currentNow.getDay());
+      }
     }, 60000);
+
     return () => clearInterval(interval);
   }, []);
 
   const name = extractNameFromEmail(me?.email);
   const title =
-    currentHour !== null && me?.email && !meError ? greetingFor(currentHour, name) : "Overview";
+    !mounted || meError || !selectedTemplate
+      ? "Overview"
+      : formatGreeting(selectedTemplate, name);
 
   const allJobs = jobs.data ?? [];
   const allVersions = versions.data ?? [];
