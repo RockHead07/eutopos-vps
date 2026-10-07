@@ -22,7 +22,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Icon, VersionBadge } from "@/lib/Icon";
 import Link from "@/lib/Link";
-import { api, formatDate, type Version } from "@/lib/api";
+import { api, formatDate, type Job, type Version } from "@/lib/api";
 import { PageHead } from "@/lib/PageHead";
 import { Rows } from "@/lib/Rows";
 import { usePoll } from "@/lib/usePoll";
@@ -33,6 +33,7 @@ export default function MapsPage() {
   const reloading = service.data?.reloading ?? false;
   // Versi baru ditulis aktif setelah selesai dimuat: muat ulang daftar saat status memuat berubah.
   const versions = usePoll(api.versions, 10000, [tick, reloading]);
+  const jobs = usePoll(api.jobs, 10000);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -249,46 +250,160 @@ export default function MapsPage() {
 
       {/* Version Properties Sheet */}
       <Sheet open={!!selectedVersion} onOpenChange={(open) => !open && setSelectedVersion(null)}>
-        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>Version {selectedVersion?.version} Properties</SheetTitle>
-            <SheetDescription>Read-only details from the server.</SheetDescription>
-          </SheetHeader>
-          {selectedVersion && (
-            <div className="grid gap-4 py-4 text-sm">
-              <div className="grid grid-cols-[140px_1fr] gap-2 items-start">
-                <span className="text-muted-foreground">ID</span>
-                <span className="font-mono">{selectedVersion.id}</span>
+        <SheetContent side="right" className="p-0 gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-[480px] flex flex-col h-full bg-card">
+          {selectedVersion && (() => {
+            const sourceJob = selectedVersion.job_id != null ? jobs.data?.find((j) => j.id === selectedVersion.job_id) : undefined;
+            const petaVideo = sourceJob?.videos?.find((v) => v.role === "peta" && v.recorded_at);
+            const recordedAt = petaVideo?.recorded_at ?? null;
 
-                <span className="text-muted-foreground">Area</span>
-                <span>{selectedVersion.area_id}</span>
+            return (
+              <>
+                {/* Header */}
+                <div className="px-6 pt-6 pb-4 border-b pr-14">
+                  <div className="flex items-center gap-2.5">
+                    <SheetTitle className="text-base font-semibold text-foreground">
+                      Version {selectedVersion.version}
+                    </SheetTitle>
+                    <VersionBadge status={selectedVersion.status} />
+                  </div>
+                  <SheetDescription className="sr-only">Version {selectedVersion.version} properties</SheetDescription>
+                  <p className="mt-1 text-xs text-muted-foreground truncate" title={selectedVersion.area_id}>
+                    {selectedVersion.area_id}
+                  </p>
+                </div>
 
-                <span className="text-muted-foreground">Version</span>
-                <span className="font-semibold">{selectedVersion.version}</span>
-
-                <span className="text-muted-foreground">Status</span>
-                <div><VersionBadge status={selectedVersion.status} /></div>
-
-                <span className="text-muted-foreground">Created</span>
-                <span title={selectedVersion.created_at || undefined}>{formatDate(selectedVersion.created_at)}</span>
-
-                <span className="text-muted-foreground">Published by</span>
-                <span>{selectedVersion.published_by ?? "-"}</span>
-
-                <span className="text-muted-foreground">Job ID</span>
-                <span>
-                  {selectedVersion.job_id ? (
-                    <Link href={`/job/?id=${selectedVersion.job_id}`}>{selectedVersion.job_id}</Link>
+                {/* Scrollable Body */}
+                <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+                  {/* Preview Card */}
+                  {sourceJob?.has_preview ? (
+                    <div className="overflow-hidden rounded-xl border border-line/70 bg-card aspect-video">
+                      <img
+                        src={`/api/jobs/${sourceJob.id}/preview`}
+                        alt="First frame of the map video"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
                   ) : (
-                    "-"
+                    <div className="rounded-xl border border-line/70 bg-card aspect-video flex items-center justify-center text-xs text-muted-foreground">
+                      No preview for this job
+                    </div>
                   )}
-                </span>
 
-                <span className="text-muted-foreground">Has report</span>
-                <span>{selectedVersion.has_report ? "Yes" : "No"}</span>
-              </div>
-            </div>
-          )}
+                  {/* Version Card */}
+                  <div className="rounded-xl border border-line/70 bg-card p-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+                      Version
+                    </div>
+                    <dl className="grid grid-cols-[116px_1fr] gap-x-4 gap-y-2.5 text-sm">
+                      <dt className="text-muted-foreground">ID</dt>
+                      <dd className="font-mono text-foreground min-w-0 break-words tabular-nums">
+                        {selectedVersion.id}
+                      </dd>
+
+                      <dt className="text-muted-foreground">Area</dt>
+                      <dd className="text-foreground min-w-0 break-words">
+                        {selectedVersion.area_id}
+                      </dd>
+
+                      <dt className="text-muted-foreground">Version</dt>
+                      <dd className="text-foreground font-semibold min-w-0 break-words tabular-nums">
+                        {selectedVersion.version}
+                      </dd>
+
+                      <dt className="text-muted-foreground">Status</dt>
+                      <dd>
+                        <VersionBadge status={selectedVersion.status} />
+                      </dd>
+
+                      <dt className="text-muted-foreground">Created</dt>
+                      <dd className="text-foreground min-w-0 break-words tabular-nums" title={selectedVersion.created_at || undefined}>
+                        {formatDate(selectedVersion.created_at)}
+                      </dd>
+
+                      <dt className="text-muted-foreground">Published by</dt>
+                      <dd className="text-foreground min-w-0 break-words">
+                        {selectedVersion.published_by ?? "-"}
+                      </dd>
+                    </dl>
+                  </div>
+
+                  {/* Source Job Card */}
+                  <div className="rounded-xl border border-line/70 bg-card p-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+                      Source job
+                    </div>
+                    {selectedVersion.job_id != null ? (
+                      <dl className="grid grid-cols-[116px_1fr] gap-x-4 gap-y-2.5 text-sm">
+                        <dt className="text-muted-foreground">Job</dt>
+                        <dd>
+                          <Link
+                            href={`/job/?id=${selectedVersion.job_id}`}
+                            className="text-forest font-medium hover:underline"
+                          >
+                            Job {selectedVersion.job_id}
+                          </Link>
+                        </dd>
+
+                        <dt className="text-muted-foreground">Recorded</dt>
+                        <dd className="text-foreground min-w-0 break-words tabular-nums" title={recordedAt || undefined}>
+                          {formatDate(recordedAt)}
+                        </dd>
+
+                        <dt className="text-muted-foreground">Uploaded</dt>
+                        <dd className="text-foreground min-w-0 break-words tabular-nums" title={sourceJob?.created_at || undefined}>
+                          {formatDate(sourceJob?.created_at)}
+                        </dd>
+
+                        <dt className="text-muted-foreground">Has report</dt>
+                        <dd>
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                              selectedVersion.has_report
+                                ? "bg-forest/10 text-forest"
+                                : "bg-muted text-muted-foreground"
+                            }`}
+                          >
+                            {selectedVersion.has_report ? "Yes" : "No"}
+                          </span>
+                        </dd>
+                      </dl>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Created from the command line, no job
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="border-t px-6 py-4 flex flex-wrap gap-2 mt-auto">
+                  {selectedVersion.job_id ? (
+                    <Button asChild variant="outline" className="rounded-full">
+                      <Link href={`/job/?id=${selectedVersion.job_id}`}>View job</Link>
+                    </Button>
+                  ) : null}
+                  {selectedVersion.status !== "published" ? (
+                    <Button
+                      variant="outline"
+                      className="rounded-full"
+                      onClick={() => publish(selectedVersion.id, selectedVersion.version)}
+                      disabled={reloading}
+                    >
+                      {selectedVersion.status === "retired" ? (
+                        <>
+                          <Icon name="restore" /> Restore
+                        </>
+                      ) : (
+                        <>
+                          <Icon name="publish" /> Publish
+                        </>
+                      )}
+                    </Button>
+                  ) : null}
+                </div>
+              </>
+            );
+          })()}
         </SheetContent>
       </Sheet>
     </>

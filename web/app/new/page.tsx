@@ -9,7 +9,13 @@ import { Panel } from "@/components/Panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Icon } from "@/lib/Icon";
 import { PageHead } from "@/lib/PageHead";
@@ -127,10 +133,18 @@ export default function NewSessionPage() {
                   <TableCell>{f.name}</TableCell>
                   <TableCell className="num">{mb(f.size)}</TableCell>
                   <TableCell>
-                    <NativeSelect value={roleOf(f, i)} onChange={(e) => setRoles({ ...roles, [f.id]: e.target.value as Role })}>
-                      <NativeSelectOption value="peta">{ROLE.peta}</NativeSelectOption>
-                      <NativeSelectOption value="uji">{ROLE.uji}</NativeSelectOption>
-                    </NativeSelect>
+                    <Select
+                      value={roleOf(f, i)}
+                      onValueChange={(val) => setRoles({ ...roles, [f.id]: val as Role })}
+                    >
+                      <SelectTrigger className="w-28 text-xs" aria-label="Select role">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="peta">{ROLE.peta}</SelectItem>
+                        <SelectItem value="uji">{ROLE.uji}</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </TableCell>
                 </TableRow>
               ))}

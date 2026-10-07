@@ -38,7 +38,7 @@ export function AccountMenu() {
   }, []);
 
   if (loading) {
-    return <div className="ml-auto size-8 rounded-full skeleton shrink-0" aria-label="Loading account" />;
+    return <div className="size-8 rounded-full skeleton shrink-0" aria-label="Loading account" />;
   }
 
   if (error || !me || !me.email) {
@@ -48,7 +48,7 @@ export function AccountMenu() {
   const initial = me.email.split("@")[0]?.charAt(0).toUpperCase() || "?";
 
   return (
-    <div className="ml-auto flex items-center">
+    <div className="flex items-center">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button

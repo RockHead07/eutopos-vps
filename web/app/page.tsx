@@ -1,60 +1,252 @@
 "use client";
-import { Icon, VersionBadge } from "@/lib/Icon";
+
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/Panel";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { StatusBadge } from "@/components/StatusBadge";
+import { Icon, VersionBadge } from "@/lib/Icon";
 import Link from "@/lib/Link";
-import { api, type Job } from "@/lib/api";
 import { PageHead } from "@/lib/PageHead";
 import { Rows } from "@/lib/Rows";
 import { Sparkline, type SparkPoint } from "@/lib/Sparkline";
+import { api, type Job } from "@/lib/api";
+import { extractNameFromEmail, greetingFor } from "@/lib/greeting";
 import { usePoll } from "@/lib/usePoll";
 
 const BUSY = ["uploading", "queued", "running"];
 
-const fmtDuration = (s: number) => (s < 60 ? `${Math.round(s)} s` : `${Math.floor(s / 60)} min ${Math.round(s % 60)} s`);
+const fmtDuration = (s: number) =>
+  s < 60 ? `${Math.round(s)} s` : `${Math.floor(s / 60)} min ${Math.round(s % 60)} s`;
+
 /** Waktu dari ekstraksi fitur sampai rekonstruksi (tanpa mengekstrak frame dari video). Null kalau tidak tercatat. */
 const buildSeconds = (j: Job) => {
   const t = j.summary?.run?.t_map_s;
   return t ? Object.values(t).reduce((a, b) => a + b, 0) : null;
 };
 
+function toLocalDateString(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function matchDate(itemDateIso: string | null | undefined, from: string, to: string): boolean {
+  if (!from && !to) return true;
+  const localDate = toLocalDateString(itemDateIso);
+  if (!localDate) return false;
+  if (from && localDate < from) return false;
+  if (to && localDate > to) return false;
+  return true;
+}
+
 export default function OverviewPage() {
+  const router = useRouter();
   const jobs = usePoll(api.jobs, 5000);
   const versions = usePoll(api.versions, 10000);
   const service = usePoll(api.service, 5000);
+  const { data: me, error: meError } = usePoll(api.me, 60000);
   const error = jobs.error ?? versions.error ?? service.error;
 
-  const all = jobs.data ?? [];
+  const [currentHour, setCurrentHour] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [areaFilter, setAreaFilter] = useState("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
+  useEffect(() => {
+    setCurrentHour(new Date().getHours());
+    const interval = setInterval(() => {
+      setCurrentHour(new Date().getHours());
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const name = extractNameFromEmail(me?.email);
+  const title =
+    currentHour !== null && me?.email && !meError ? greetingFor(currentHour, name) : "Overview";
+
+  const allJobs = jobs.data ?? [];
+  const allVersions = versions.data ?? [];
+
+  const areaOptions = useMemo(() => {
+    return Array.from(new Set(allJobs.map((j) => j.area_id))).sort();
+  }, [allJobs]);
+
+  const isDateRangeInvalid = Boolean(fromDate && toDate && fromDate > toDate);
+  const isFilterActive = areaFilter !== "all" || Boolean((fromDate || toDate) && !isDateRangeInvalid);
+
+  const handleResetFilters = () => {
+    setAreaFilter("all");
+    setFromDate("");
+    setToDate("");
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const q = searchQuery.trim();
+      if (q) {
+        router.push(`/jobs/?q=${encodeURIComponent(q)}`);
+      } else {
+        router.push("/jobs/");
+      }
+    }
+  };
+
+  const filteredJobs = useMemo(() => {
+    return allJobs.filter((j) => {
+      if (areaFilter !== "all" && j.area_id !== areaFilter) return false;
+      if (!isDateRangeInvalid && (fromDate || toDate)) {
+        if (!matchDate(j.created_at, fromDate, toDate)) return false;
+      }
+      return true;
+    });
+  }, [allJobs, areaFilter, fromDate, toDate, isDateRangeInvalid]);
+
+  const filteredVersions = useMemo(() => {
+    return allVersions.filter((v) => {
+      if (areaFilter !== "all" && v.area_id !== areaFilter) return false;
+      if (!isDateRangeInvalid && (fromDate || toDate)) {
+        if (!matchDate(v.created_at, fromDate, toDate)) return false;
+      }
+      return true;
+    });
+  }, [allVersions, areaFilter, fromDate, toDate, isDateRangeInvalid]);
+
   // Pekerjaan selesai yang punya foto uji, urut lama ke baru (id naik).
-  const scored = all
+  const scored = filteredJobs
     .filter((j) => j.status === "done" && (j.summary?.inspect?.queries ?? 0) > 0)
     .sort((a, b) => a.id - b.id);
-  const latest = all.filter((j) => j.status === "done").sort((a, b) => b.id - a.id)[0];
+  const latest = filteredJobs.filter((j) => j.status === "done").sort((a, b) => b.id - a.id)[0];
   const counts = [
-    { status: "done", label: "Done", n: all.filter((j) => j.status === "done").length },
-    { status: "running", label: "In progress", n: all.filter((j) => BUSY.includes(j.status)).length },
-    { status: "failed", label: "Failed", n: all.filter((j) => j.status === "failed").length },
+    { status: "done", label: "Done", n: filteredJobs.filter((j) => j.status === "done").length },
+    {
+      status: "running",
+      label: "In progress",
+      n: filteredJobs.filter((j) => BUSY.includes(j.status)).length,
+    },
+    { status: "failed", label: "Failed", n: filteredJobs.filter((j) => j.status === "failed").length },
   ];
   const s = service.data;
   // Maksimal 8 job selesai terakhir yang punya waktu tercatat, urut lama ke baru
-  const builds: SparkPoint[] = all
+  const builds: SparkPoint[] = filteredJobs
     .filter((j) => j.status === "done" && buildSeconds(j) !== null)
     .sort((a, b) => a.id - b.id)
     .slice(-8)
     .map((j) => ({
       id: j.id,
       value: buildSeconds(j)!,
-      tip: `Job ${j.id} (${j.area_id}): ${fmtDuration(buildSeconds(j)!)}, ${j.summary?.run?.map_registered ?? "?"} of ${j.summary?.run?.map_images ?? "?"} frames registered`,
+      tip: `Job ${j.id} (${j.area_id}): ${fmtDuration(buildSeconds(j)!)}, ${
+        j.summary?.run?.map_registered ?? "?"
+      } of ${j.summary?.run?.map_images ?? "?"} frames registered`,
     }));
   const lastBuild = builds[builds.length - 1];
 
+  const headerControls = (
+    <div className="flex flex-col gap-2 w-full sm:w-auto">
+      <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:justify-end">
+        {/* Search */}
+        <div className="w-full sm:w-44">
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
+            placeholder="Search jobs... (Enter)"
+            className="h-9 text-xs bg-card"
+            aria-label="Search jobs"
+          />
+        </div>
+
+        {/* Area */}
+        <div className="w-full sm:w-36">
+          <Select value={areaFilter} onValueChange={setAreaFilter}>
+            <SelectTrigger className="w-full text-xs" aria-label="Filter by area">
+              <SelectValue placeholder="All areas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All areas</SelectItem>
+              {areaOptions.map((a) => (
+                <SelectItem key={a} value={a}>
+                  {a}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Date range */}
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span>From</span>
+            <input
+              type="date"
+              aria-label="From date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              className="h-9 w-32 rounded-lg border border-line bg-card px-2 text-xs text-foreground focus:outline-none focus:border-forest"
+            />
+          </label>
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span>To</span>
+            <input
+              type="date"
+              aria-label="To date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              className="h-9 w-32 rounded-lg border border-line bg-card px-2 text-xs text-foreground focus:outline-none focus:border-forest"
+            />
+          </label>
+        </div>
+      </div>
+
+      {/* Filter status / error row */}
+      {(isDateRangeInvalid || isFilterActive) && (
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+          {isDateRangeInvalid && (
+            <span className="text-xs text-destructive">From date cannot be after To date</span>
+          )}
+          {isFilterActive && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>
+                Showing {filteredJobs.length} {filteredJobs.length === 1 ? "job" : "jobs"}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleResetFilters}
+                className="h-7 px-2 text-xs text-forest hover:text-forest-hover font-medium"
+              >
+                Reset
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <>
-      <PageHead crumbs={[{ label: "Overview" }]} title="Overview">
+      <PageHead crumbs={[{ label: "Overview" }]} title={title} controls={headerControls}>
         Map builds, map quality, and the map /localize is serving.
       </PageHead>
       {error && <p className="error">{error}</p>}
       <div className="overview">
+        {/* Active map is NEVER filtered */}
         <Panel className="area-active">
           <span className="stat-label">Active map</span>
           {s ? (
@@ -64,31 +256,49 @@ export default function OverviewPage() {
                 {s.map_version !== null && <small> v{s.map_version}</small>}
               </span>
               <span>
-                {s.reloading ? <StatusBadge status="running">loading a new version</StatusBadge> : <StatusBadge status="done">ready</StatusBadge>}
+                {s.reloading ? (
+                  <StatusBadge status="running">loading a new version</StatusBadge>
+                ) : (
+                  <StatusBadge status="done">ready</StatusBadge>
+                )}
               </span>
             </>
           ) : (
             <span className="skeleton row" />
           )}
-          {s?.reload_error && <p className="error"><Icon name="error-map" /> {s.reload_error}</p>}
+          {s?.reload_error && (
+            <p className="error">
+              <Icon name="error-map" /> {s.reload_error}
+            </p>
+          )}
           <h2>Recent versions</h2>
           {!versions.data && <Rows n={3} />}
-          {versions.data && versions.data.length === 0 && <p className="muted">No map versions yet.</p>}
+          {versions.data && filteredVersions.length === 0 && (
+            <p className="muted">
+              {isFilterActive ? "No versions in this range" : "No map versions yet."}
+            </p>
+          )}
           <ul className="list">
-            {[...(versions.data ?? [])]
+            {[...filteredVersions]
               .sort((a, b) => b.id - a.id)
               .slice(0, 5)
               .map((v) => (
                 <li key={v.id}>
                   <div>
-                    <strong>{v.area_id} v{v.version}</strong>
-                    <span className="muted">{v.job_id ? <Link href={`/job/?id=${v.job_id}`}>job {v.job_id}</Link> : "from CLI"}</span>
+                    <strong>
+                      {v.area_id} v{v.version}
+                    </strong>
+                    <span className="muted">
+                      {v.job_id ? <Link href={`/job/?id=${v.job_id}`}>job {v.job_id}</Link> : "from CLI"}
+                    </span>
                   </div>
                   <VersionBadge status={v.status} />
                 </li>
               ))}
           </ul>
-          <Link href="/maps/">All map versions <Icon name="arrow-up-right" /></Link>
+          <Link href="/maps/">
+            All map versions <Icon name="arrow-up-right" />
+          </Link>
         </Panel>
 
         <Panel className="area-accept">
@@ -97,27 +307,42 @@ export default function OverviewPage() {
             <p className="muted">Share of each job&apos;s test photos localized with at least 50 inliers.</p>
           </div>
           {!jobs.data && <div className="skeleton block" />}
-          {jobs.data && scored.length === 0 && (
-            <p className="muted">No finished job with a test video yet. Add a test video to a map session to see this.</p>
+          {jobs.data && filteredJobs.length === 0 && <p className="muted">No jobs in this range</p>}
+          {jobs.data && filteredJobs.length > 0 && scored.length === 0 && (
+            <p className="muted">
+              No finished job with a test video yet. Add a test video to a map session to see this.
+            </p>
           )}
           {scored.length > 0 && <AcceptChart jobs={scored} />}
-          <Link href="/jobs/">View as table <Icon name="arrow-up-right" /></Link>
+          <Link href="/jobs/">
+            View as table <Icon name="arrow-up-right" />
+          </Link>
         </Panel>
 
         <Panel className="area-jobs">
           <span className="stat-label">Jobs</span>
-          <span className="stat-value">{jobs.data ? all.length : <span className="skeleton row" />}</span>
-          <ul className="status-bars">
-            {counts.map((c) => (
-              <li key={c.status}>
-                <StatusBadge status={c.status}>{c.label}</StatusBadge>
-                <span className="track" aria-hidden="true">
-                  <span style={{ width: all.length ? `${(c.n / all.length) * 100}%` : "0%" }} />
-                </span>
-                <span className="num">{c.n}</span>
-              </li>
-            ))}
-          </ul>
+          <span className="stat-value">
+            {jobs.data ? filteredJobs.length : <span className="skeleton row" />}
+          </span>
+          {jobs.data && filteredJobs.length === 0 ? (
+            <p className="muted py-4 text-xs">No jobs in this range</p>
+          ) : (
+            <ul className="status-bars">
+              {counts.map((c) => (
+                <li key={c.status}>
+                  <StatusBadge status={c.status}>{c.label}</StatusBadge>
+                  <span className="track" aria-hidden="true">
+                    <span
+                      style={{
+                        width: filteredJobs.length ? `${(c.n / filteredJobs.length) * 100}%` : "0%",
+                      }}
+                    />
+                  </span>
+                  <span className="num">{c.n}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </Panel>
 
         <Panel className="area-build">
@@ -126,7 +351,10 @@ export default function OverviewPage() {
             <p className="muted">From feature extraction to reconstruction, per finished job (GPU).</p>
           </div>
           {!jobs.data && <div className="skeleton block" />}
-          {jobs.data && !lastBuild && <p className="muted">No finished job has a recorded build time yet.</p>}
+          {jobs.data && filteredJobs.length === 0 && <p className="muted">No jobs in this range</p>}
+          {jobs.data && filteredJobs.length > 0 && !lastBuild && (
+            <p className="muted">No finished job has a recorded build time yet.</p>
+          )}
           {lastBuild && (
             <>
               <span className="stat-value">{fmtDuration(lastBuild.value)}</span>
@@ -141,7 +369,8 @@ export default function OverviewPage() {
             {latest && <Link href={`/job/?id=${latest.id}`}>Job {latest.id} · {latest.area_id}</Link>}
           </div>
           {!jobs.data && <div className="skeleton block" />}
-          {jobs.data && !latest && <p className="muted">No finished job yet.</p>}
+          {jobs.data && filteredJobs.length === 0 && <p className="muted">No jobs in this range</p>}
+          {jobs.data && filteredJobs.length > 0 && !latest && <p className="muted">No finished job yet.</p>}
           {latest && <LatestStats job={latest} />}
         </Panel>
       </div>
@@ -159,7 +388,13 @@ function AcceptChart({ jobs }: { jobs: Job[] }) {
         const pct = Math.round(((ins.accepted ?? 0) / (ins.queries ?? 1)) * 100);
         const tip = `Job ${j.id} (${j.area_id}): ${ins.accepted} of ${ins.queries} accepted, ${pct}%`;
         return (
-          <Link key={j.id} href={`/job/?id=${j.id}`} className={j.id === last ? "bar latest" : "bar"} data-tip={tip} aria-label={tip}>
+          <Link
+            key={j.id}
+            href={`/job/?id=${j.id}`}
+            className={j.id === last ? "bar latest" : "bar"}
+            data-tip={tip}
+            aria-label={tip}
+          >
             {j.id === last && <span className="bar-value num">{pct}%</span>}
             <span className="bar-fill" style={{ height: `${Math.max(pct, 2)}%` }} />
             <span className="bar-label num">#{j.id}</span>
@@ -177,7 +412,12 @@ function LatestStats({ job }: { job: Job }) {
   const items = [
     { label: "Registered frames", value: run?.map_registered, of: run?.map_images },
     { label: "Map pieces", value: ins?.parts?.length },
-    { label: "Test photos accepted", value: noTest ? undefined : ins?.accepted, of: ins?.queries || undefined, note: noTest ? "No test video in this job" : undefined },
+    {
+      label: "Test photos accepted",
+      value: noTest ? undefined : ins?.accepted,
+      of: ins?.queries || undefined,
+      note: noTest ? "No test video in this job" : undefined,
+    },
   ];
   return (
     <div className="stats-inline">

@@ -4,6 +4,7 @@ import { Icon } from "@/lib/Icon";
 import { Nav } from "./nav";
 import { Rail } from "./rail";
 import { AccountMenu } from "./account";
+import { Notifications } from "./notifications";
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -22,7 +23,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <header className="topbar">
             <Link href="/" className="brand"><Icon name="logo" />eutopos</Link>
             <Nav />
-            <AccountMenu />
+            <div className="ml-auto flex items-center gap-2">
+              <Notifications />
+              <AccountMenu />
+            </div>
           </header>
           <main>{children}</main>
         </TooltipProvider>

@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { MoreHorizontal } from "lucide-react";
 import { Panel } from "@/components/Panel";
 import { SortableHead, type SortDirection } from "@/components/SortableHead";
@@ -38,7 +39,8 @@ import { PageHead } from "@/lib/PageHead";
 import { Rows } from "@/lib/Rows";
 import { usePoll } from "@/lib/usePoll";
 
-export default function JobsPage() {
+function JobsContent() {
+  const searchParams = useSearchParams();
   const [tick, setTick] = useState(0);
   const { data: fetchedJobs, error } = usePoll(api.jobs, 5000, [tick]);
   const [jobs, setJobs] = useState<Job[] | null>(null);
@@ -55,6 +57,14 @@ export default function JobsPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    const q = searchParams.get("q");
+    if (q) {
+      setSearch(q);
+    }
+  }, [searchParams]);
+
   const [statusFilter, setStatusFilter] = useState("all");
   const [areaFilter, setAreaFilter] = useState("all");
   const [sortKey, setSortKey] = useState<string | null>("id");
@@ -288,90 +298,204 @@ export default function JobsPage() {
 
       {/* Properties Sheet */}
       <Sheet open={!!selectedJob} onOpenChange={(open) => !open && setSelectedJob(null)}>
-        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>Job {selectedJob?.id} Properties</SheetTitle>
-            <SheetDescription>Read-only details from the server.</SheetDescription>
-          </SheetHeader>
+        <SheetContent side="right" className="p-0 gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-[480px] flex flex-col h-full bg-card">
           {selectedJob && (
-            <div className="grid gap-4 py-4 text-sm">
-              <div className="grid grid-cols-[140px_1fr] gap-2 items-start">
-                <span className="text-muted-foreground">ID</span>
-                <span className="font-mono">{selectedJob.id}</span>
-
-                <span className="text-muted-foreground">Area</span>
-                <span>{selectedJob.area_id}</span>
-
-                <span className="text-muted-foreground">Status</span>
-                <div><StatusBadge status={selectedJob.status} /></div>
-
-                <span className="text-muted-foreground">Stage</span>
-                <span>{selectedJob.stage ?? "-"}</span>
-
-                <span className="text-muted-foreground">Created by</span>
-                <span>{selectedJob.created_by || "-"}</span>
-
-                <span className="text-muted-foreground">Created</span>
-                <span title={selectedJob.created_at || undefined}>{formatDate(selectedJob.created_at)}</span>
-
-                <span className="text-muted-foreground">Started</span>
-                <span title={selectedJob.started_at || undefined}>{formatDate(selectedJob.started_at)}</span>
-
-                <span className="text-muted-foreground">Finished</span>
-                <span title={selectedJob.finished_at || undefined}>{formatDate(selectedJob.finished_at)}</span>
-
-                <span className="text-muted-foreground">Duration</span>
-                <span>{formatDuration(selectedJob.started_at, selectedJob.finished_at)}</span>
-
-                <span className="text-muted-foreground">Map version ID</span>
-                <span>{selectedJob.map_version_id != null ? selectedJob.map_version_id : "-"}</span>
+            <>
+              {/* Header */}
+              <div className="px-6 pt-6 pb-4 border-b pr-14">
+                <div className="flex items-center gap-2.5">
+                  <SheetTitle className="text-base font-semibold text-foreground">
+                    Job {selectedJob.id}
+                  </SheetTitle>
+                  <StatusBadge status={selectedJob.status} />
+                </div>
+                <SheetDescription className="sr-only">Job {selectedJob.id} properties</SheetDescription>
+                <p className="mt-1 text-xs text-muted-foreground truncate" title={selectedJob.created_by}>
+                  {selectedJob.area_id} &middot; {selectedJob.created_by || "-"}
+                </p>
               </div>
 
-              <div className="border-t pt-3">
-                <h3 className="font-medium mb-2 text-foreground">Videos</h3>
-                {selectedJob.videos && selectedJob.videos.length > 0 ? (
-                  <ul className="space-y-1.5 text-xs text-muted-foreground">
-                    {selectedJob.videos.map((v, i) => (
-                      <li key={i} className="flex justify-between items-center bg-muted/40 p-2 rounded">
-                        <span className="font-mono text-foreground truncate max-w-[180px]" title={v.name}>{v.name}</span>
-                        <span>{ROLE[v.role] ?? v.role} &middot; {v.size != null ? mb(v.size) : "-"}</span>
-                      </li>
-                    ))}
-                  </ul>
+              {/* Scrollable Body */}
+              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+                {/* Preview Card */}
+                {selectedJob.has_preview ? (
+                  <div className="overflow-hidden rounded-xl border border-line/70 bg-card aspect-video">
+                    <img
+                      src={`/api/jobs/${selectedJob.id}/preview`}
+                      alt="First frame of the map video"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
                 ) : (
-                  <span className="text-muted-foreground">-</span>
+                  <div className="rounded-xl border border-line/70 bg-card aspect-video flex items-center justify-center text-xs text-muted-foreground">
+                    No preview for this job
+                  </div>
+                )}
+
+                {/* Timeline Card */}
+                {(() => {
+                  const petaVideo = selectedJob.videos.find((v) => v.role === "peta" && v.recorded_at);
+                  const recordedAt = petaVideo?.recorded_at ?? null;
+                  return (
+                    <div className="rounded-xl border border-line/70 bg-card p-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+                        Timeline
+                      </div>
+                      <dl className="grid grid-cols-[116px_1fr] gap-x-4 gap-y-2.5 text-sm">
+                        <dt className="text-muted-foreground">Recorded</dt>
+                        <dd className="text-foreground min-w-0 break-words tabular-nums" title={recordedAt || undefined}>
+                          {formatDate(recordedAt)}
+                        </dd>
+
+                        <dt className="text-muted-foreground">Uploaded</dt>
+                        <dd className="text-foreground min-w-0 break-words tabular-nums" title={selectedJob.created_at || undefined}>
+                          {formatDate(selectedJob.created_at)}
+                        </dd>
+
+                        <dt className="text-muted-foreground">Started</dt>
+                        <dd className="text-foreground min-w-0 break-words tabular-nums" title={selectedJob.started_at || undefined}>
+                          {formatDate(selectedJob.started_at)}
+                        </dd>
+
+                        <dt className="text-muted-foreground">Finished</dt>
+                        <dd className="text-foreground min-w-0 break-words tabular-nums" title={selectedJob.finished_at || undefined}>
+                          {formatDate(selectedJob.finished_at)}
+                        </dd>
+
+                        <dt className="text-muted-foreground">Duration</dt>
+                        <dd className="text-foreground min-w-0 break-words tabular-nums">
+                          {formatDuration(selectedJob.started_at, selectedJob.finished_at)}
+                        </dd>
+                      </dl>
+                    </div>
+                  );
+                })()}
+
+                {/* Map Card */}
+                {(() => {
+                  const run = selectedJob.summary?.run;
+                  const ins = selectedJob.summary?.inspect;
+                  const regFrames = run?.map_registered;
+                  const totalFrames = run?.map_images;
+                  const regPct = regFrames != null && totalFrames ? Math.round((regFrames / totalFrames) * 100) : null;
+                  const queries = ins?.queries;
+                  const accepted = ins?.accepted;
+                  const hasTestVideo = queries != null && queries > 0;
+                  const testPct = hasTestVideo && accepted != null ? Math.round((accepted / queries) * 100) : null;
+
+                  return (
+                    <div className="rounded-xl border border-line/70 bg-card p-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+                        Map
+                      </div>
+                      <dl className="grid grid-cols-[116px_1fr] gap-x-4 gap-y-2.5 text-sm">
+                        <dt className="text-muted-foreground">Map version</dt>
+                        <dd className="text-foreground min-w-0 break-words tabular-nums">
+                          {selectedJob.map_version_id != null ? (
+                            <Link href="/maps/" className="text-forest font-medium hover:underline">
+                              Version {selectedJob.map_version_id}
+                            </Link>
+                          ) : (
+                            "-"
+                          )}
+                        </dd>
+
+                        <dt className="text-muted-foreground">Registered frames</dt>
+                        <dd className="text-foreground min-w-0 break-words tabular-nums">
+                          {regFrames != null && totalFrames != null ? (
+                            <div>
+                              <span>{regFrames} / {totalFrames}</span>
+                              {regPct !== null && (
+                                <div className="meter mt-1.5" role="img" aria-label={`${regPct}%`}>
+                                  <span style={{ width: `${regPct}%` }} />
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            "-"
+                          )}
+                        </dd>
+
+                        <dt className="text-muted-foreground">Map pieces</dt>
+                        <dd className="text-foreground min-w-0 break-words tabular-nums">
+                          {ins?.parts ? ins.parts.length : "-"}
+                        </dd>
+
+                        <dt className="text-muted-foreground">Test photos accepted</dt>
+                        <dd className="text-foreground min-w-0 break-words tabular-nums">
+                          {hasTestVideo ? (
+                            <div>
+                              <span>{accepted ?? 0} / {queries}</span>
+                              {testPct !== null && (
+                                <div className="meter mt-1.5" role="img" aria-label={`${testPct}%`}>
+                                  <span style={{ width: `${testPct}%` }} />
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">No test video in this job</span>
+                          )}
+                        </dd>
+                      </dl>
+                    </div>
+                  );
+                })()}
+
+                {/* Videos Card */}
+                <div className="rounded-xl border border-line/70 bg-card p-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+                    Videos
+                  </div>
+                  {selectedJob.videos && selectedJob.videos.length > 0 ? (
+                    <div className="space-y-2">
+                      {selectedJob.videos.map((v, i) => (
+                        <div
+                          key={i}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs py-1.5 border-b border-line/40 last:border-0"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-mono text-foreground truncate max-w-[180px]" title={v.name}>
+                              {v.name}
+                            </span>
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground capitalize">
+                              {ROLE[v.role] ?? v.role}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 text-muted-foreground whitespace-nowrap text-right">
+                            <span>{v.size != null ? mb(v.size) : "-"}</span>
+                            <span>&middot;</span>
+                            <span title={v.recorded_at || undefined}>
+                              {v.recorded_at ? formatDate(v.recorded_at) : "-"}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">-</p>
+                  )}
+                </div>
+
+                {/* Error Card */}
+                {selectedJob.error && (
+                  <div className="rounded-xl border border-line/70 bg-card p-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-destructive mb-2">
+                      Error
+                    </div>
+                    <pre className="font-mono text-xs text-destructive bg-destructive/10 p-3 rounded-lg overflow-x-auto max-h-48 whitespace-pre-wrap break-words">
+                      {selectedJob.error}
+                    </pre>
+                  </div>
                 )}
               </div>
 
-              <div className="border-t pt-3">
-                <h3 className="font-medium mb-2 text-foreground">Key Summary</h3>
-                <div className="grid grid-cols-[160px_1fr] gap-2 text-xs">
-                  <span className="text-muted-foreground">Registered frames</span>
-                  <span>
-                    {selectedJob.summary?.run?.map_registered != null
-                      ? `${selectedJob.summary.run.map_registered} / ${selectedJob.summary.run.map_images ?? "-"}`
-                      : "-"}
-                  </span>
-
-                  <span className="text-muted-foreground">Map pieces</span>
-                  <span>{selectedJob.summary?.inspect?.parts ? selectedJob.summary.inspect.parts.length : "-"}</span>
-
-                  <span className="text-muted-foreground">Accepted photos / queries</span>
-                  <span>
-                    {selectedJob.summary?.inspect?.accepted != null
-                      ? `${selectedJob.summary.inspect.accepted} / ${selectedJob.summary.inspect.queries ?? "-"}`
-                      : "-"}
-                  </span>
-                </div>
+              {/* Footer */}
+              <div className="border-t px-6 py-4 flex flex-wrap gap-2 mt-auto">
+                <Button asChild variant="outline" className="rounded-full">
+                  <Link href={`/job/?id=${selectedJob.id}`}>Open job</Link>
+                </Button>
               </div>
-
-              {selectedJob.error && (
-                <div className="border-t pt-3">
-                  <h3 className="font-medium mb-2 text-destructive">Error</h3>
-                  <p className="error text-xs">{selectedJob.error}</p>
-                </div>
-              )}
-            </div>
+            </>
           )}
         </SheetContent>
       </Sheet>
@@ -403,3 +527,12 @@ export default function JobsPage() {
     </>
   );
 }
+
+export default function JobsPage() {
+  return (
+    <Suspense fallback={<div className="page-head"><span className="skeleton row" /></div>}>
+      <JobsContent />
+    </Suspense>
+  );
+}
+
