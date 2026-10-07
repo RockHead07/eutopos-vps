@@ -1,6 +1,6 @@
 "use client";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { SearchBar } from "@/components/SearchBar";
 import {
   Select,
   SelectContent,
@@ -49,11 +49,12 @@ export function TableFilterBar({
     <div className="flex flex-wrap items-center justify-between gap-3 pb-3.5 mb-2 border-b border-line/60">
       <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[240px]">
         <div className="w-full sm:w-64">
-          <Input
+          <SearchBar
             value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
+            onChange={onSearchChange}
             placeholder={searchPlaceholder}
-            className="h-9 text-xs bg-card"
+            variant="compact"
+            shortcut={true}
           />
         </div>
         {statusOptions.length > 0 && (

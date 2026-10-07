@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { SearchBar } from "@/components/SearchBar";
+import { DateRangePicker } from "@/components/DateRangePicker";
 import { Panel } from "@/components/Panel";
 import {
   Select,
@@ -86,8 +87,7 @@ export default function OverviewPage() {
     return Array.from(new Set(allJobs.map((j) => j.area_id))).sort();
   }, [allJobs]);
 
-  const isDateRangeInvalid = Boolean(fromDate && toDate && fromDate > toDate);
-  const isFilterActive = areaFilter !== "all" || Boolean((fromDate || toDate) && !isDateRangeInvalid);
+  const isFilterActive = areaFilter !== "all" || Boolean(fromDate || toDate);
 
   const handleResetFilters = () => {
     setAreaFilter("all");
@@ -95,37 +95,34 @@ export default function OverviewPage() {
     setToDate("");
   };
 
-  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      const q = searchQuery.trim();
-      if (q) {
-        router.push(`/jobs/?q=${encodeURIComponent(q)}`);
-      } else {
-        router.push("/jobs/");
-      }
+  const handleSearchSubmit = () => {
+    const q = searchQuery.trim();
+    if (q) {
+      router.push(`/jobs/?q=${encodeURIComponent(q)}`);
+    } else {
+      router.push("/jobs/");
     }
   };
 
   const filteredJobs = useMemo(() => {
     return allJobs.filter((j) => {
       if (areaFilter !== "all" && j.area_id !== areaFilter) return false;
-      if (!isDateRangeInvalid && (fromDate || toDate)) {
+      if (fromDate || toDate) {
         if (!matchDate(j.created_at, fromDate, toDate)) return false;
       }
       return true;
     });
-  }, [allJobs, areaFilter, fromDate, toDate, isDateRangeInvalid]);
+  }, [allJobs, areaFilter, fromDate, toDate]);
 
   const filteredVersions = useMemo(() => {
     return allVersions.filter((v) => {
       if (areaFilter !== "all" && v.area_id !== areaFilter) return false;
-      if (!isDateRangeInvalid && (fromDate || toDate)) {
+      if (fromDate || toDate) {
         if (!matchDate(v.created_at, fromDate, toDate)) return false;
       }
       return true;
     });
-  }, [allVersions, areaFilter, fromDate, toDate, isDateRangeInvalid]);
+  }, [allVersions, areaFilter, fromDate, toDate]);
 
   // Pekerjaan selesai yang punya foto uji, urut lama ke baru (id naik).
   const scored = filteredJobs
@@ -157,84 +154,69 @@ export default function OverviewPage() {
   const lastBuild = builds[builds.length - 1];
 
   const headerControls = (
-    <div className="flex flex-col gap-2 w-full sm:w-auto">
-      <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:justify-end">
+    <div className="flex flex-col gap-2 w-full lg:w-auto">
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-2 w-full lg:w-auto lg:justify-end">
         {/* Search */}
-        <div className="w-full sm:w-44">
-          <Input
+        <div className="w-full lg:flex-1 lg:min-w-[360px] lg:max-w-xl">
+          <SearchBar
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={handleSearchKeyDown}
-            placeholder="Search jobs... (Enter)"
-            className="h-9 text-xs bg-card"
-            aria-label="Search jobs"
+            onChange={setSearchQuery}
+            onSubmit={handleSearchSubmit}
+            variant="hero"
+            shortcut={true}
           />
         </div>
 
-        {/* Area */}
-        <div className="w-full sm:w-36">
-          <Select value={areaFilter} onValueChange={setAreaFilter}>
-            <SelectTrigger className="w-full text-xs" aria-label="Filter by area">
-              <SelectValue placeholder="All areas" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All areas</SelectItem>
-              {areaOptions.map((a) => (
-                <SelectItem key={a} value={a}>
-                  {a}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {/* Filters row below lg, inline on lg+ */}
+        <div className="flex items-center gap-2 w-full lg:w-auto">
+          {/* Area */}
+          <div className="flex-1 min-w-0 lg:w-36 lg:flex-none">
+            <Select value={areaFilter} onValueChange={setAreaFilter}>
+              <SelectTrigger className="w-full text-xs" aria-label="Filter by area">
+                <SelectValue placeholder="All areas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All areas</SelectItem>
+                {areaOptions.map((a) => (
+                  <SelectItem key={a} value={a}>
+                    {a}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        {/* Date range */}
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span>From</span>
-            <input
-              type="date"
-              aria-label="From date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="h-9 w-32 rounded-lg border border-line bg-card px-2 text-xs text-foreground focus:outline-none focus:border-forest"
+          {/* Date range */}
+          <div className="flex-1 min-w-0 lg:flex-none">
+            <DateRangePicker
+              className="w-full lg:w-auto"
+              value={{ from: fromDate || undefined, to: toDate || undefined }}
+              onChange={(val) => {
+                setFromDate(val.from || "");
+                setToDate(val.to || "");
+              }}
             />
-          </label>
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span>To</span>
-            <input
-              type="date"
-              aria-label="To date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="h-9 w-32 rounded-lg border border-line bg-card px-2 text-xs text-foreground focus:outline-none focus:border-forest"
-            />
-          </label>
+          </div>
         </div>
       </div>
 
-      {/* Filter status / error row */}
-      {(isDateRangeInvalid || isFilterActive) && (
-        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-          {isDateRangeInvalid && (
-            <span className="text-xs text-destructive">From date cannot be after To date</span>
-          )}
-          {isFilterActive && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>
-                Showing {filteredJobs.length} {filteredJobs.length === 1 ? "job" : "jobs"}
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={handleResetFilters}
-                className="h-7 px-2 text-xs text-forest hover:text-forest-hover font-medium"
-              >
-                Reset
-              </Button>
-            </div>
-          )}
+      {/* Filter status row */}
+      {isFilterActive && (
+        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>
+              Showing {filteredJobs.length} {filteredJobs.length === 1 ? "job" : "jobs"}
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleResetFilters}
+              className="h-7 px-2 text-xs text-forest hover:text-forest-hover font-medium cursor-pointer"
+            >
+              Reset
+            </Button>
+          </div>
         </div>
       )}
     </div>
