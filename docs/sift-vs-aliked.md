@@ -168,7 +168,33 @@ nearest neighbor membaik.
   `spike/run.py` mengonversinya supaya SIFT tidak dirugikan.
 - Foto uji dianggap diterima kalau punya minimal 50 inlier. Itu pengecekan keberhasilan, bukan ukuran posisi benar.
 
-## 8. Cara mengulang
+## 8. Jumlah titik 3D (point cloud)
+
+Pembimbing menyatakan (6 Oktober 2026) bahwa detail tidaknya feature matching bisa dilihat dari jumlah point cloud
+yang dihasilkan. Angka berikut dibaca dari `summary.json` tiap run (`map_points3D`), 402 frame lorong lantai 10.
+"Titik per frame" adalah hitungan kita (titik 3D dibagi frame yang masuk peta), bukan keluaran COLMAP.
+
+| Feature + matcher | Keypoint per gambar | Frame di peta | Titik 3D | Titik per frame |
+|---|---|---|---|---|
+| SIFT + nearest neighbor + ratio test | 716 | 135 / 402 | 4.945 | 37 |
+| ALIKED + nearest neighbor + ratio test | 632 | 131 / 402 | 3.088 | 24 |
+| SIFT + LightGlue | 716 | 401 / 402 | 23.645 | 59 |
+| ALIKED + LightGlue | 632 | 401 / 402 | 24.615 | 61 |
+| SIFT setelan bawaan COLMAP (8.192 keypoint, 2560 px) | 3.188 | 133 / 402 | 11.730 | 88 |
+
+**Pertanyaan pembimbing:** kenapa SIFT + LightGlue punya total titik lebih banyak tetapi titik per frame lebih sedikit?
+Pola itu muncul pada pasangan SIFT + LightGlue dan SIFT setelan bawaan COLMAP. Total lebih banyak (23.645 dibanding
+11.730) karena 401 frame masuk peta, sedangkan setelan bawaan hanya 133 frame. Titik per frame lebih sedikit (59
+dibanding 88) kemungkinan karena setelan bawaan memakai jauh lebih banyak keypoint per gambar (3.188 dibanding 716).
+Alasan keypoint itu **belum diuji sebagai sebab** (tidak ada uji yang mengubah keypoint saja). Pada pasangan SIFT dan
+ALIKED yang sama-sama memakai LightGlue, SIFT sedikit lebih rendah di keduanya (23.645 dibanding 24.615 titik, 59
+dibanding 61 per frame).
+
+**Yang tidak boleh disimpulkan:** jumlah titik tidak otomatis berarti lebih akurat. Galat reproyeksi titik dan akurasi
+dalam meter belum diukur. Keypoint SIFT memang lebih banyak daripada ALIKED (716 dibanding 632), tetapi titik 3D akhir
+dengan LightGlue hampir sama.
+
+## 9. Cara mengulang
 
 ```bash
 python spike/run.py <dataset> --out <out> --features sift|aliked --matcher nn-ratio|lightglue \

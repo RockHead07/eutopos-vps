@@ -97,3 +97,42 @@ Tugas sampai bimbingan berikutnya:
 Pertanyaan yang belum terjawab:
 -
 ```
+
+### Oktober 2026 (lewat WhatsApp, parafrase)
+
+```text
+Tanggal: 4 Oktober 2026
+Pembimbing: Bu Evi (Pembimbing 2)
+Keputusan:
+- Backend tidak dipersoalkan. Limitasi COLMAP perlu dicek, terutama ukuran database untuk rekonstruksi 3D.
+- Pipeline memakai feature matching (ALIKED + LightGlue); pembimbing mengira SIFT, lalu minta cara kerja SIFT dipelajari.
+- Ambil video lalu dipecah per frame sudah tepat. Coba kamera 360 (lab Pak Dhoto) dan bandingkan dengan ponsel.
+Tugas sampai bimbingan berikutnya:
+- Bertemu Pak Dhoto, tunjukkan progres, tanya pinjam kamera 360.
+- Bandingkan SIFT dan ALIKED pada data yang sama.
+Pertanyaan yang belum terjawab:
+- Ukuran database COLMAP yang masih bisa direkonstruksi (batas format sudah diketahui, batas praktis belum diukur).
+
+Tanggal: 5 sampai 6 Oktober 2026
+Pembimbing: Bu Evi
+Keputusan:
+- Simpan data perbandingan; deep dive SIFT dan ALIKED pakai tabel.
+- Kesimpulan awal "ALIKED jauh lebih stabil" dikoreksi: setelah variabel dipisah, matcher yang menentukan.
+- Detail feature matching diukur lewat jumlah point cloud. Uji juga lorong minim fitur.
+Tugas sampai bimbingan berikutnya:
+- Jelaskan selisih total titik dan titik per frame (dijawab 6 Okt, docs/sift-vs-aliked.md bagian 8).
+- Rekam lorong kosong putih.
+Pertanyaan yang belum terjawab:
+- Hasil di lorong minim fitur (belum ada rekaman).
+
+Tanggal: 7 Oktober 2026
+Pembimbing: Bu Evi
+Keputusan:
+- Komparasi pemakaian GPU dan CPU per konfigurasi, dengan pros dan cons.
+- Sampel sekitar 30 gambar yang bervariasi, termasuk yang ber-noise dari OpenCV.
+- Pembuatan peta memang butuh GPU; laporan seterusnya di grup Bimbingan PA.
+Tugas sampai bimbingan berikutnya:
+- Jalankan spike/bench_usage.py di PC lab dan laporkan tabelnya di grup.
+Pertanyaan yang belum terjawab:
+- Target server instansi tanpa GPU: apakah hanya lokalisasi (pemahaman saat ini), atau pembuatan peta juga.
+```
