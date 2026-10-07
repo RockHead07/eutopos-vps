@@ -92,6 +92,21 @@ akal atau tidak, dan bagian mana yang sebenarnya sulit.**
 8. **ARCore boleh**, fitur on-device saja (motion tracking). Cloud Anchors dan Geospatial API tidak
    boleh karena lewat cloud. ⚠️ Penilaian pemilik repo, belum dikonfirmasi eksplisit.
 
+**Arahan lanjutan Pembimbing 2, Oktober 2026** (parafrase dari percakapan WhatsApp; hasilnya di
+`docs/sift-vs-aliked.md`, `docs/colmap-limitations.md` bila sudah masuk, dan
+`docs/specs/2026-10-07-cpu-gpu-usage-benchmark-design.md`):
+
+- 4 Okt: cek limitasi COLMAP, terutama ukuran database untuk rekonstruksi 3D; pelajari cara kerja SIFT; coba
+  kamera 360 (di lab Pak Dhoto) dan bandingkan dengan ponsel pada spesifikasi sekarang, karena kualitas gambar berpengaruh.
+- 5 Okt: simpan datanya sebagai pembanding SIFT dan ALIKED, dan buat deep dive perbedaan cara kerjanya dengan tabel.
+- 6 Okt: coba lorong yang minim fitur (kosong, putih); ukuran "detail" feature matching adalah jumlah point cloud;
+  tanya apakah SIFT bisa jalan tanpa GPU; dari tabel point cloud, jelaskan kenapa SIFT + LightGlue total titiknya lebih
+  banyak tetapi titik 3D per frame lebih sedikit.
+- 7 Okt: komparasi penggunaan GPU dan CPU per konfigurasi (pola pemakaian "sebanyak apa"), cek pros dan cons,
+  sampel sekitar 30 gambar yang bervariasi termasuk yang ber-noise (noise dari OpenCV). Laporan seterusnya di grup
+  Bimbingan PA. Pembimbing juga menegaskan bahwa **membuat peta butuh GPU**; yang diincar tanpa GPU adalah
+  lokalisasi di server (pemahaman ini dikonfirmasi lewat pertanyaan, belum sebagai keputusan tertulis).
+
 **Target publikasi** yang pernah disebut pembimbing: jurnal Q2 ScienceDirect, contohnya *Computers
 and Education* dan *International Journal of Human-Computer Studies*. Keduanya berpusat pada
 manusia, jadi butuh **studi pengguna dengan pembanding, instrumen baku (SUS, NASA-TLX), dan
@@ -318,5 +333,11 @@ bagian lain.
 - [ ] Makna "anchoring tool untuk titik tujuan". Tafsiran saat ini: dashboard web untuk menandai POI
       di denah.
 - [ ] Apakah ada aturan HKI kampus atau rencana paten tim yang bertabrakan dengan lisensi terbuka.
+- [ ] Pengukuran CPU dan GPU per konfigurasi (permintaan 7 Okt): skrip `spike/bench_usage.py` siap,
+      belum dijalankan di PC lab. Lorong minim fitur (kosong putih) menunggu rekaman baru.
+- [ ] Uji kamera 360 (`docs/prd/2026-10-05-360-capture-support.md`): menunggu bertemu Pak Dhoto dan rekaman
+      rute yang sama dengan ponsel. Satu sampel GoPro MAX `.360` (7 Sep, bukan lantai 10) tersedia, hanya bisa
+      menguji kelayakan jalur.
+- [ ] Dokumen limitasi COLMAP (ukuran database) ditahan sampai ditindaklanjuti ke pembimbing.
 - [x] ~~Status resmi template.~~ Template resmi Proposal PA diterima 2026-10-02 (bagian 11). Empat hal
       di dalamnya masih perlu dikonfirmasi.

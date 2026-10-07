@@ -37,7 +37,7 @@ Riwayat: 2026-09-20 tidak ada pengembangan sebelum ACC; 2026-09-25 pengecualian 
 lantai 10; 2026-09-29 dicabut dengan penghalang per pekerjaan di atas; 2026-09-30 judul diterima.
 Kode uji coba ada di `spike/`, data di `data/` (tidak masuk git).
 
-**Posisi terakhir (2026-10-05):**
+**Posisi terakhir (2026-10-07):**
 - Spike: pipeline, pengukuran latensi hangat, dan penilai galat meter jalan di data contoh (laptop dan
   PC lab). Rincian: `docs/spike-plan.md`.
 - Uji video lantai 10 (tanpa titik acuan): jalur ular (2026-09-30) membuat peta pecah 3 potongan,
@@ -72,6 +72,21 @@ Kode uji coba ada di `spike/`, data di `data/` (tidak masuk git).
   LightGlue (401/402 frame, 36/46 foto uji, 36 foto yang sama). Penjelasan: `docs/sift-vs-aliked.md`.
 - **Rujukan Proposal PA:** `docs/research-paper.md` bagian 10, 18 rujukan 2021-2026 yang diverifikasi ke Crossref
   dan abstrak.
+- **Dashboard dan API (2026-10-05 sampai 06, PR #46 sampai #53):** Tailwind v4 dan shadcn/ui resmi (aturan 6),
+  kolom tanggal, filter dan sort, menu aksi per baris dengan Properties, dan menu akun di topbar. API: `GET /api/me`,
+  `DELETE /api/jobs/{id}` dan `DELETE /api/versions/{id}` (khusus admin, api hanya menandai dan pekerja yang menghapus
+  karena `/maps` hanya-baca di container api), `recorded_at` per video (dibaca dari isi video sebelum videonya
+  dihapus), dan pratinjau frame pertama (`has_preview`, `GET /api/jobs/{id}/preview`).
+  `EUTOPOS_ADMINS` di `deploy/.env` PC lab menentukan siapa admin (kosong = tidak ada yang boleh menghapus);
+  sudah diisi 2026-10-06. Pratinjau job lama sudah diisi dengan `python -m server.manage previews`.
+  **Belum:** UI Delete dengan consent di Jobs dan Maps, desain ulang Properties, foto pratinjau per map di UI, dan
+  header Overview (pengerjaannya diserahkan ke agy, hanya `web/`).
+- **Arahan Pembimbing 2, 4 sampai 7 Okt:** limitasi COLMAP, kamera 360, SIFT vs ALIKED, lorong minim fitur, jumlah
+  point cloud sebagai ukuran detail, lalu komparasi GPU dan CPU per konfigurasi (ringkasan di `docs/pa-context.md`
+  bagian 4, catatan di `docs/supervision-plan.md` bagian 6). **Laporan seterusnya di grup Bimbingan PA.**
+- **Pengukuran CPU dan GPU:** `spike/bench_usage.py` (PR #54) dan `docs/specs/2026-10-07-cpu-gpu-usage-benchmark-design.md`.
+  Skrip selesai dan terverifikasi (24 tes), **belum dijalankan di PC lab**; hasil menunggu pengukuran.
+- **Kamera 360:** PRD di `docs/prd/2026-10-05-360-capture-support.md`, belum ada rekaman rute lantai 10.
 - Rancangan setelahnya: `docs/specs/2026-09-29-capture-and-map-pipeline-design.md`.
 
 **Prioritas tetap spike satu koridor** (`docs/spike-plan.md`). Spike menjawab dua hal: apakah akurasi
@@ -124,6 +139,12 @@ Komponen PA lain (aplikasi Unity, AI avatar, RAG, anchoring tool) **tidak** ada 
 - **Peta dari foto satu kamera tidak punya skala meter.** Titik acuan terukur wajib ada.
 - **Video GoPro MAX berformat `.360` (proyeksi EAC)**, bukan equirectangular. Harus diekspor dulu.
 - **Latensi hloc di CPU belum pernah diukur** di sumber mana pun. Jangan mengutip angka tanpa sumber.
+- **Ekstraksi SIFT hanya jalan di CPU** di instalasi kita: `pycolmap.has_cuda` bernilai `False`. Jangan menulis
+  perbandingan GPU lawan CPU untuk SIFT sebagai angka.
+- **`time.process_time()` tidak menghitung proses anak.** hloc memuat gambar di pekerja DataLoader terpisah, jadi
+  pemakaian CPU ekstraksi terlihat 0,01 inti padahal 1,08 inti. Pakai `resource.getrusage(RUSAGE_CHILDREN)` di Linux.
+- **Jangan menjalankan `docker compose config` di PC lab:** ia mencetak variabel yang sudah diperluas, termasuk
+  kata sandi Postgres. Periksa GPU atau variabel lewat `docker compose exec`, dan jangan mencetak isi `deploy/.env`.
 
 ## Aturan repo publik
 
@@ -260,4 +281,9 @@ Skill global yang juga relevan: `ponytail` (anti over-engineering), `engineering
 | `docs/plans/` | Rencana implementasi yang sudah dieksekusi (pekerja peta, unggahan dan autentikasi, dashboard), masing-masing dengan status dan nomor PR di bagian atas |
 | `deploy/README.md` | Menyiapkan host (WSL2, Docker Engine, NVIDIA Container Toolkit), menjalankan layanan, antrean pekerjaan, unggahan tusd, Cloudflare Tunnel + Access, dan dashboard, beserta tabel jebakan |
 | `web/` | Dashboard Next.js (static export). Dibangun di tahap Node pada `deploy/Dockerfile` |
+| `docs/sift-vs-aliked.md` | SIFT vs ALIKED: cara kerja, matcher, hasil 2 x 2 di lantai 10, jumlah titik 3D, dan batas kesimpulan |
+| `docs/specs/2026-10-05-job-delete-and-account-design.md` | Kontrak API: tanggal job, `GET /api/me`, penghapusan job dan versi (admin, pekerja yang menghapus) |
+| `docs/specs/2026-10-06-recorded-date-and-preview-design.md` | Waktu rekam dari isi video dan pratinjau frame pertama: keputusan, kontrak API, cara mengisi job lama |
+| `docs/specs/2026-10-07-cpu-gpu-usage-benchmark-design.md` | Rancangan pengukuran pemakaian CPU dan GPU (konfigurasi, noise, metrik, batas) yang ditetapkan sebelum hasil |
+| `docs/prd/` | PRD pekerjaan terencana: dukungan video 360 |
 | `docs/figures/` | Gambar 1 (arsitektur) dan Gambar 2 (alur) dokumen pengajuan |
