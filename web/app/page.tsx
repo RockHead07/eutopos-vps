@@ -17,8 +17,9 @@ import { Icon, VersionBadge } from "@/lib/Icon";
 import Link from "@/lib/Link";
 import { PageHead } from "@/lib/PageHead";
 import { Rows } from "@/lib/Rows";
+import { Thumbnail } from "@/components/Thumbnail";
 import { Sparkline, type SparkPoint } from "@/lib/Sparkline";
-import { api, type Job } from "@/lib/api";
+import { api, formatDate, type Job } from "@/lib/api";
 import { extractNameFromEmail, greetingFor } from "@/lib/greeting";
 import { usePoll } from "@/lib/usePoll";
 
@@ -406,6 +407,9 @@ function AcceptChart({ jobs }: { jobs: Job[] }) {
 }
 
 function LatestStats({ job }: { job: Job }) {
+  const petaVideo = job.videos?.find((v) => v.role === "peta");
+  const recordedDate = petaVideo?.recorded_at ? formatDate(petaVideo.recorded_at) : "unknown";
+
   const run = job.summary?.run;
   const ins = job.summary?.inspect;
   const noTest = !ins?.queries; // 0 diterima dari 0 foto uji bukan hasil, hanya tidak ada video uji
@@ -420,17 +424,26 @@ function LatestStats({ job }: { job: Job }) {
     },
   ];
   return (
-    <div className="stats-inline">
-      {items.map((it) => (
-        <div key={it.label}>
-          <span className="stat-label">{it.label}</span>
-          <span className="stat-value">
-            {it.value ?? "-"}
-            {it.of !== undefined && <small> / {it.of}</small>}
-          </span>
-          {it.note && <span className="muted">{it.note}</span>}
-        </div>
-      ))}
+    <div className="space-y-3">
+      <Thumbnail
+        jobId={job.id}
+        hasPreview={job.has_preview}
+        alt={`Preview for job ${job.id}`}
+        aspect="card"
+      />
+      <p className="text-xs text-muted-foreground">Recorded {recordedDate}</p>
+      <div className="stats-inline">
+        {items.map((it) => (
+          <div key={it.label}>
+            <span className="stat-label">{it.label}</span>
+            <span className="stat-value">
+              {it.value ?? "-"}
+              {it.of !== undefined && <small> / {it.of}</small>}
+            </span>
+            {it.note && <span className="muted">{it.note}</span>}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
