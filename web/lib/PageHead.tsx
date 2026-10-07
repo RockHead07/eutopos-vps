@@ -3,6 +3,7 @@ import { api } from "@/lib/api";
 import { Icon } from "@/lib/Icon";
 import Link from "@/lib/Link";
 import { usePoll } from "@/lib/usePoll";
+import { cn } from "@/lib/utils";
 
 type Crumb = { label: string; href?: string };
 
@@ -35,7 +36,7 @@ export function PageHead({
   controls?: React.ReactNode;
 }) {
   return (
-    <div className="page-head">
+    <div className={cn("page-head", controls && "max-lg:!grid-cols-1")}>
       <div>
         <p className="crumbs">
           <Link href="/">eutopos</Link>
@@ -49,7 +50,7 @@ export function PageHead({
         <h1>{title}</h1>
         {children && <div className="muted">{children}</div>}
       </div>
-      <div className="flex flex-col gap-2.5 items-start md:items-end">
+      <div className={cn("flex flex-col gap-2.5 items-start", controls ? "w-full lg:w-auto lg:items-end" : "md:items-end")}>
         <ServiceChips />
         {controls}
       </div>
