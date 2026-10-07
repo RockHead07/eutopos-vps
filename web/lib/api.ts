@@ -1,5 +1,11 @@
 // size dan uploaded null: pekerjaan dari manage job (CLI), videonya tidak lewat unggahan.
-export type Video = { name: string; role: "peta" | "uji"; size: number | null; uploaded: boolean | null };
+export type Video = {
+  name: string;
+  role: "peta" | "uji";
+  size: number | null;
+  uploaded: boolean | null;
+  recorded_at?: string | null;
+};
 export type Summary = {
   run?: {
     map_images?: number;
@@ -28,6 +34,7 @@ export type Job = {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+  has_preview?: boolean;
 };
 export type Version = {
   id: number;

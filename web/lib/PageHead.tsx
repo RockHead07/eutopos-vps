@@ -23,7 +23,17 @@ function ServiceChips() {
 }
 
 /** Kepala halaman yang sama di semua halaman: breadcrumb, judul, keterangan, dan chip status. */
-export function PageHead({ crumbs, title, children }: { crumbs: Crumb[]; title: string; children?: React.ReactNode }) {
+export function PageHead({
+  crumbs,
+  title,
+  children,
+  controls,
+}: {
+  crumbs: Crumb[];
+  title: string;
+  children?: React.ReactNode;
+  controls?: React.ReactNode;
+}) {
   return (
     <div className="page-head">
       <div>
@@ -39,7 +49,10 @@ export function PageHead({ crumbs, title, children }: { crumbs: Crumb[]; title: 
         <h1>{title}</h1>
         {children && <div className="muted">{children}</div>}
       </div>
-      <ServiceChips />
+      <div className="flex flex-col gap-2.5 items-start md:items-end">
+        <ServiceChips />
+        {controls}
+      </div>
     </div>
   );
 }

@@ -1,7 +1,13 @@
 "use client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { NativeSelect } from "@/components/ui/native-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface Option {
   value: string;
@@ -47,39 +53,41 @@ export function TableFilterBar({
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={searchPlaceholder}
-            className="h-8 text-xs bg-card"
+            className="h-9 text-xs bg-card"
           />
         </div>
         {statusOptions.length > 0 && (
           <div className="w-36">
-            <NativeSelect
-              value={statusFilter}
-              onChange={(e) => onStatusChange(e.target.value)}
-              className="h-8 text-xs bg-card"
-            >
-              <option value="all">All statuses</option>
-              {statusOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </NativeSelect>
+            <Select value={statusFilter} onValueChange={onStatusChange}>
+              <SelectTrigger className="w-full text-xs" aria-label="Filter by status">
+                <SelectValue placeholder="All statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                {statusOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         )}
         {areaOptions.length > 0 && (
           <div className="w-36">
-            <NativeSelect
-              value={areaFilter}
-              onChange={(e) => onAreaChange(e.target.value)}
-              className="h-8 text-xs bg-card"
-            >
-              <option value="all">All areas</option>
-              {areaOptions.map((area) => (
-                <option key={area} value={area}>
-                  {area}
-                </option>
-              ))}
-            </NativeSelect>
+            <Select value={areaFilter} onValueChange={onAreaChange}>
+              <SelectTrigger className="w-full text-xs" aria-label="Filter by area">
+                <SelectValue placeholder="All areas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All areas</SelectItem>
+                {areaOptions.map((area) => (
+                  <SelectItem key={area} value={area}>
+                    {area}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         )}
       </div>
