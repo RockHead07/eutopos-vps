@@ -37,7 +37,7 @@ Riwayat: 2026-09-20 tidak ada pengembangan sebelum ACC; 2026-09-25 pengecualian 
 lantai 10; 2026-09-29 dicabut dengan penghalang per pekerjaan di atas; 2026-09-30 judul diterima.
 Kode uji coba ada di `spike/`, data di `data/` (tidak masuk git).
 
-**Posisi terakhir (2026-10-07):**
+**Posisi terakhir (2026-10-08):**
 - Spike: pipeline, pengukuran latensi hangat, dan penilai galat meter jalan di data contoh (laptop dan
   PC lab). Rincian: `docs/spike-plan.md`.
 - Uji video lantai 10 (tanpa titik acuan): jalur ular (2026-09-30) membuat peta pecah 3 potongan,
@@ -72,20 +72,36 @@ Kode uji coba ada di `spike/`, data di `data/` (tidak masuk git).
   LightGlue (401/402 frame, 36/46 foto uji, 36 foto yang sama). Penjelasan: `docs/sift-vs-aliked.md`.
 - **Rujukan Proposal PA:** `docs/research-paper.md` bagian 10, 18 rujukan 2021-2026 yang diverifikasi ke Crossref
   dan abstrak.
-- **Dashboard dan API (2026-10-05 sampai 06, PR #46 sampai #53):** Tailwind v4 dan shadcn/ui resmi (aturan 6),
-  kolom tanggal, filter dan sort, menu aksi per baris dengan Properties, dan menu akun di topbar. API: `GET /api/me`,
+- **Dashboard dan API (2026-10-05 sampai 08, PR #46 sampai #61):** Tailwind v4 dan shadcn/ui resmi (aturan 6),
+  kolom tanggal, filter dan sort, menu aksi per baris, dan menu akun di topbar. API: `GET /api/me`,
   `DELETE /api/jobs/{id}` dan `DELETE /api/versions/{id}` (khusus admin, api hanya menandai dan pekerja yang menghapus
   karena `/maps` hanya-baca di container api), `recorded_at` per video (dibaca dari isi video sebelum videonya
   dihapus), dan pratinjau frame pertama (`has_preview`, `GET /api/jobs/{id}/preview`).
   `EUTOPOS_ADMINS` di `deploy/.env` PC lab menentukan siapa admin (kosong = tidak ada yang boleh menghapus);
   sudah diisi 2026-10-06. Pratinjau job lama sudah diisi dengan `python -m server.manage previews`.
-  **Belum:** UI Delete dengan consent di Jobs dan Maps, desain ulang Properties, foto pratinjau per map di UI, dan
-  header Overview (pengerjaannya diserahkan ke agy, hanya `web/`).
+  **UI selesai dan ter-deploy (2026-10-07 sampai 08), semuanya dikerjakan agy dan diuji ulang di browser oleh Claude:**
+  Properties berpadding dengan kartu terkelompok (#56), dropdown shadcn `Select` pengganti `<select>` bawaan (#56),
+  lonceng notifikasi dari job nyata 7 hari terakhir dengan hitungan belum dibaca di `localStorage` (#56), sapaan
+  Overview menurut jam (#56, lalu kumpulan 12 sampai 16 sapaan per waktu dan beberapa ekstra per hari, #61),
+  kontrol Overview: pencarian, area, rentang tanggal yang memfilter kartu (#56), Delete dengan consent di Jobs dan Maps
+  lewat satu `DeleteConsentDialog` (#57), thumbnail pratinjau dan kolom Recorded dan Uploaded (#57), sel Action yang
+  menempel di kanan pada layar kecil (#57), tiga ikon `bell`, `search`, `calendar` (#58), `SearchBar` bergaya kaca
+  dengan pintasan `/` dan Ctrl+/ serta `DateRangePicker` dengan seret-pilih (#59, menambah `react-day-picker` 10.0.2
+  dan `date-fns` 4.4.0 dengan izin pemilik), dan perbaikan pita kalender, fokus search, dan sapaan (#61).
+  **Belum:** lisensi per ikon di `web/public/icons/LICENSES.md`, teks dialog Delete untuk job gagal masih menyebut
+  "rows of the job and version", klik pada rentang tanggal yang sudah lengkap memperluas tepi (bawaan
+  react-day-picker, Clear untuk mulai ulang).
 - **Arahan Pembimbing 2, 4 sampai 7 Okt:** limitasi COLMAP, kamera 360, SIFT vs ALIKED, lorong minim fitur, jumlah
   point cloud sebagai ukuran detail, lalu komparasi GPU dan CPU per konfigurasi (ringkasan di `docs/pa-context.md`
   bagian 4, catatan di `docs/supervision-plan.md` bagian 6). **Laporan seterusnya di grup Bimbingan PA.**
-- **Pengukuran CPU dan GPU:** `spike/bench_usage.py` (PR #54) dan `docs/specs/2026-10-07-cpu-gpu-usage-benchmark-design.md`.
-  Skrip selesai dan terverifikasi (24 tes), **belum dijalankan di PC lab**; hasil menunggu pengukuran.
+- **Pengukuran CPU dan GPU (2026-10-07, SELESAI):** `spike/bench_usage.py` (PR #54) dan
+  `docs/specs/2026-10-07-cpu-gpu-usage-benchmark-design.md` (bagian 7 berisi hasilnya). Lima konfigurasi, GPU dan CPU,
+  30 gambar dari 15 pasang frame lantai 10, tiga ulangan, lima variasi noise OpenCV. Ringkas: extraction ALIKED di GPU
+  sekitar 17 kali lebih cepat (1,05 s dibanding 17,8 s untuk 30 gambar); SIFT hanya jalan di CPU; di CPU ALIKED
+  dengan LightGlue memakai 110 core-seconds dan SIFT dengan LightGlue 33; inlier ALIKED + LightGlue tertinggi di
+  antara setelan 1.024 keypoint dan SIFT bawaan COLMAP paling rapuh terhadap noise. **Pesan ke grup Bimbingan PA
+  sengaja ditahan sampai Bagus mengonfirmasi**; tiga tabel gambar (putih polos, berbahasa Inggris) ada di
+  `outputs/usage/` (tidak masuk git, dibuat ulang oleh `outputs/usage/tables.py`).
 - **Kamera 360:** PRD di `docs/prd/2026-10-05-360-capture-support.md`, belum ada rekaman rute lantai 10.
 - Rancangan setelahnya: `docs/specs/2026-09-29-capture-and-map-pipeline-design.md`.
 
@@ -143,6 +159,22 @@ Komponen PA lain (aplikasi Unity, AI avatar, RAG, anchoring tool) **tidak** ada 
   perbandingan GPU lawan CPU untuk SIFT sebagai angka.
 - **`time.process_time()` tidak menghitung proses anak.** hloc memuat gambar di pekerja DataLoader terpisah, jadi
   pemakaian CPU ekstraksi terlihat 0,01 inti padahal 1,08 inti. Pakai `resource.getrusage(RUSAGE_CHILDREN)` di Linux.
+- **Tailwind mengubah `_` di dalam varian arbitrer menjadi spasi.** `[&:not(.rdp-range_end)]` terkompilasi menjadi
+  `:not(.rdp-range end)` (mencari tag `<end>`), jadi penjaga itu selalu benar. Pakai atribut data atau modifier
+  komponen, bukan nama class bergaris bawah, dan periksa CSS terkompilasi di `web/out/_next/static/`.
+- **Aturan CSS di luar `@layer` mengalahkan utilitas Tailwind.** `:focus-visible { outline: ... }` di `globals.css`
+  harus berada di `@layer base`, kalau tidak `outline-none` pada komponen tidak berpengaruh dan muncul kotak fokus ganda.
+- **Mengganti kelas bawaan komponen shadcn butuh awalan varian yang sama** (`data-[side=right]:w-full`), kalau tidak
+  `tailwind-merge` menyimpan keduanya dan kelas bawaan menang (lebar Sheet jadi 384 px dan 3/4 layar).
+- **Ikon yang baru ditambahkan bisa tampak kosong di browser yang pernah memintanya sebelum berkas ada** (404 tersimpan
+  di cache). Server menyajikannya benar; buka URL ikon langsung lalu Ctrl+Shift+R.
+- **WSL di PC lab bisa restart sendiri dan mematikan semua container**, termasuk pengukuran yang sedang jalan
+  (2026-10-07 15:35). Berkas `.h5` fitur yang setengah tertulis lalu menggagalkan percobaan ulang
+  (`file signature not found`): hapus `work/<konfigurasi>-<perangkat>/*.h5` sebelum mengulang. Perbaikan skripnya
+  (hapus berkas lama sebelum ekstraksi) belum dikerjakan.
+- **`git push` bisa menggantung di Git Credential Manager.** Pakai
+  `git -c credential.helper= -c "credential.helper=!gh auth git-credential" push`. GitHub kadang menjawab
+  "Internal Server Error" sementara; ulangi.
 - **Jangan menjalankan `docker compose config` di PC lab:** ia mencetak variabel yang sudah diperluas, termasuk
   kata sandi Postgres. Periksa GPU atau variabel lewat `docker compose exec`, dan jangan mencetak isi `deploy/.env`.
 

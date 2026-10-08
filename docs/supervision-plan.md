@@ -132,7 +132,8 @@ Keputusan:
 - Sampel sekitar 30 gambar yang bervariasi, termasuk yang ber-noise dari OpenCV.
 - Pembuatan peta memang butuh GPU; laporan seterusnya di grup Bimbingan PA.
 Tugas sampai bimbingan berikutnya:
-- Jalankan spike/bench_usage.py di PC lab dan laporkan tabelnya di grup.
+- Jalankan spike/bench_usage.py di PC lab dan laporkan tabelnya di grup. (2026-10-08: sudah dijalankan, hasil di
+  `docs/specs/2026-10-07-cpu-gpu-usage-benchmark-design.md` bagian 7; laporan ke grup menunggu konfirmasi Bagus.)
 Pertanyaan yang belum terjawab:
 - Target server instansi tanpa GPU: apakah hanya lokalisasi (pemahaman saat ini), atau pembuatan peta juga.
 ```
