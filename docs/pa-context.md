@@ -106,6 +106,8 @@ akal atau tidak, dan bagian mana yang sebenarnya sulit.**
   sampel sekitar 30 gambar yang bervariasi termasuk yang ber-noise (noise dari OpenCV). Laporan seterusnya di grup
   Bimbingan PA. Pembimbing juga menegaskan bahwa **membuat peta butuh GPU**; yang diincar tanpa GPU adalah
   lokalisasi di server (pemahaman ini dikonfirmasi lewat pertanyaan, belum sebagai keputusan tertulis).
+  **Status 2026-10-08:** pengukuran selesai (hasil di `docs/specs/2026-10-07-cpu-gpu-usage-benchmark-design.md` bagian 7);
+  tiga tabel gambar siap, pesan ke grup Bimbingan PA masih ditahan sampai Bagus mengonfirmasi.
 
 **Target publikasi** yang pernah disebut pembimbing: jurnal Q2 ScienceDirect, contohnya *Computers
 and Education* dan *International Journal of Human-Computer Studies*. Keduanya berpusat pada
@@ -333,8 +335,9 @@ bagian lain.
 - [ ] Makna "anchoring tool untuk titik tujuan". Tafsiran saat ini: dashboard web untuk menandai POI
       di denah.
 - [ ] Apakah ada aturan HKI kampus atau rencana paten tim yang bertabrakan dengan lisensi terbuka.
-- [ ] Pengukuran CPU dan GPU per konfigurasi (permintaan 7 Okt): skrip `spike/bench_usage.py` siap,
-      belum dijalankan di PC lab. Lorong minim fitur (kosong putih) menunggu rekaman baru.
+- [x] ~~Pengukuran CPU dan GPU per konfigurasi (permintaan 7 Okt).~~ Selesai 2026-10-07 di PC lab (lima konfigurasi,
+      tiga ulangan; `docs/specs/2026-10-07-cpu-gpu-usage-benchmark-design.md` bagian 7). Tinggal dilaporkan ke grup
+      Bimbingan PA, dan belum diukur di server instansi 2 vCPU. Lorong minim fitur (kosong putih) menunggu rekaman baru.
 - [ ] Uji kamera 360 (`docs/prd/2026-10-05-360-capture-support.md`): menunggu bertemu Pak Dhoto dan rekaman
       rute yang sama dengan ponsel. Satu sampel GoPro MAX `.360` (7 Sep, bukan lantai 10) tersedia, hanya bisa
       menguji kelayakan jalur.

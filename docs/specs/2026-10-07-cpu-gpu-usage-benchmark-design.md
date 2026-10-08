@@ -115,7 +115,78 @@ Perkiraan waktu 1,5 sampai 2 jam, dari angka laptop (belum diukur di PC lab). Ha
 
 ## 7. Hasil
 
-Belum ada. Diisi setelah pengukuran dijalankan.
+Dijalankan 2026-10-07 di PC lab (i7-10700K, RTX 3070 8 GB, 15 GB RAM; PyTorch 2.14.0+cu130 memakai 8 thread;
+`pycolmap` tanpa CUDA). Rancangan di bagian 3 tidak diubah setelah melihat angka. Berkas mentah (`results/*.jsonl`,
+`summary.csv`, `summary.md`) ada di `/data/experiments/usage` di PC lab dan di `outputs/usage/` di laptop (tidak masuk git).
+
+### 7.1 Kejadian saat menjalankan (dicatat apa adanya)
+
+- Run pertama dimulai 15:15 WIB. **WSL di PC lab restart sendiri pukul 15:35** (penyebab belum diketahui; bukan deploy,
+  bukan kehabisan memori), semua container ikut mati, dan run terputus. Enam hasil sudah lengkap sebelum itu.
+- Percobaan lanjut pertama gagal karena berkas fitur `.h5` yang setengah tertulis tertinggal di
+  `work/aliked-nn-cpu/` (`file signature not found`). Setelah berkas itu dihapus, `aliked-nn` di CPU diulang dari awal
+  dan tiga konfigurasi sisanya dijalankan. Jadi **`aliked-nn` di CPU dijalankan setelah restart, bukan dalam satu run
+  yang sama dengan yang lain**; mesin dan kondisinya sama.
+- Sepuluh berkas hasil (lima konfigurasi, GPU dan CPU) masing-masing lengkap: satu baris meta dan 30 pengukuran.
+
+### 7.2 Waktu dan pemakaian sumber daya (gambar bersih, median dari 3 ulangan)
+
+30 gambar untuk extraction, 15 pasang untuk matching.
+
+| Konfigurasi | Perangkat | Extraction (s) | Matching (s) | Total (s) | CPU time (core-seconds) | Inti CPU rata-rata (ext / match) | GPU rata-rata % (ext / match) | VRAM puncak (MB) |
+|---|---|---|---|---|---|---|---|---|
+| ALIKED + LightGlue | GPU | 1,1 | 0,68 | 1,7 | 3,9 | 2,2 / 2,2 | 32 / 22 | 913 |
+| ALIKED + LightGlue | CPU | 17,8 | 2,57 | 20,3 | 109,6 | 5,1 / 7,7 | - | - |
+| ALIKED + nearest neighbor | GPU | 1,1 | 0,36 | 1,5 | 3,3 | 2,1 / 2,4 | 29 / 18 | 913 |
+| ALIKED + nearest neighbor | CPU | 19,0 | 0,27 | 19,3 | 90,2 | 4,7 / 4,0 | - | - |
+| SIFT + LightGlue | GPU | 8,9 (tetap di CPU) | 0,87 | 9,8 | 11,9 | 1,2 / 1,9 | tidak dipakai / 27 | 104 |
+| SIFT + LightGlue | CPU | 8,9 | 3,25 | 12,1 | 32,8 | 1,1 / 7,0 | - | - |
+| SIFT + nearest neighbor | GPU | 9,8 (tetap di CPU) | 0,42 | 10,2 | 11,6 | 1,1 / 2,5 | tidak dipakai / 14 | 23 |
+| SIFT + nearest neighbor | CPU | 9,4 | 0,29 | 9,7 | 11,2 | 1,1 / 3,8 | - | - |
+| SIFT bawaan COLMAP (8.192 keypoint, 2.560 px) | GPU | 66,9 (tetap di CPU) | 0,58 | 67,5 | 69,3 | 1,0 / 2,4 | tidak dipakai / 47 | 406 |
+| SIFT bawaan COLMAP (8.192 keypoint, 2.560 px) | CPU | 68,2 | 0,89 | 69,1 | 73,9 | 1,0 / 5,6 | - | - |
+
+Catatan: pada baris SIFT di GPU, extraction tetap berjalan di CPU karena `pycolmap.has_cuda` bernilai `False`; hanya
+matching yang memakai GPU. Waktu tahap sudah termasuk memuat model. GPU dipakai bersama layanan `api` yang sedang diam.
+
+### 7.3 Ketahanan terhadap noise (rata-rata inlier per pasangan)
+
+Noise buatan OpenCV: Gaussian dengan sigma 10, 25, 50 (`cv2.randn`) dan salt and pepper 2% piksel. Angka CPU dan GPU
+hampir sama (selisih rata-rata kurang dari 5 inlier); tabel memakai hasil GPU.
+
+| Konfigurasi | Bersih | Gaussian 10 | Gaussian 25 | Gaussian 50 | Salt and pepper 2% | Tersisa di Gaussian 50 | Tersisa di salt and pepper |
+|---|---|---|---|---|---|---|---|
+| ALIKED + LightGlue | 253 | 255 | 226 | 126 | 167 | 50% | 66% |
+| ALIKED + nearest neighbor | 128 | 126 | 108 | 70 | 90 | 55% | 70% |
+| SIFT + LightGlue | 168 | 176 | 138 | 97 | 137 | 57% | 81% |
+| SIFT + nearest neighbor | 129 | 107 | 66 | 43 | 63 | 34% | 49% |
+| SIFT bawaan COLMAP (8.192 keypoint, 2.560 px) | 338 | 185 | 85 | 40 | 82 | 12% | 24% |
+
+### 7.4 Yang terbaca dari angka
+
+- **ALIKED mendapat paling banyak dari GPU.** Extraction 30 gambar 1,05 s di GPU dibanding 17,8 s di CPU (sekitar 17 kali),
+  dan di CPU ia memakai sekitar 5 dari 8 inti (110 core-seconds untuk satu rangkaian dengan LightGlue).
+- **SIFT di instalasi kita tidak ikut dipercepat GPU.** Extraction sama saja (sekitar 0,30 s per gambar untuk 1.024
+  keypoint, satu inti). Yang berubah hanya matching LightGlue (3,25 s di CPU, 0,87 s di GPU). Total CPU SIFT + LightGlue 33
+  core-seconds, dan SIFT + nearest neighbor hanya 11.
+- **Matching nearest neighbor dengan 1.024 keypoint lebih cepat di CPU** (0,27 s dan 0,29 s) daripada di GPU (0,36 s dan
+  0,42 s): pekerjaannya terlalu kecil untuk menutup biaya memindahkan data ke GPU. Dengan 8.192 keypoint GPU kembali
+  lebih cepat (0,58 s dibanding 0,89 s). LightGlue 3,7 sampai 3,8 kali lebih cepat di GPU.
+- **SIFT bawaan COLMAP (8.192 keypoint, 2.560 px) 7,7 kali lebih lambat** daripada SIFT 1.024 keypoint (68 s untuk 30 gambar),
+  paling banyak inlier pada gambar bersih (338) tetapi paling rapuh: tersisa 12% di Gaussian 50 dan 24% di salt and pepper,
+  dan waktu extraction naik sampai 94 s di bawah noise.
+- **Noise menambah keypoint tetapi mengurangi inlier**: keypoint SIFT 737 pada gambar bersih menjadi 1.420 di Gaussian 50,
+  sedangkan inlier turun. Jumlah keypoint tidak sama dengan kualitas.
+- **ALIKED + LightGlue paling banyak inlier di antara setelan 1.024 keypoint** (253 bersih, 126 di Gaussian 50), tetapi
+  persentase yang bertahan sedikit di bawah SIFT + LightGlue (50% dibanding 57%; salt and pepper 66% dibanding 81%).
+- Proses GPU memakai RAM lebih besar (RSS 1,3 sampai 2,3 GB dibanding 0,7 sampai 1,1 GB di CPU); penyebabnya diduga
+  CUDA context tetapi belum diuji, dan RSS dicatat di akhir tahap, bukan puncak.
+
+### 7.5 Yang tidak boleh disimpulkan dari sini
+
+Bagian 5 tetap berlaku: satu mesin dengan GPU dan 8 thread, 15 pasang, noise sintetis, belum diukur di server instansi
+2 vCPU. Karena itu **jangan** menulis "SIFT cocok untuk server tanpa GPU" atau menyebut angka CPU di atas sebagai latensi
+server. Inti-detik memberi gambaran beban relatif per konfigurasi, bukan waktu di 2 vCPU.
 
 ## 8. Cara melaporkan
 
