@@ -62,6 +62,39 @@ export type Me = {
   is_admin: boolean;
 };
 
+export type StorageLocation = {
+  total_bytes: number;
+  used_bytes: number;
+  free_bytes: number;
+  total_gb: number;
+  used_gb: number;
+  free_gb: number;
+  percent: number;
+};
+
+export type StorageDiagnostics = {
+  maps: StorageLocation | null;
+  data: StorageLocation | null;
+};
+
+export type GpuTelemetry = {
+  name: string | null;
+  temperature_c: number | null;
+  vram_used_mb: number | null;
+  vram_total_mb: number | null;
+};
+
+export type SystemDiagnostics = {
+  storage: StorageDiagnostics;
+  gpu: GpuTelemetry | null;
+  device: "cuda" | "cpu";
+  uptime_s: number;
+  area_id: string | null;
+  map_version: number | null;
+  reloading: boolean;
+  reload_error: string | null;
+};
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   let r: Response;
   try {
@@ -95,6 +128,7 @@ export const api = {
       method: "POST",
     }),
   service: () => call<ServiceStatus>("/api/service"),
+  system: () => call<SystemDiagnostics>("/api/system"),
 };
 
 // Peran video di API tetap peta/uji (kontrak data); yang ditampilkan bahasa Inggris.

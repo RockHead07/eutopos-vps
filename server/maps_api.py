@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlmodel import select
 
-from server import active_map, auth, jobs, uploads
+from server import active_map, auth, jobs, system, uploads
 from server.db import MapJob, MapVersion, publish
 
 MAPS_ROOT = Path("/maps")  # jalur peta di dalam container (deploy/compose.yaml)
@@ -148,6 +148,20 @@ def service(request: Request, user: uploads.User) -> dict:
         "reloading": st.reloading,
         "reload_error": st.reload_error,
     }
+
+
+@router.get("/api/system")
+def system_diagnostics(request: Request, user: uploads.User) -> system.SystemDiagnostics:
+    """Telemetri sistem nyata: kapasitas penyimpanan (/maps dan /data),
+    komputasi GPU, suhu, dan uptime.
+    """
+    st = request.app.state
+    return system.get_system_diagnostics(
+        area_id=getattr(st, "area_id", None),
+        map_version=getattr(st, "map_version", None),
+        reloading=getattr(st, "reloading", False),
+        reload_error=getattr(st, "reload_error", None),
+    )
 
 
 @router.get("/assets/plotly.min.js")

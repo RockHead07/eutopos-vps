@@ -1,4 +1,8 @@
 "use client";
+
+import { useState } from "react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { SystemDiagnosticsPopover } from "@/components/SystemDiagnosticsPopover";
 import { api } from "@/lib/api";
 import { Icon } from "@/lib/Icon";
 import Link from "@/lib/Link";
@@ -10,15 +14,36 @@ type Crumb = { label: string; href?: string };
 /** Chip status layanan. Isi dari /api/service (bukan teks tetap), jadi sama di setiap halaman. */
 function ServiceChips() {
   const { data: s, error } = usePoll(api.service, 5000);
+  const [open, setOpen] = useState(false);
+
   return (
     <div className="chips">
       {s?.area_id && (
         <span className="chip"><Icon name="active-map" />Serving {s.area_id}{s.map_version !== null && ` v${s.map_version}`}</span>
       )}
-      <span className={`chip ${error ? "bad" : s ? "ok" : ""}`} title="From /api/service, refreshed every 5 seconds">
-        <span className="dot" aria-hidden="true" />
-        {error ? "VPS unreachable" : s ? "VPS online" : "Checking..."}
-      </span>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              "chip cursor-pointer select-none border-0 transition-colors hover:brightness-95 focus-visible:outline-2 focus-visible:outline-forest focus-visible:outline-offset-2",
+              error ? "bad" : s ? "ok" : ""
+            )}
+            title="Click to view system diagnostics"
+            aria-label="System diagnostics: VPS status"
+          >
+            <span className="dot" aria-hidden="true" />
+            <span>{error ? "VPS unreachable" : s ? "VPS online" : "Checking..."}</span>
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="end"
+          sideOffset={8}
+          className="w-[calc(100vw-2rem)] sm:w-[360px] max-w-[380px] p-0 shadow-lg border border-border bg-card overflow-hidden"
+        >
+          <SystemDiagnosticsPopover isOpen={open} onClose={() => setOpen(false)} />
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
