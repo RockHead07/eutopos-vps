@@ -7,6 +7,7 @@ import { SortableHead, type SortDirection } from "@/components/SortableHead";
 import { StatusBadge } from "@/components/StatusBadge";
 import { TableFilterBar } from "@/components/TableFilterBar";
 import { DeleteConsentDialog } from "@/components/DeleteConsentDialog";
+import { JobFailureDiagnosis } from "@/components/JobFailureDiagnosis";
 import { Thumbnail } from "@/components/Thumbnail";
 import { Button } from "@/components/ui/button";
 import {
@@ -243,7 +244,22 @@ function JobsContent() {
                         <TableCell className="text-left"><Link href={`/job/?id=${j.id}`}>{j.id}</Link></TableCell>
                         <TableCell className="text-left">{j.area_id}</TableCell>
                         <TableCell className="text-left"><StatusBadge status={j.status} /></TableCell>
-                        <TableCell className="text-left text-muted-foreground">{j.status === "done" ? "-" : (j.stage ?? "-")}</TableCell>
+                        <TableCell className="text-left text-muted-foreground">
+                          {j.status === "running" ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-forest/15 px-2 py-0.5 text-[11px] font-medium text-forest whitespace-nowrap">
+                              <span className="size-1.5 rounded-full bg-forest animate-pulse" />
+                              {j.stage ?? "running"}
+                            </span>
+                          ) : j.status === "failed" && j.stage ? (
+                            <span className="inline-flex items-center rounded bg-bad-bg/60 px-1.5 py-0.5 text-[11px] font-mono text-bad-fg whitespace-nowrap">
+                              failed at {j.stage}
+                            </span>
+                          ) : j.status === "done" ? (
+                            <span className="text-muted-foreground">-</span>
+                          ) : (
+                            <span className="text-muted-foreground">{j.stage ?? "-"}</span>
+                          )}
+                        </TableCell>
                         <TableCell className="text-left text-muted-foreground">{j.created_by}</TableCell>
                         <TableCell className="text-left text-muted-foreground whitespace-nowrap" title={recordedAt || undefined}>
                           {formatDate(recordedAt)}
@@ -251,8 +267,11 @@ function JobsContent() {
                         <TableCell className="text-left text-muted-foreground whitespace-nowrap" title={j.created_at || undefined}>
                           {formatDate(j.created_at)}
                         </TableCell>
-                        <TableCell className="text-left text-muted-foreground whitespace-nowrap">
-                          {formatDuration(j.started_at, j.finished_at)}
+                        <TableCell className="text-left text-muted-foreground whitespace-nowrap font-mono text-xs">
+                          {formatDuration(j.started_at, j.finished_at, { isRunning: j.status === "running" })}
+                          {j.status === "running" && (
+                            <span className="ml-1 inline-block size-1.5 rounded-full bg-forest animate-pulse" />
+                          )}
                         </TableCell>
                         <TableCell className="text-left sticky right-12 bg-card group-hover:bg-muted/50 border-l border-line/70 z-10">
                           <Button asChild variant="outline" size="sm" className="rounded-full gap-1.5 font-medium text-xs whitespace-nowrap">
@@ -394,7 +413,9 @@ function JobsContent() {
 
                         <dt className="text-muted-foreground">Duration</dt>
                         <dd className="text-foreground min-w-0 break-words tabular-nums">
-                          {formatDuration(selectedJob.started_at, selectedJob.finished_at)}
+                          {formatDuration(selectedJob.started_at, selectedJob.finished_at, {
+                            isRunning: selectedJob.status === "running",
+                          })}
                         </dd>
                       </dl>
                     </div>
@@ -508,14 +529,10 @@ function JobsContent() {
 
                 {/* Error Card */}
                 {selectedJob.error && (
-                  <div className="rounded-xl border border-line/70 bg-card p-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-destructive mb-2">
-                      Error
-                    </div>
-                    <pre className="font-mono text-xs text-destructive bg-destructive/10 p-3 rounded-lg overflow-x-auto max-h-48 whitespace-pre-wrap break-words">
-                      {selectedJob.error}
-                    </pre>
-                  </div>
+                  <JobFailureDiagnosis
+                    error={selectedJob.error}
+                    stage={selectedJob.stage}
+                  />
                 )}
               </div>
 

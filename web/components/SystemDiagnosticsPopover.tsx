@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { api, type SystemDiagnostics, type StorageLocation } from "@/lib/api";
+import { api, type SystemDiagnostics, type StorageLocation, type HealthStatus } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 interface SystemDiagnosticsPopoverProps {
@@ -11,6 +11,7 @@ interface SystemDiagnosticsPopoverProps {
 
 export function useDiagnostics(isOpen: boolean) {
   const [data, setData] = useState<SystemDiagnostics | null>(null);
+  const [healthData, setHealthData] = useState<HealthStatus | null>(null);
   const [initialLoading, setInitialLoading] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -35,9 +36,13 @@ export function useDiagnostics(isOpen: boolean) {
       }
 
       try {
-        const res = await api.system();
+        const [res, h] = await Promise.all([
+          api.system(),
+          api.health().catch(() => null),
+        ]);
         if (!active) return;
         setData(res);
+        setHealthData(h);
         setRefreshError(null);
         setLastUpdated(new Date());
         hasLoadedRef.current = true;
@@ -65,7 +70,7 @@ export function useDiagnostics(isOpen: boolean) {
     };
   }, [isOpen]);
 
-  return { data, loading: initialLoading, refreshError, lastUpdated };
+  return { data, healthData, loading: initialLoading, refreshError, lastUpdated };
 }
 
 function formatUptime(seconds: number): string {
@@ -108,8 +113,11 @@ function StorageMeter({
     );
   }
 
-  const isCritical = loc.percent >= 95;
-  const isWarning = loc.percent >= 85 && !isCritical;
+  // Documented policy matching worker safeguard:
+  // Critical: < 20 GB (worker aborts reconstruction with StageError: less than 20 GB free disk)
+  // Warning: < 25 GB
+  const isCritical = loc.free_gb < 20;
+  const isWarning = loc.free_gb < 25 && !isCritical;
 
   const barColor = isCritical
     ? "bg-bad-fg"
@@ -130,7 +138,7 @@ function StorageMeter({
             isCritical ? "text-bad-fg" : isWarning ? "text-amber-700" : "text-foreground"
           )}
         >
-          {loc.percent}% used
+          {loc.free_gb.toFixed(1)} GB free ({loc.percent}% used)
         </span>
       </div>
 
@@ -152,7 +160,13 @@ function StorageMeter({
         <span>
           {loc.used_gb.toFixed(1)} GB of {loc.total_gb.toFixed(1)} GB
         </span>
-        <span>{loc.free_gb.toFixed(1)} GB free</span>
+        {isCritical ? (
+          <span className="text-bad-fg font-medium">Critical: &lt; 20 GB blocks builds</span>
+        ) : isWarning ? (
+          <span className="text-amber-700 font-medium">Warning: low disk space (&lt; 25 GB)</span>
+        ) : (
+          <span>Safeguard: &gt; 20 GB free</span>
+        )}
       </div>
     </div>
   );
@@ -162,7 +176,14 @@ export function SystemDiagnosticsPopover({
   isOpen,
   onClose,
 }: SystemDiagnosticsPopoverProps) {
-  const { data, loading, refreshError, lastUpdated } = useDiagnostics(isOpen);
+  const { data, healthData, loading, refreshError, lastUpdated } = useDiagnostics(isOpen);
+
+  const isSharedVolume = Boolean(
+    data?.storage?.maps &&
+    data?.storage?.data &&
+    data.storage.maps.total_bytes === data.storage.data.total_bytes &&
+    data.storage.maps.free_bytes === data.storage.data.free_bytes
+  );
 
   return (
     <div className="flex flex-col gap-3 p-3 text-xs">
@@ -212,9 +233,16 @@ export function SystemDiagnosticsPopover({
         <>
           {/* Bagian 1: Storage */}
           <div className="flex flex-col gap-2">
-            <span className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">
-              Storage Locations
-            </span>
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">
+                Storage Locations
+              </span>
+              {isSharedVolume && (
+                <span className="text-[10px] text-muted-foreground italic">
+                  (shared filesystem)
+                </span>
+              )}
+            </div>
             <div className="flex flex-col gap-2">
               <StorageMeter
                 name="Maps Storage"
@@ -291,13 +319,13 @@ export function SystemDiagnosticsPopover({
               <div className="flex items-center justify-between rounded-md bg-canvas/60 p-2.5 text-xs text-muted-foreground">
                 <span>GPU telemetry unavailable</span>
                 <span className="font-medium text-foreground">
-                  {data?.device === "cpu" ? "CPU Mode" : "No sensor"}
+                  {data?.device === "cpu" ? "CPU Mode" : "Sensor unavailable"}
                 </span>
               </div>
             )}
           </div>
 
-          {/* Bagian 3: System Status */}
+          {/* Bagian 3: System Status & Alignment */}
           <div className="flex flex-col gap-2 border-t border-border pt-2.5">
             <span className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">
               System Status
@@ -316,6 +344,31 @@ export function SystemDiagnosticsPopover({
                   {data?.uptime_s !== undefined ? formatUptime(data.uptime_s) : "N/A"}
                 </span>
               </div>
+            </div>
+
+            {/* Metric Alignment Row */}
+            <div className="flex flex-col rounded-md bg-canvas/60 p-2 text-xs">
+              <span className="text-[11px] text-muted-foreground">Active Map Coordinate Frame</span>
+              <span className="font-semibold text-foreground flex items-center gap-1.5 mt-0.5">
+                {healthData?.aligned ? (
+                  <span className="text-forest flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-forest" />
+                    Metric aligned (pose_building in meters)
+                  </span>
+                ) : healthData ? (
+                  <span className="text-muted-foreground flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />
+                    Model coordinates only (unaligned SfM)
+                  </span>
+                ) : (
+                  "Checking..."
+                )}
+              </span>
+              <span className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
+                {healthData?.aligned
+                  ? "Poses transformed to metric coordinates via align.json"
+                  : "Poses output in unitless SfM space pending reference points"}
+              </span>
             </div>
 
             {data?.reloading && (

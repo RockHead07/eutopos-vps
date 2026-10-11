@@ -114,6 +114,15 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   return (await r.json()) as T;
 }
 
+export type HealthStatus = {
+  status: "ok" | "no_map";
+  area_id: string | null;
+  map_version: number | null;
+  map_images: number;
+  device: string | null;
+  aligned: boolean;
+};
+
 export const api = {
   me: () => call<Me>("/api/me"),
   jobs: () => call<Job[]>("/api/jobs"),
@@ -129,6 +138,7 @@ export const api = {
     }),
   service: () => call<ServiceStatus>("/api/service"),
   system: () => call<SystemDiagnostics>("/api/system"),
+  health: () => call<HealthStatus>("/health"),
 };
 
 // Peran video di API tetap peta/uji (kontrak data); yang ditampilkan bahasa Inggris.
@@ -156,12 +166,18 @@ export function formatDate(iso: string | null | undefined): string {
   }
 }
 
-export function formatDuration(started: string | null | undefined, finished: string | null | undefined): string {
-  if (!started || !finished) return "-";
+export function formatDuration(
+  started: string | null | undefined,
+  finished: string | null | undefined,
+  options?: { isRunning?: boolean; nowMs?: number }
+): string {
+  if (!started) return "-";
+  if (!finished && !options?.isRunning) return "-";
   try {
     const s = new Date(started).getTime();
-    const f = new Date(finished).getTime();
-    if (isNaN(s) || isNaN(f) || f < s) return "-";
+    if (isNaN(s)) return "-";
+    const f = finished ? new Date(finished).getTime() : (options?.nowMs ?? Date.now());
+    if (isNaN(f) || f < s) return "-";
     const totalSec = Math.floor((f - s) / 1000);
     const h = Math.floor(totalSec / 3600);
     const m = Math.floor((totalSec % 3600) / 60);
