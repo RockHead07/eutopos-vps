@@ -87,5 +87,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
  && uv pip install --python /opt/venv -r /tmp/dev.txt
 COPY --chown=eutopos:eutopos pyproject.toml ./
 COPY --chown=eutopos:eutopos tests ./tests
+# Tes umpan drive (tests/test_host_disk_feed.py) menjalankan fungsi dari skrip aslinya. Hanya tahap test: image layanan tidak membawanya.
+COPY --chown=eutopos:eutopos deploy/autodeploy.sh ./deploy/autodeploy.sh
 USER eutopos
 RUN pytest -q -p no:cacheprovider
