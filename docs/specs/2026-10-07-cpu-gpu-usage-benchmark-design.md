@@ -236,10 +236,10 @@ dapat dibandingkan langsung. Selisih inlier GPU dan CPU paling besar 6,4 (sekita
 
 | Konfigurasi | Bersih | Cahaya 50% | Cahaya 25% | Cahaya 10% | Cahaya 25% + noise sigma 10 |
 |---|---|---|---|---|---|
-| ALIKED + LightGlue | 253 | 243 (96,0%) | 216,5 (85,5%) | 181 (71,4%) | 220 (86,7%) |
+| ALIKED + LightGlue | 253 | 243 (96,0%) | 216 (85,5%) | 181 (71,4%) | 220 (86,7%) |
 | ALIKED + nearest neighbor | 128 | 116 (90,1%) | 105 (81,5%) | 83 (64,4%) | 98 (76,6%) |
-| SIFT + LightGlue | 168,5 | 148 (88,0%) | 117 (69,5%) | 81 (48,0%) | 121 (71,9%) |
-| SIFT + nearest neighbor | 129 | 110 (85,2%) | 89 (69,0%) | 66 (50,8%) | 72 (56,2%) |
+| SIFT + LightGlue | 168 | 148 (88,0%) | 117 (69,5%) | 81 (48,0%) | 121 (71,9%) |
+| SIFT + nearest neighbor | 129 | 110 (85,2%) | 89 (69,0%) | 65 (50,8%) | 72 (56,2%) |
 | SIFT bawaan COLMAP (8.192 keypoint, 2.560 px) | 338 | 270 (79,7%) | 209 (61,7%) | 157 (46,4%) | 100 (29,6%) |
 
 Yang terbaca dari angka:
@@ -249,7 +249,7 @@ Yang terbaca dari angka:
   LightGlue pada cahaya 10% (181 inlier) masih di atas SIFT bawaan COLMAP (157).
 - **Saat gelap, ekstraktor yang paling menentukan**: SIFT menjadi ALIKED dengan LightGlue menambah retensi 23 poin pada
   cahaya 10% (48,0% menjadi 71,4%), sedangkan nearest neighbor menjadi LightGlue menambah 7 poin pada ALIKED dan mengurangi 3
-  poin pada SIFT (inlier mutlaknya tetap lebih banyak, 66 menjadi 81). Ini berbeda dari 7.4 untuk noise (matcher lebih
+  poin pada SIFT (inlier mutlaknya tetap lebih banyak, 65 menjadi 81). Ini berbeda dari 7.4 untuk noise (matcher lebih
   menentukan); keduanya berlaku untuk gangguan masing-masing.
 - **Redup mengurangi jumlah fitur, bukan kemurnian pencocokan**: rasio inlier terhadap match hampir datar (ALIKED +
   LightGlue 65,0% pada bersih dan 68,4% pada cahaya 10%), sedangkan match turun (390 menjadi 264) dan keypoint turun (ALIKED
