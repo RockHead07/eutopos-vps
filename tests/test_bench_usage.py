@@ -1,5 +1,6 @@
 """Uji bagian murni skrip ukur CPU/GPU (spike/bench_usage.py): tanpa GPU dan tanpa model."""
 
+import json
 import sys
 from pathlib import Path
 
@@ -115,11 +116,94 @@ def test_salt_and_pepper_flips_about_the_requested_fraction_to_extremes():
 def test_variants_clean_is_identity_and_names_are_stable():
     img = gray()
     assert np.array_equal(b.make_variant(img, "clean", seed=1), img)
-    assert list(b.VARIANTS) == ["clean", "gauss10", "gauss25", "gauss50", "sp2"]
+    assert list(b.VARIANTS) == [
+        "clean",
+        "gauss10",
+        "gauss25",
+        "gauss50",
+        "sp2",
+        # Varian baru selalu di belakang: indeks varian ikut menentukan seed noise, jadi gambar
+        # ber-noise yang sudah dipakai di laporan 7 Okt tidak boleh berubah.
+        "dim50",
+        "dim25",
+        "dim10",
+        "dim25-gauss10",
+    ]
     noisy = b.make_variant(img, "gauss25", seed=1)
     assert not np.array_equal(noisy, img)
     with pytest.raises(KeyError):
         b.make_variant(img, "tidak-ada", seed=1)
+
+
+# ---- cahaya redup ------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("gain", [0.5, 0.25, 0.1])
+def test_dim_scales_light_in_linear_space_not_pixel_values(gain):
+    out = b.dim(gray(200), gain)
+    assert out.dtype == np.uint8 and out.shape == (120, 160, 3)
+    # Kamera merekam cahaya linear lalu menyandikannya dengan gamma. Cahaya 25% berarti
+    # (nilai/255)^2,2 dikali 0,25, bukan nilai piksel dikali 0,25 (itu terlalu gelap).
+    linear_in, linear_out = (200 / 255) ** 2.2, (float(out[0, 0, 0]) / 255) ** 2.2
+    assert linear_out / linear_in == pytest.approx(gain, rel=0.05)
+
+
+def test_dim_with_full_light_is_identity_and_never_mutates_the_input():
+    img = gray(77)
+    assert np.array_equal(b.dim(img, 1.0), img)
+    b.dim(img, 0.25)
+    assert np.array_equal(img, gray(77))
+
+
+@pytest.mark.parametrize("gain", [0, -0.5, 1.5])
+def test_dim_only_darkens(gain):
+    with pytest.raises(ValueError, match="gain"):
+        b.dim(gray(), gain)
+
+
+def test_dim_with_noise_adds_noise_after_darkening_not_before():
+    img = gray(200)
+    dark = b.dim(img, 0.25)
+    out = b.dim_with_noise(img, 0.25, 10, seed=5)
+    assert float(out.mean()) == pytest.approx(float(dark.mean()), abs=1.0)
+    assert float(np.std(out.astype(np.float64) - dark)) == pytest.approx(10, rel=0.1)
+
+
+def test_luminance_variants_get_darker_in_the_declared_order():
+    img = np.random.default_rng(1).integers(40, 220, (60, 80, 3), dtype=np.uint8)
+    mean = {v: float(b.make_variant(img, v, seed=1).mean()) for v in b.VARIANTS}
+    assert mean["clean"] > mean["dim50"] > mean["dim25"] > mean["dim10"]
+    assert mean["dim25-gauss10"] == pytest.approx(mean["dim25"], abs=2.0)
+
+
+def test_old_noise_variants_are_unchanged_by_the_new_ones():
+    img = gray()
+    a, c = b.make_variant(img, "gauss25", seed=9), b.gaussian_noise(img, 25, seed=9)
+    assert np.array_equal(a, c)
+
+
+def test_prepare_records_the_mean_luma_of_every_variant(tmp_path):
+    frames_dir, out = tmp_path / "frames", tmp_path / "out"
+    frames_dir.mkdir()
+    rng = np.random.default_rng(0)
+    for i in range(30):
+        img = rng.integers(60, 200, (48, 64, 3), dtype=np.uint8)
+        cv2.imwrite(str(frames_dir / f"v_{i:05d}.jpg"), img)
+    args = type("A", (), {"frames": frames_dir, "out": out, "pairs": 3, "gap": 2, "seed": 7})()
+    b.prepare(args)
+    luma = json.loads((out / "manifest.json").read_text(encoding="utf-8"))["luma"]
+    assert list(luma) == list(b.VARIANTS)
+    assert luma["clean"] > luma["dim50"] > luma["dim25"] > luma["dim10"] > 0
+
+
+# ---- sisa berkas dari proses yang terhenti ------------------------------------------------------
+
+
+def test_remove_stale_deletes_leftovers_and_ignores_missing_files(tmp_path):
+    left, missing = tmp_path / "f-clean-0.h5", tmp_path / "m-clean-0.h5"
+    left.write_bytes(b"setengah tertulis")
+    b.remove_stale(left, missing)
+    assert not left.exists() and not missing.exists()
 
 
 # ---- sampler GPU dan agregasi ------------------------------------------------------------------

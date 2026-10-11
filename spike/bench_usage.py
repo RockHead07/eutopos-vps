@@ -1,7 +1,8 @@
-"""Ukur pemakaian CPU dan GPU tiap konfigurasi fitur + pencocok, bersih dan dengan noise.
+"""Ukur pemakaian CPU dan GPU tiap konfigurasi fitur + pencocok, bersih, ber-noise, dan redup.
 
 Dibuat atas permintaan pembimbing (7 Okt 2026): bandingkan pemakaian GPU dan CPU tiap konfigurasi,
-dengan sekitar 30 gambar yang beragam, termasuk gambar ber-noise buatan OpenCV.
+dengan sekitar 30 gambar yang beragam, termasuk gambar ber-noise buatan OpenCV. Permintaan 8 Okt:
+tambah variasi luminance (sore dan malam), dibuat sintetis dengan menggelapkan gambar.
 
 Tiga langkah (jalankan di tempat yang punya hloc, misalnya container worker):
     python spike/bench_usage.py prepare --frames data/floor10/mapping --out outputs/usage
@@ -50,14 +51,22 @@ CONFIGS = {
     "sift-nn": ("sift", "nn-ratio", 1024, 1024),
     "sift-colmap-default": ("sift", "nn-ratio", 8192, 2560),
 }
-# Noise buatan OpenCV. Tingkatnya ditetapkan di sini sebelum ada hasil, bukan disetel sesudahnya.
+# Gangguan citra buatan. Tingkatnya ditetapkan di sini sebelum ada hasil, bukan disetel sesudahnya.
+# ("dim", g) = cahaya tinggal g kali semula (0,5 turun 1 stop, 0,25 turun 2 stop, 0,1 sekitar 3,3).
+# ("dim_gauss", (g, sigma)) = redup lalu ditambah noise Gaussian, karena sensor makin berisik saat
+# gelap. Varian baru HARUS di belakang: indeks varian ikut menentukan seed noise di prepare().
 VARIANTS = {
     "clean": None,
     "gauss10": ("gauss", 10),
     "gauss25": ("gauss", 25),
     "gauss50": ("gauss", 50),
     "sp2": ("sp", 0.02),
+    "dim50": ("dim", 0.5),
+    "dim25": ("dim", 0.25),
+    "dim10": ("dim", 0.1),
+    "dim25-gauss10": ("dim_gauss", (0.25, 10)),
 }
+GAMMA = 2.2  # kamera menyandikan cahaya linear dengan gamma; 2,2 mendekati kurva sRGB
 OPTIONAL = (
     "gpu_util_mean",
     "gpu_util_max",
@@ -149,12 +158,40 @@ def salt_pepper(img, amount, seed):
     return out
 
 
+def dim(img, gain):
+    """Kurangi cahaya menjadi `gain` kali semula (0 sampai 1), dihitung pada cahaya linear.
+
+    (nilai/255)^GAMMA dikali gain lalu disandikan lagi, yang sama dengan mengalikan nilai piksel
+    dengan gain^(1/GAMMA). Mengalikan nilai piksel langsung dengan gain terlalu gelap.
+    """
+    if not 0 < gain <= 1:
+        raise ValueError(f"gain harus di (0, 1], dapat {gain}")
+    return np.clip(np.rint(img * gain ** (1 / GAMMA)), 0, 255).astype(np.uint8)
+
+
+def dim_with_noise(img, gain, sigma, seed):
+    """Redup dulu, baru noise: noise sensor ditambahkan pada gambar yang sudah gelap."""
+    return gaussian_noise(dim(img, gain), sigma, seed)
+
+
 def make_variant(img, name, seed):
     spec = VARIANTS[name]
     if spec is None:
         return img.copy()
     kind, level = spec
-    return gaussian_noise(img, level, seed) if kind == "gauss" else salt_pepper(img, level, seed)
+    if kind == "gauss":
+        return gaussian_noise(img, level, seed)
+    if kind == "sp":
+        return salt_pepper(img, level, seed)
+    if kind == "dim":
+        return dim(img, level)
+    return dim_with_noise(img, *level, seed)
+
+
+def remove_stale(*paths):
+    """Hapus berkas .h5 sisa proses yang terhenti; berkas setengah tertulis menggagalkan ulangan."""
+    for path in paths:
+        path.unlink(missing_ok=True)
 
 
 # ---- sampler GPU dan agregasi ------------------------------------------------------------------
@@ -280,6 +317,7 @@ def prepare(a):
         ],
     }
     (a.out / "pairs").mkdir(parents=True, exist_ok=True)
+    luma = {v: [] for v in VARIANTS}  # kecerahan rata-rata abu-abu, bukti gambar benar-benar redup
     for vi, variant in enumerate(VARIANTS):
         folder = a.out / "images" / variant
         folder.mkdir(parents=True, exist_ok=True)
@@ -289,15 +327,18 @@ def prepare(a):
                 img = cv2.imread(str(a.frames / p[key]))
                 seed = a.seed * 100_000 + vi * 1_000 + pi * 2 + side
                 out = make_variant(img, variant, seed)
+                luma[variant].append(float(cv2.cvtColor(out, cv2.COLOR_BGR2GRAY).mean()))
                 cv2.imwrite(
                     str(folder / f"{p['id']}_{key}.jpg"), out, [cv2.IMWRITE_JPEG_QUALITY, 95]
                 )
             lines.append(f"{variant}/{p['id']}_a.jpg {variant}/{p['id']}_b.jpg")
         (a.out / "pairs" / f"{variant}.txt").write_text("\n".join(lines), encoding="utf-8")
+    manifest["luma"] = {v: round(statistics.mean(x), 1) for v, x in luma.items()}
     (a.out / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     rng = [p["sharpness_a"] for p in manifest["pairs"]]
     span = f"ketajaman {min(rng):.0f} sampai {max(rng):.0f}"
     print(f"{len(pairs)} pasangan, {span}, {len(VARIANTS)} variasi")
+    print("kecerahan rata-rata (0-255):", manifest["luma"])
 
 
 # ---- langkah run (satu proses anak per konfigurasi dan perangkat) ------------------------------
@@ -424,6 +465,7 @@ def child(a):
         names = [f"{variant}/{p['id']}_{k}.jpg" for p in manifest["pairs"] for k in ("a", "b")]
         pairs_txt = a.out / "pairs" / f"{variant}.txt"
         fp, mp = work / f"f-{variant}-{rep}.h5", work / f"m-{variant}-{rep}.h5"
+        remove_stale(fp, mp)
         n_images, n_pairs = len(names), len(manifest["pairs"])
         ext = measure(
             lambda: extract_features.main(
@@ -450,8 +492,7 @@ def child(a):
             ]
             with open(log, "a", encoding="utf-8") as f:
                 f.writelines(json.dumps(r) + "\n" for r in rows)
-        fp.unlink(missing_ok=True)
-        mp.unlink(missing_ok=True)
+        remove_stale(fp, mp)
 
     one_run("clean", -1, record=False)  # pemanasan (kernel CUDA, cache berkas), tidak dicatat
     for variant in a.variants:
@@ -523,13 +564,14 @@ def report(a):
             f"{fmt(r['per_item_s'], 2)} | {fmt(r['cpu_cores'])} | {fmt(r['gpu_util_mean'], 0)} | "
             f"{fmt(r['vram_peak_mb'], 0)} |"
         )
-    lines += ["", "## Kualitas pencocokan per variasi noise (inlier rata2 per pasangan)", ""]
-    lines.append("| Konfigurasi | " + " | ".join(VARIANTS) + " |")
-    lines.append("|---|" + "---|" * len(VARIANTS))
+    lines += ["", "## Kualitas pencocokan per gangguan citra (inlier rata2 per pasangan)", ""]
+    shown = [v for v in VARIANTS if any(r["variant"] == v for r in rows)]
+    lines.append("| Konfigurasi | " + " | ".join(shown) + " |")
+    lines.append("|---|" + "---|" * len(shown))
     by = {(r["config"], r["variant"]): r for r in rows if r["stage"] == "match"}
     for config in dict.fromkeys(r["config"] for r in rows):
         cells = [
-            fmt(by[(config, v)]["inliers_mean"], 0) if (config, v) in by else "-" for v in VARIANTS
+            fmt(by[(config, v)]["inliers_mean"], 0) if (config, v) in by else "-" for v in shown
         ]
         lines.append(f"| {config} | " + " | ".join(cells) + " |")
     lines += ["", "## Catatan lingkungan", ""]
