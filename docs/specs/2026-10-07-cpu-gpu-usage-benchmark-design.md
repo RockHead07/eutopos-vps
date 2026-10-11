@@ -66,14 +66,13 @@ memakai noise.
 
 | Variasi | Isi | Setara | Kecerahan rata-rata* |
 |---|---|---|---|
-| `dim50` | cahaya 50% | turun 1 stop | 99,6 |
-| `dim25` | cahaya 25% | turun 2 stop | 72,7 |
-| `dim10` | cahaya 10% | turun sekitar 3,3 stop | 47,9 |
-| `dim25-gauss10` | `dim25`, lalu Gaussian sigma 10 | gelap dan berisik | 72,7 |
+| `dim50` | cahaya 50% | turun 1 stop | 90,6 |
+| `dim25` | cahaya 25% | turun 2 stop | 66,1 |
+| `dim10` | cahaya 10% | turun sekitar 3,3 stop | 43,6 |
+| `dim25-gauss10` | `dim25`, lalu Gaussian sigma 10 | gelap dan berisik | 66,2 |
 
-*Rata-rata abu-abu 0 sampai 255 atas 30 gambar; `clean` 136,5. Angka SEMENTARA, dari `prepare` pada 181 frame
-`data/floor10-v1/mapping` di laptop (bukan job 2 yang dipakai di PC lab, jadi pasangannya berbeda). Nilai yang
-dilaporkan di buku diambil dari `manifest.json` (`luma`) hasil `prepare` di PC lab, bukan dari rumus. Noise pada `dim25-gauss10` ditambahkan
+*Rata-rata abu-abu 0 sampai 255 atas 30 gambar; `clean` 124,1. Dari `manifest.json` (`luma`) hasil `prepare` di PC lab
+(frame job 2, pasangan yang sama dengan 7 Okt), bukan dari rumus. Noise pada `dim25-gauss10` ditambahkan
 setelah redup karena sensor makin berisik saat gelap; sigma 10 sama dengan `gauss10`, jadi pengaruh noise saja dan
 redup saja bisa dipisahkan dari kombinasinya. Varian baru ditaruh di belakang daftar supaya seed noise varian lama
 (indeks varian ikut menentukan seed) dan gambar ber-noise di laporan 7 Okt tidak berubah.
@@ -224,6 +223,63 @@ hampir sama (selisih rata-rata kurang dari 5 inlier); tabel memakai hasil GPU.
 Bagian 5 tetap berlaku: satu mesin dengan GPU dan 8 thread, 15 pasang, noise sintetis, belum diukur di server instansi
 2 vCPU. Karena itu **jangan** menulis "SIFT cocok untuk server tanpa GPU" atau menyebut angka CPU di atas sebagai latensi
 server. Inti-detik memberi gambaran beban relatif per konfigurasi, bukan waktu di 2 vCPU.
+
+### 7.6 Variasi luminance (dijalankan 2026-10-11)
+
+Dijalankan 15:33 sampai sekitar 16:30 WIB di PC lab, dengan kode `5dcd5bc` (PR #66), lima konfigurasi, GPU dan CPU,
+3 ulangan, lima kondisi (`clean` dijalankan ulang sebagai pembanding sesi yang sama). Rancangan di bagian 3 tidak diubah
+setelah melihat angka. Berkas mentah ada di `/data/experiments/usage-luminance` di PC lab dan `outputs/usage-luminance/`
+di laptop (tidak masuk git). `clean` **identik** dengan sesi 7 Okt pada kelima konfigurasi (selisih inlier 0,0), jadi hasilnya
+dapat dibandingkan langsung. Selisih inlier GPU dan CPU paling besar 6,4 (sekitar 4%); tabel memakai hasil GPU.
+
+**Inlier rata-rata per pasangan (dan persentase terhadap gambar bersih)**
+
+| Konfigurasi | Bersih | Cahaya 50% | Cahaya 25% | Cahaya 10% | Cahaya 25% + noise sigma 10 |
+|---|---|---|---|---|---|
+| ALIKED + LightGlue | 253 | 243 (96,0%) | 216,5 (85,5%) | 181 (71,4%) | 220 (86,7%) |
+| ALIKED + nearest neighbor | 128 | 116 (90,1%) | 105 (81,5%) | 83 (64,4%) | 98 (76,6%) |
+| SIFT + LightGlue | 168,5 | 148 (88,0%) | 117 (69,5%) | 81 (48,0%) | 121 (71,9%) |
+| SIFT + nearest neighbor | 129 | 110 (85,2%) | 89 (69,0%) | 66 (50,8%) | 72 (56,2%) |
+| SIFT bawaan COLMAP (8.192 keypoint, 2.560 px) | 338 | 270 (79,7%) | 209 (61,7%) | 157 (46,4%) | 100 (29,6%) |
+
+Yang terbaca dari angka:
+
+- **Urutan ketahanan sama di setiap tingkat redup**: ALIKED + LightGlue paling baik (71% pada cahaya 10%), lalu ALIKED +
+  nearest neighbor (64%), lalu dua konfigurasi SIFT (48% dan 51%), dan SIFT bawaan COLMAP (46%). Dalam angka mutlak, ALIKED +
+  LightGlue pada cahaya 10% (181 inlier) masih di atas SIFT bawaan COLMAP (157).
+- **Saat gelap, ekstraktor yang paling menentukan**: SIFT menjadi ALIKED dengan LightGlue menambah retensi 23 poin pada
+  cahaya 10% (48,0% menjadi 71,4%), sedangkan nearest neighbor menjadi LightGlue menambah 7 poin pada ALIKED dan mengurangi 3
+  poin pada SIFT (inlier mutlaknya tetap lebih banyak, 66 menjadi 81). Ini berbeda dari 7.4 untuk noise (matcher lebih
+  menentukan); keduanya berlaku untuk gangguan masing-masing.
+- **Redup mengurangi jumlah fitur, bukan kemurnian pencocokan**: rasio inlier terhadap match hampir datar (ALIKED +
+  LightGlue 65,0% pada bersih dan 68,4% pada cahaya 10%), sedangkan match turun (390 menjadi 264) dan keypoint turun (ALIKED
+  644 menjadi 440, SIFT 737 menjadi 329).
+- **Noise berat umumnya lebih merusak daripada gelap berat, tidak untuk semua konfigurasi**: retensi pada Gaussian 50
+  (7.3) lebih rendah daripada pada cahaya 10% untuk empat dari lima konfigurasi; pengecualiannya SIFT + LightGlue (57,4%
+  lawan 48,0%). Tingkat keparahan kedua gangguan tidak setara, jadi ini gambaran, bukan peringkat.
+- **Gelap dan noise hampir saling mengalikan**: retensi cahaya 25% dikali retensi Gaussian 10 (7.3) mendekati retensi
+  gabungan (ALIKED + LightGlue 86,2% diperkirakan dan 86,7% terukur; SIFT bawaan COLMAP 33,7% dan 29,6%). Pengamatan atas
+  lima konfigurasi, bukan model.
+- **Jumlah keypoint menyesatkan saat ada noise**: keypoint SIFT naik pada cahaya 25% dengan noise (737 menjadi 838; COLMAP
+  3.324 menjadi 4.472) sementara rasio inlier turun (SIFT + LightGlue 53,6% menjadi 39,4%).
+- **Gelap tidak mengubah kebutuhan sumber daya secara berarti**: ekstraksi ALIKED di GPU 1,05 s (bersih) dan 1,02 s (cahaya
+  10%), di CPU 17,9 s dan 17,7 s. Ekstraksi SIFT sedikit lebih cepat pada gambar redup (COLMAP bawaan 64,3 s menjadi 59,0 s)
+  dan matching LightGlue di CPU lebih cepat karena keypoint lebih sedikit (SIFT + LightGlue 3,16 s menjadi 1,54 s).
+- **Satu anomali, penyebabnya dugaan**: pada redup berisik ekstraksi ALIKED di GPU naik sekitar 36% (1,05 s menjadi 1,43 s),
+  tidak di CPU. Berkas JPEG kondisi itu 55 MB, sedangkan cahaya 25% tanpa noise 12 MB (sekitar 4,5 kali). Dugaan: dekode
+  berkas lebih besar. Belum diuji.
+
+**Yang tidak boleh disimpulkan dari sini** (bagian 5 dan 7.5 tetap berlaku):
+
+- Inlier mengukur kontinuitas pencocokan fitur, **bukan akurasi lokalisasi dalam meter** (tujuan 4 belum diukur).
+- `summary.csv` hanya menyimpan rata-rata atas 15 pasangan: tidak ada sebaran, tidak ada hitungan pasangan di bawah ambang
+  50 inlier, tidak ada uji kemaknaan. Selisih kecil antar konfigurasi (misalnya 48,0% dan 50,8%) bukan urutan.
+- Redup sintetis bukan malam hari: tidak meniru exposure otomatis, motion blur dari waktu paparan panjang, noise sensor yang
+  bergantung sinyal, atau perubahan warna lampu. Rekaman asli sore dan malam tetap diperlukan sebagai validasi.
+- Satu lorong, satu ponsel, 15 pasangan, satu mesin; gambar redup berasal dari frame yang sama dengan gambar bersih.
+
+Tindak lanjut yang diusulkan: simpan inlier per pasangan di `bench_usage.py` (sebaran dan hitungan di bawah ambang),
+uji dugaan JPEG dengan PNG, dan rekaman asli sore dan malam.
 
 ## 8. Cara melaporkan
 
