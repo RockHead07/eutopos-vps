@@ -6,6 +6,7 @@ ke dashboard operator tanpa nilai karangan.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -16,6 +17,10 @@ from typing import Literal
 from pydantic import BaseModel
 
 _START_TIME = time.time()
+
+# autodeploy.sh menulis umpan ini tiap 5 menit. Tiga putaran terlewat berarti timer mati: tandai
+# basi, jangan perlihatkan angka lama seolah terkini.
+HOST_DISK_MAX_AGE_S = 15 * 60
 
 
 class StorageLocation(BaseModel):
@@ -28,9 +33,25 @@ class StorageLocation(BaseModel):
     percent: float
 
 
+class HostDisk(BaseModel):
+    """Drive fisik yang memuat disk virtual WSL; tak terlihat dari container, dibaca dari umpan."""
+
+    mount: str
+    total_bytes: int
+    used_bytes: int
+    free_bytes: int
+    total_gb: float
+    used_gb: float
+    free_gb: float
+    percent: float
+    age_s: float
+    stale: bool
+
+
 class StorageDiagnostics(BaseModel):
     maps: StorageLocation | None = None
     data: StorageLocation | None = None
+    host: HostDisk | None = None
 
 
 class GpuTelemetry(BaseModel):
@@ -75,6 +96,52 @@ def read_storage_path(path: Path | None) -> StorageLocation | None:
         )
     except Exception:
         return None
+
+
+def read_host_disk(path: Path | None, now: float | None = None) -> HostDisk | None:
+    """Baca umpan drive tuan rumah ({"mount", "total_bytes", "free_bytes", "updated_at"}).
+
+    Berkas hilang atau isinya tidak masuk akal berarti None: lebih baik tidak menampilkan angka
+    daripada menampilkan angka yang salah.
+    """
+    if path is None:
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        mount, total, free, stamp = (
+            raw["mount"],
+            raw["total_bytes"],
+            raw["free_bytes"],
+            raw["updated_at"],
+        )
+        ints = all(isinstance(v, int) and not isinstance(v, bool) for v in (total, free, stamp))
+        if not (isinstance(mount, str) and ints and total > 0 and 0 <= free <= total):
+            return None
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    age = max(0.0, (time.time() if now is None else now) - stamp)
+    used = total - free
+    gb = 1024**3
+    return HostDisk(
+        mount=mount,
+        total_bytes=total,
+        used_bytes=used,
+        free_bytes=free,
+        total_gb=round(total / gb, 1),
+        used_gb=round(used / gb, 1),
+        free_gb=round(free / gb, 1),
+        percent=round(used / total * 100, 1),
+        age_s=age,
+        stale=age > HOST_DISK_MAX_AGE_S,
+    )
+
+
+def get_host_disk_path(maps_path: Path | None) -> Path | None:
+    """Umpan ada di samping peta (folder yang sudah di-bind), kecuali diganti lewat lingkungan."""
+    env_file = os.environ.get("EUTOPOS_HOST_DISK_FILE")
+    if env_file:
+        return Path(env_file)
+    return maps_path / ".host-disk.json" if maps_path else None
 
 
 def get_maps_path() -> Path | None:
@@ -193,6 +260,7 @@ def get_system_diagnostics(
     storage = StorageDiagnostics(
         maps=read_storage_path(m_path),
         data=read_storage_path(d_path),
+        host=read_host_disk(get_host_disk_path(m_path)),
     )
 
     gpu = read_gpu_telemetry()

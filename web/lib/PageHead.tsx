@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { Icon } from "@/lib/Icon";
 import Link from "@/lib/Link";
 import { useSharedPoll } from "@/lib/usePoll";
+import { effectiveFree, HARD_LIMIT_GB } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 
 type Crumb = { label: string; href?: string };
@@ -18,15 +19,12 @@ function ServiceChips() {
   const { data: sys } = useSharedPoll(api.system, 15000);
   const [open, setOpen] = useState(false);
 
-  const mapsFree = sys?.storage?.maps?.free_gb ?? null;
-  const dataFree = sys?.storage?.data?.free_gb ?? null;
-  const minFreeGb =
-    mapsFree !== null && dataFree !== null
-      ? Math.min(mapsFree, dataFree)
-      : (mapsFree ?? dataFree);
-
-  const isStorageCritical = minFreeGb !== null && minFreeGb < 20;
-  const isStorageWarning = minFreeGb !== null && minFreeGb < 25 && !isStorageCritical;
+  const free = effectiveFree(sys?.storage);
+  const isStorageCritical = free?.level === "bad";
+  const isStorageWarning = free?.level === "warn";
+  const minFreeGb = free?.gb ?? null;
+  const hardLimit = free ? HARD_LIMIT_GB[free.source] : 20;
+  const where = free?.source === "host" ? "The Windows drive" : "Available disk space";
 
   return (
     <div className="chips">
@@ -56,11 +54,11 @@ function ServiceChips() {
           type="button"
           onClick={() => setOpen(true)}
           className="chip bad cursor-pointer select-none border-0 transition-colors"
-          title={`Available disk space is critically low (${minFreeGb?.toFixed(1)} GB free). Background worker requires at least 20 GB to build maps.`}
+          title={`${where} is critically low (${minFreeGb?.toFixed(1)} GB free, limit ${hardLimit} GB).`}
           aria-label="Storage critical alert"
         >
           <span className="dot" aria-hidden="true" />
-          <span>Storage &lt; 20 GB</span>
+          <span>Storage &lt; {hardLimit} GB</span>
         </button>
       )}
 
@@ -69,7 +67,7 @@ function ServiceChips() {
           type="button"
           onClick={() => setOpen(true)}
           className="chip cursor-pointer select-none border-0 transition-colors bg-amber-500/10 text-amber-700 hover:bg-amber-500/15"
-          title={`Available disk space is low (${minFreeGb?.toFixed(1)} GB free). Less than 20 GB blocks new map builds.`}
+          title={`${where} is low (${minFreeGb?.toFixed(1)} GB free, limit ${hardLimit} GB).`}
           aria-label="Storage low warning"
         >
           <span className="dot bg-amber-600" aria-hidden="true" />

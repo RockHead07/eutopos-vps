@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import threading
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -183,3 +185,84 @@ def test_api_system_endpoint_unauthenticated(tmp_path: Path, monkeypatch: pytest
     with TestClient(app) as c:
         resp = c.get("/api/system")
         assert resp.status_code == 401
+
+
+# ---- drive fisik tuan rumah (umpan dari autodeploy.sh) ----------------------------------------
+
+GB = 1024**3
+
+
+def write_host_disk(path: Path, **fields):
+    data = {"mount": "C:", "total_bytes": 447 * GB, "free_bytes": 132 * GB, "updated_at": 1_000_000}
+    path.write_text(json.dumps({**data, **fields}), encoding="utf-8")
+    return path
+
+
+def test_read_host_disk_reports_the_physical_drive_not_the_virtual_disk(tmp_path: Path):
+    f = write_host_disk(tmp_path / "host.json")
+    host = system.read_host_disk(f, now=1_000_060)
+    assert host is not None
+    assert (host.mount, host.total_gb, host.free_gb, host.used_gb) == ("C:", 447.0, 132.0, 315.0)
+    assert host.percent == pytest.approx(70.5, abs=0.1)
+    assert host.age_s == 60 and host.stale is False
+
+
+def test_read_host_disk_marks_an_old_reading_stale_instead_of_trusting_it(tmp_path: Path):
+    f = write_host_disk(tmp_path / "host.json")
+    fresh = system.read_host_disk(f, now=1_000_000 + system.HOST_DISK_MAX_AGE_S)
+    old = system.read_host_disk(f, now=1_000_000 + system.HOST_DISK_MAX_AGE_S + 1)
+    assert fresh is not None and fresh.stale is False
+    assert old is not None and old.stale is True
+
+
+def test_read_host_disk_missing_file_is_none_not_an_error(tmp_path: Path):
+    assert system.read_host_disk(tmp_path / "nope.json") is None
+    assert system.read_host_disk(None) is None
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"total_bytes": 0},
+        {"free_bytes": -1},
+        {"free_bytes": 448 * GB},  # lebih besar dari total
+        {"total_bytes": "447"},
+        {"updated_at": "kemarin"},
+    ],
+)
+def test_read_host_disk_rejects_nonsense_values(tmp_path: Path, bad):
+    assert (
+        system.read_host_disk(write_host_disk(tmp_path / "host.json", **bad), now=1_000_001) is None
+    )
+
+
+def test_read_host_disk_rejects_broken_json(tmp_path: Path):
+    f = tmp_path / "host.json"
+    f.write_text("{setengah", encoding="utf-8")
+    assert system.read_host_disk(f) is None
+
+
+def test_future_timestamp_is_not_negative_age(tmp_path: Path):
+    f = write_host_disk(tmp_path / "host.json", updated_at=2_000_000)
+    host = system.read_host_disk(f, now=1_000_000)
+    assert host is not None and host.age_s == 0
+
+
+def test_diagnostics_picks_up_the_feed_next_to_the_maps(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("EUTOPOS_HOST_DISK_FILE", raising=False)
+    write_host_disk(tmp_path / ".host-disk.json", updated_at=int(time.time()))
+    diag = system.get_system_diagnostics(maps_path=tmp_path, data_path=tmp_path)
+    assert diag.storage.host is not None and diag.storage.host.free_gb == 132.0
+
+
+def test_diagnostics_env_overrides_the_feed_location(tmp_path: Path, monkeypatch):
+    elsewhere = write_host_disk(tmp_path / "x.json", updated_at=int(time.time()), mount="D:")
+    monkeypatch.setenv("EUTOPOS_HOST_DISK_FILE", str(elsewhere))
+    diag = system.get_system_diagnostics(maps_path=tmp_path, data_path=tmp_path)
+    assert diag.storage.host is not None and diag.storage.host.mount == "D:"
+
+
+def test_diagnostics_without_a_feed_has_no_host_entry(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("EUTOPOS_HOST_DISK_FILE", raising=False)
+    diag = system.get_system_diagnostics(maps_path=tmp_path, data_path=tmp_path)
+    assert diag.storage.host is None

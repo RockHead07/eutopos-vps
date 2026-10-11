@@ -72,9 +72,21 @@ export type StorageLocation = {
   percent: number;
 };
 
+/** Drive fisik yang memuat disk virtual WSL, dari umpan yang ditulis autodeploy.sh. Tidak ada kalau umpan belum ada. */
+export type HostDisk = {
+  mount: string;
+  total_gb: number;
+  used_gb: number;
+  free_gb: number;
+  percent: number;
+  age_s: number;
+  stale: boolean;
+};
+
 export type StorageDiagnostics = {
   maps: StorageLocation | null;
   data: StorageLocation | null;
+  host?: HostDisk | null;
 };
 
 export type GpuTelemetry = {
