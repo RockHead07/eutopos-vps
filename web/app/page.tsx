@@ -28,7 +28,7 @@ import {
   GREETINGS,
   type HourBucket,
 } from "@/lib/greeting";
-import { usePoll } from "@/lib/usePoll";
+import { usePoll, useSharedPoll } from "@/lib/usePoll";
 
 const BUSY = ["uploading", "queued", "running"];
 
@@ -64,7 +64,8 @@ export default function OverviewPage() {
   const router = useRouter();
   const jobs = usePoll(api.jobs, 5000);
   const versions = usePoll(api.versions, 10000);
-  const service = usePoll(api.service, 5000);
+  const service = useSharedPoll(api.service, 5000);
+  const health = useSharedPoll(api.health, 10000);
   const { data: me, error: meError } = usePoll(api.me, 60000);
   const error = jobs.error ?? versions.error ?? service.error;
 
@@ -191,7 +192,11 @@ export default function OverviewPage() {
   const scored = filteredJobs
     .filter((j) => j.status === "done" && (j.summary?.inspect?.queries ?? 0) > 0)
     .sort((a, b) => a.id - b.id);
+  const minInliers = [...new Set(scored.map((j) => j.summary?.inspect?.min_inliers))];
   const latest = filteredJobs.filter((j) => j.status === "done").sort((a, b) => b.id - a.id)[0];
+  const activeJobs = allJobs.filter((j) => BUSY.includes(j.status));
+  const failedJobs = filteredJobs.filter((j) => j.status === "failed");
+  const latestFailed = failedJobs.sort((a, b) => b.id - a.id)[0];
   const counts = [
     { status: "done", label: "Done", n: filteredJobs.filter((j) => j.status === "done").length },
     {
@@ -291,6 +296,32 @@ export default function OverviewPage() {
         Map builds, map quality, and the map /localize is serving.
       </PageHead>
       {error && <p className="error">{error}</p>}
+      {activeJobs.length > 0 && (
+        <div className="mb-4 rounded-lg border border-forest/30 bg-forest/5 p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="size-2 rounded-full bg-forest animate-pulse" />
+            <span className="font-semibold text-foreground">
+              {activeJobs.length === 1 ? "Active Reconstruction Job:" : `${activeJobs.length} Active Reconstruction Jobs:`}
+            </span>
+            {activeJobs.map((j) => (
+              <Link
+                key={j.id}
+                href={`/job/?id=${j.id}`}
+                className="inline-flex items-center gap-1.5 rounded-full bg-forest/15 px-2.5 py-1 text-forest hover:bg-forest/25 font-medium transition-colors"
+              >
+                <span>Job #{j.id} ({j.area_id})</span>
+                <span className="text-[10px] font-mono uppercase">
+                  {j.status === "running" ? (j.stage ? `stage ${j.stage}` : "running") : j.status}
+                </span>
+                <Icon name="arrow-up-right" />
+              </Link>
+            ))}
+          </div>
+          <span className="text-muted-foreground text-[11px]">
+            Updating live
+          </span>
+        </div>
+      )}
       <div className="overview">
         {/* Active map is NEVER filtered */}
         <Panel className="area-active">
@@ -301,13 +332,25 @@ export default function OverviewPage() {
                 {s.area_id ?? "none"}
                 {s.map_version !== null && <small> v{s.map_version}</small>}
               </span>
-              <span>
+              <div className="flex flex-wrap items-center gap-2">
                 {s.reloading ? (
                   <StatusBadge status="running">loading a new version</StatusBadge>
                 ) : (
                   <StatusBadge status="done">ready</StatusBadge>
                 )}
-              </span>
+                {health.data?.aligned ? (
+                  <span className="rounded bg-forest/15 px-2 py-0.5 text-[11px] font-semibold text-forest">
+                    Metric aligned
+                  </span>
+                ) : health.data ? (
+                  <span
+                    className="rounded bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                    title="Model SfM coordinates only (pending align.json reference points)"
+                  >
+                    Model coordinates
+                  </span>
+                ) : null}
+              </div>
             </>
           ) : (
             <span className="skeleton row" />
@@ -328,19 +371,40 @@ export default function OverviewPage() {
             {[...filteredVersions]
               .sort((a, b) => b.id - a.id)
               .slice(0, 5)
-              .map((v) => (
-                <li key={v.id}>
-                  <div>
-                    <strong>
-                      {v.area_id} v{v.version}
-                    </strong>
-                    <span className="muted">
-                      {v.job_id ? <Link href={`/job/?id=${v.job_id}`}>job {v.job_id}</Link> : "from CLI"}
-                    </span>
-                  </div>
-                  <VersionBadge status={v.status} />
-                </li>
-              ))}
+              .map((v) => {
+                const isCurrentlyServing =
+                  s && v.area_id === s.area_id && v.version === s.map_version;
+                return (
+                  <li key={v.id} className={isCurrentlyServing ? "bg-forest/5 rounded-md p-1" : undefined}>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <strong>
+                          {v.area_id} v{v.version}
+                        </strong>
+                        {isCurrentlyServing && (
+                          <span className="text-[10px] font-semibold text-forest bg-forest/15 px-1.5 py-0.5 rounded">
+                            Serving
+                          </span>
+                        )}
+                      </div>
+                      <span className="muted flex items-center gap-2 text-xs">
+                        {v.job_id ? <Link href={`/job/?id=${v.job_id}`}>job {v.job_id}</Link> : "from CLI"}
+                        {v.has_report && (
+                          <a
+                            href={`/api/versions/${v.id}/report`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-forest hover:underline text-[11px]"
+                          >
+                            3D report ↗
+                          </a>
+                        )}
+                      </span>
+                    </div>
+                    <VersionBadge status={v.status} />
+                  </li>
+                );
+              })}
           </ul>
           <Link href="/maps/">
             All map versions <Icon name="arrow-up-right" />
@@ -350,7 +414,10 @@ export default function OverviewPage() {
         <Panel className="area-accept">
           <div>
             <h2>Test photos accepted</h2>
-            <p className="muted">Share of each job&apos;s test photos localized with at least 50 inliers.</p>
+            <p className="muted">
+              Share of each job&apos;s test photos localized with at least{" "}
+              {minInliers.length === 1 && minInliers[0] != null ? minInliers[0] : "the configured number of"} inliers.
+            </p>
           </div>
           {!jobs.data && <div className="skeleton block" />}
           {jobs.data && filteredJobs.length === 0 && <p className="muted">No jobs in this range</p>}
@@ -360,9 +427,12 @@ export default function OverviewPage() {
             </p>
           )}
           {scored.length > 0 && <AcceptChart jobs={scored} />}
-          <Link href="/jobs/">
-            View as table <Icon name="arrow-up-right" />
-          </Link>
+          <div className="flex items-center justify-between mt-2 pt-2 border-t border-line/50 text-[11px] text-muted-foreground">
+            <span>Inlier threshold &ge; 50 (acceptance rate; not metric accuracy)</span>
+            <Link href="/jobs/">
+              View as table <Icon name="arrow-up-right" />
+            </Link>
+          </div>
         </Panel>
 
         <Panel className="area-jobs">
@@ -388,6 +458,17 @@ export default function OverviewPage() {
                 </li>
               ))}
             </ul>
+          )}
+          {latestFailed && (
+            <div className="mt-3 pt-2.5 border-t border-line/60 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5 text-bad-fg">
+                <span className="font-semibold">Recent failure:</span>
+                <span>Job #{latestFailed.id} {latestFailed.stage ? `(${latestFailed.stage})` : ""}</span>
+              </div>
+              <Link href={`/job/?id=${latestFailed.id}`} className="text-bad-fg hover:underline font-medium">
+                View diagnosis ↗
+              </Link>
+            </div>
           )}
         </Panel>
 

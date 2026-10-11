@@ -6,21 +6,77 @@ import { SystemDiagnosticsPopover } from "@/components/SystemDiagnosticsPopover"
 import { api } from "@/lib/api";
 import { Icon } from "@/lib/Icon";
 import Link from "@/lib/Link";
-import { usePoll } from "@/lib/usePoll";
+import { useSharedPoll } from "@/lib/usePoll";
 import { cn } from "@/lib/utils";
 
 type Crumb = { label: string; href?: string };
 
-/** Chip status layanan. Isi dari /api/service (bukan teks tetap), jadi sama di setiap halaman. */
+/** Chip status layanan. Menggunakan /api/service, /health, dan /api/system. */
 function ServiceChips() {
-  const { data: s, error } = usePoll(api.service, 5000);
+  const { data: s, error } = useSharedPoll(api.service, 5000);
+  const { data: health } = useSharedPoll(api.health, 10000);
+  const { data: sys } = useSharedPoll(api.system, 15000);
   const [open, setOpen] = useState(false);
+
+  const mapsFree = sys?.storage?.maps?.free_gb ?? null;
+  const dataFree = sys?.storage?.data?.free_gb ?? null;
+  const minFreeGb =
+    mapsFree !== null && dataFree !== null
+      ? Math.min(mapsFree, dataFree)
+      : (mapsFree ?? dataFree);
+
+  const isStorageCritical = minFreeGb !== null && minFreeGb < 20;
+  const isStorageWarning = minFreeGb !== null && minFreeGb < 25 && !isStorageCritical;
 
   return (
     <div className="chips">
       {s?.area_id && (
-        <span className="chip"><Icon name="active-map" />Serving {s.area_id}{s.map_version !== null && ` v${s.map_version}`}</span>
+        <span
+          className="chip"
+          title={
+            health?.aligned
+              ? "Active map served with metric coordinates (pose_building in meters)"
+              : "Active map served in unitless SfM model coordinates (pending align.json reference points)"
+          }
+        >
+          <Icon name="active-map" />
+          Serving {s.area_id}
+          {s.map_version !== null && ` v${s.map_version}`}
+          {health?.aligned ? (
+            <span className="ml-1 text-[10px] font-semibold text-forest">· Metric</span>
+          ) : health ? (
+            <span className="ml-1 text-[10px] text-muted-foreground">· Model</span>
+          ) : null}
+        </span>
       )}
+
+      {/* Proactive storage warning chip */}
+      {isStorageCritical && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="chip bad cursor-pointer select-none border-0 transition-colors"
+          title={`Available disk space is critically low (${minFreeGb?.toFixed(1)} GB free). Background worker requires at least 20 GB to build maps.`}
+          aria-label="Storage critical alert"
+        >
+          <span className="dot" aria-hidden="true" />
+          <span>Storage &lt; 20 GB</span>
+        </button>
+      )}
+
+      {isStorageWarning && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="chip cursor-pointer select-none border-0 transition-colors bg-amber-500/10 text-amber-700 hover:bg-amber-500/15"
+          title={`Available disk space is low (${minFreeGb?.toFixed(1)} GB free). Less than 20 GB blocks new map builds.`}
+          aria-label="Storage low warning"
+        >
+          <span className="dot bg-amber-600" aria-hidden="true" />
+          <span>Storage low ({minFreeGb?.toFixed(0)} GB)</span>
+        </button>
+      )}
+
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button

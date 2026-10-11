@@ -6,6 +6,7 @@ import { SortableHead, type SortDirection } from "@/components/SortableHead";
 import { StatusBadge } from "@/components/StatusBadge";
 import { TableFilterBar } from "@/components/TableFilterBar";
 import { DeleteConsentDialog } from "@/components/DeleteConsentDialog";
+import { VersionComparisonPanel } from "@/components/VersionComparisonPanel";
 import { Thumbnail } from "@/components/Thumbnail";
 import { Button } from "@/components/ui/button";
 import {
@@ -64,6 +65,10 @@ export default function MapsPage() {
   }, [versions.data]);
 
   const [selectedVersion, setSelectedVersion] = useState<Version | null>(null);
+  const [showComparison, setShowComparison] = useState(false);
+  const [compareArea, setCompareArea] = useState<string | undefined>(undefined);
+  const [compareVersionA, setCompareVersionA] = useState<number | undefined>(undefined);
+  const [compareVersionB, setCompareVersionB] = useState<number | undefined>(undefined);
   const [versionToDelete, setVersionToDelete] = useState<Version | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -207,7 +212,32 @@ export default function MapsPage() {
         <p className="error">{error ?? versions.error ?? service.error}</p>
       )}
       <Panel>
-        <h2>All versions</h2>
+        <div className="flex items-center justify-between mb-2">
+          <h2>All versions</h2>
+          {localVersions && localVersions.length >= 2 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowComparison(!showComparison)}
+              className="h-7 rounded-full text-xs font-medium cursor-pointer"
+            >
+              {showComparison ? "Hide comparison" : "Compare versions"}
+            </Button>
+          )}
+        </div>
+        {showComparison && localVersions && (
+          <div className="mb-4">
+            <VersionComparisonPanel
+              versions={localVersions}
+              jobs={jobs.data ?? []}
+              initialArea={compareArea ?? (areaFilter !== "all" ? areaFilter : undefined)}
+              initialVersionIdA={compareVersionA}
+              initialVersionIdB={compareVersionB}
+              onClose={() => setShowComparison(false)}
+            />
+          </div>
+        )}
         {!localVersions && !versions.error && <Rows />}
         {localVersions && localVersions.length === 0 && (
           <div className="empty"><p>No map versions yet. A finished job adds one.</p></div>
@@ -341,6 +371,22 @@ export default function MapsPage() {
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem onClick={() => setSelectedVersion(v)}>
                                 Properties
+                              </DropdownMenuItem>
+                              {v.has_report && (
+                                <DropdownMenuItem asChild>
+                                  <a href={`/api/versions/${v.id}/report`} target="_blank" rel="noreferrer">
+                                    Inspect 3D report
+                                  </a>
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setCompareArea(v.area_id);
+                                  setCompareVersionA(v.id);
+                                  setShowComparison(true);
+                                }}
+                              >
+                                Compare version
                               </DropdownMenuItem>
                               {v.job_id ? (
                                 <DropdownMenuItem asChild>
@@ -526,6 +572,25 @@ export default function MapsPage() {
 
                 {/* Footer */}
                 <div className="border-t px-6 py-4 flex flex-wrap gap-2 mt-auto">
+                  {selectedVersion.has_report && (
+                    <Button asChild variant="outline" className="rounded-full">
+                      <a href={`/api/versions/${selectedVersion.id}/report`} target="_blank" rel="noreferrer">
+                        <Icon name="view-3d" /> Inspect 3D report
+                      </a>
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    className="rounded-full cursor-pointer"
+                    onClick={() => {
+                      setCompareArea(selectedVersion.area_id);
+                      setCompareVersionA(selectedVersion.id);
+                      setShowComparison(true);
+                      setSelectedVersion(null);
+                    }}
+                  >
+                    Compare
+                  </Button>
                   {selectedVersion.job_id ? (
                     <Button asChild variant="outline" className="rounded-full">
                       <Link href={`/job/?id=${selectedVersion.job_id}`}>View job</Link>

@@ -1,13 +1,16 @@
 "use client";
+
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Panel } from "@/components/Panel";
 import { StatusBadge } from "@/components/StatusBadge";
+import { PipelineStageIndicator } from "@/components/PipelineStageIndicator";
+import { JobFailureDiagnosis } from "@/components/JobFailureDiagnosis";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Icon } from "@/lib/Icon";
 import Link from "@/lib/Link";
-import { useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
-import { api, mb, ROLE } from "@/lib/api";
+import { api, formatDate, formatDuration, mb, ROLE } from "@/lib/api";
 import { PageHead } from "@/lib/PageHead";
 import { Rows } from "@/lib/Rows";
 import { usePoll } from "@/lib/usePoll";
@@ -35,6 +38,15 @@ function JobDetail() {
   const id = Number(useSearchParams().get("id"));
   const { data: job, error } = usePoll(() => api.job(id), 5000, [id]);
   const [message, setMessage] = useState<string | null>(null);
+  const [now, setNow] = useState(Date.now());
+
+  // Update clock every second while viewing a running job so elapsed duration stays fresh
+  useEffect(() => {
+    if (job?.status === "running") {
+      const interval = setInterval(() => setNow(Date.now()), 1000);
+      return () => clearInterval(interval);
+    }
+  }, [job?.status]);
 
   async function publish(versionId: number) {
     if (!window.confirm("Publish this map? /localize will use this version.")) return;
@@ -51,21 +63,92 @@ function JobDetail() {
   }
 
   if (!id) return <p className="error">Missing id parameter.</p>;
-  // Galat saat data lama sudah tampil (misalnya sesi login habis) ditampilkan di atas data itu.
   if (!job) return error ? <p className="error">{error}</p> : <Loading />;
+
   const run = job.summary?.run;
   const ins = job.summary?.inspect;
+  const isRunning = job.status === "running";
+  const durationStr = formatDuration(job.started_at, job.finished_at, {
+    isRunning,
+    nowMs: now,
+  });
+
   return (
     <>
       {error && <p className="error">{error}</p>}
-      <PageHead crumbs={[{ label: "Jobs", href: "/jobs/" }, { label: `Job ${job.id}` }]} title={`Job ${job.id} · ${job.area_id}`}>
-        <StatusBadge status={job.status} />{" "}
-        {job.status !== "done" && job.stage && <>stage {job.stage} · </>}by {job.created_by}
+      <PageHead
+        crumbs={[{ label: "Jobs", href: "/jobs/" }, { label: `Job ${job.id}` }]}
+        title={`Job ${job.id} · ${job.area_id}`}
+      >
+        <div className="flex flex-wrap items-center gap-2 mt-1 text-xs">
+          <StatusBadge status={job.status} />
+          {job.stage && job.status !== "done" && (
+            <span className="text-muted-foreground">
+              stage <strong className="text-foreground">{job.stage}</strong>
+            </span>
+          )}
+          <span className="text-muted-foreground">· created by {job.created_by}</span>
+        </div>
       </PageHead>
-      {job.error && <pre className="error">{job.error}</pre>}
+
+      {/* Execution Status Card */}
+      <Panel className="flex flex-col gap-3">
+        <div className="flex items-center justify-between border-b border-line pb-2">
+          <h2 className="text-sm font-semibold text-foreground">Execution Status</h2>
+          <span className="text-xs text-muted-foreground font-mono">Job ID #{job.id}</span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-muted-foreground">Uploaded / Created</span>
+            <span className="font-medium text-foreground whitespace-nowrap">
+              {formatDate(job.created_at)}
+            </span>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-muted-foreground">Execution Started</span>
+            <span className="font-medium text-foreground whitespace-nowrap">
+              {job.started_at ? formatDate(job.started_at) : "Pending start"}
+            </span>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-muted-foreground">Execution Finished</span>
+            <span className="font-medium text-foreground whitespace-nowrap">
+              {job.finished_at ? formatDate(job.finished_at) : isRunning ? "In progress..." : "-"}
+            </span>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-muted-foreground">Processing Duration</span>
+            <span className="font-medium text-foreground font-mono">
+              {durationStr}
+              {isRunning && (
+                <span className="ml-1.5 inline-block size-2 rounded-full bg-forest animate-pulse" />
+              )}
+            </span>
+          </div>
+        </div>
+      </Panel>
+
+      {/* Pipeline Stage Indicator */}
+      <PipelineStageIndicator
+        status={job.status}
+        currentStage={job.stage}
+        timings={run?.t_map_s}
+      />
+
+      {/* Failure Diagnosis Panel */}
+      {job.error && (
+        <JobFailureDiagnosis error={job.error} stage={job.stage} />
+      )}
+
+      {/* Reconstruction Results */}
       {run && ins && (
         <section className="stats">
-          <Stat label="Registered frames" value={run.map_registered} of={run.map_images} />
+          <Stat
+            label="Registered frames"
+            value={run.map_registered}
+            of={run.map_images}
+            note="Coverage: frames connected into 3D SfM model"
+          />
           <Stat
             label="Map pieces"
             value={ins.parts?.length ?? 0}
@@ -75,28 +158,47 @@ function JobDetail() {
             label="Test photos accepted"
             value={ins.accepted}
             of={ins.queries || undefined}
-            note={ins.queries ? `At least ${ins.min_inliers} inliers each` : "No test video in this job"}
+            note={
+              ins.queries
+                ? `At least ${ins.min_inliers} inliers each. Acceptance rate; does not prove metric accuracy.`
+                : "No test video in this job"
+            }
           />
         </section>
       )}
+
+      {/* Videos List */}
       <Panel>
         <h2>Videos</h2>
         <Table>
           <TableHeader>
-            <TableRow><TableHead>Name</TableHead><TableHead>Role</TableHead><TableHead>Size</TableHead><TableHead>Upload</TableHead></TableRow>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Role</TableHead>
+              <TableHead>Size</TableHead>
+              <TableHead>Recorded</TableHead>
+              <TableHead>Upload</TableHead>
+            </TableRow>
           </TableHeader>
           <TableBody>
             {job.videos.map((v) => (
               <TableRow key={v.name}>
-                <TableCell>{v.name}</TableCell>
+                <TableCell className="font-medium">{v.name}</TableCell>
                 <TableCell>{ROLE[v.role] ?? v.role}</TableCell>
                 <TableCell className="num">{v.size === null ? "-" : mb(v.size)}</TableCell>
-                <TableCell className="text-muted-foreground">{v.uploaded === null ? "from CLI" : v.uploaded ? "uploaded" : "incomplete"}</TableCell>
+                <TableCell className="text-muted-foreground whitespace-nowrap">
+                  {v.recorded_at ? formatDate(v.recorded_at) : "-"}
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {v.uploaded === null ? "from CLI" : v.uploaded ? "uploaded" : "incomplete"}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </Panel>
+
+      {/* 3D Map View and Actions */}
       {job.map_version_id && (
         <Panel>
           <div className="actions">
@@ -105,7 +207,9 @@ function JobDetail() {
           </div>
           <iframe src={`/api/versions/${job.map_version_id}/report`} title="3D map view" />
           <div className="actions">
-            <Button className="rounded-full" onClick={() => publish(job.map_version_id!)}><Icon name="publish" />Publish this version</Button>
+            <Button className="rounded-full cursor-pointer" onClick={() => publish(job.map_version_id!)}>
+              <Icon name="publish" />Publish this version
+            </Button>
             <Link href="/maps/">Map versions</Link>
           </div>
           {message && <p className="notice">{message}</p>}
