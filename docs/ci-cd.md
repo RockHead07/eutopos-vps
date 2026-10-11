@@ -31,7 +31,8 @@ unless marked otherwise.
 | **Workflow security audit** | [zizmor](https://github.com/zizmorcore/zizmor) on `.github/` (injection, excessive token permissions, unpinned actions) | yes |
 | **Tests (Docker)** | Builds `deploy/Dockerfile` up to the `test` target with CPU torch: dependencies, hloc, the Next.js dashboard, then `pytest -q` as the unprivileged `eutopos` user. A failing test fails the build. Nothing is pushed. Layers are cached in the GitHub Actions cache | after it has passed once (section 5) |
 
-The `test` stage is `FROM runtime` plus pytest (version from `uv.lock`) and `tests/`. The service image
+The `test` stage is `FROM runtime` plus pytest (version from `uv.lock`), `tests/` and `deploy/autodeploy.sh` (the host
+disk feed test runs its function). The service image
 is unchanged: `deploy/compose.yaml` builds `target: runtime`, so the PC lab never builds or ships the
 tests.
 
