@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { api, type SystemDiagnostics, type StorageLocation, type HealthStatus } from "@/lib/api";
+import {
+  api,
+  type SystemDiagnostics,
+  type StorageDiagnostics,
+  type StorageLocation,
+  type HostDisk,
+  type HealthStatus,
+} from "@/lib/api";
+import { Gauge } from "@/components/Gauge";
+import { effectiveFree, freeLevel } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 
 interface SystemDiagnosticsPopoverProps {
@@ -92,83 +101,94 @@ function formatUptime(seconds: number): string {
   return `${days}d ${remHrs}h`;
 }
 
-function StorageMeter({
-  name,
-  mountPath,
-  loc,
+function Verdict({
+  free,
+  hostKnown,
 }: {
-  name: string;
-  mountPath: string;
-  loc: StorageLocation | null;
+  free: ReturnType<typeof effectiveFree>;
+  hostKnown: boolean;
 }) {
-  if (!loc) {
+  if (!free) {
     return (
-      <div className="flex flex-col gap-1 rounded-md bg-canvas/70 p-2.5 text-xs">
-        <div className="flex items-center justify-between font-medium">
-          <span className="text-foreground">{name}</span>
-          <span className="text-muted-foreground font-mono">{mountPath}</span>
-        </div>
-        <div className="text-muted-foreground italic">Storage location unavailable</div>
-      </div>
+      <p className="rounded-md bg-canvas/60 p-2 text-[11px] text-muted-foreground">
+        Disk space is unavailable, so readiness to build maps is unknown.
+      </p>
     );
   }
-
-  // Documented policy matching worker safeguard:
-  // Critical: < 20 GB (worker aborts reconstruction with StageError: less than 20 GB free disk)
-  // Warning: < 25 GB
-  const isCritical = loc.free_gb < 20;
-  const isWarning = loc.free_gb < 25 && !isCritical;
-
-  const barColor = isCritical
-    ? "bg-bad-fg"
-    : isWarning
-      ? "bg-amber-600"
-      : "bg-forest";
-
+  const where = free.source === "host" ? "on the Windows drive" : "on the server disk";
+  const gb = Math.round(free.gb);
+  if (free.level === "ok" && !hostKnown) {
+    // Sehat menurut disk yang dilihat container, tapi disk itu bisa virtual: jangan menyatakan siap.
+    return (
+      <p className="rounded-md bg-canvas/60 p-2 text-[11px] text-muted-foreground">
+        Server disk shows {gb} GB free. The physical drive is not reported, so readiness to build
+        maps is not confirmed.
+      </p>
+    );
+  }
+  const text =
+    free.level === "ok"
+      ? `Ready to build maps: ${gb} GB free ${where}.`
+      : free.level === "warn"
+        ? `Disk is getting low: ${gb} GB free ${where}.`
+        : free.source === "volume"
+          ? `Map builds are refused: ${gb} GB free ${where}, the worker needs 20 GB.`
+          : `Windows drive has ${gb} GB free; keep it above 30 GB before building.`;
   return (
-    <div className="flex flex-col gap-1.5 rounded-md bg-canvas/60 p-2.5 text-xs">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <span className="font-medium text-foreground">{name}</span>
-          <span className="font-mono text-[11px] text-muted-foreground">({mountPath})</span>
-        </div>
-        <span
-          className={cn(
-            "font-semibold num",
-            isCritical ? "text-bad-fg" : isWarning ? "text-amber-700" : "text-foreground"
-          )}
-        >
-          {loc.free_gb.toFixed(1)} GB free ({loc.percent}% used)
-        </span>
-      </div>
+    <p
+      className={cn(
+        "rounded-md p-2 text-[11px] font-medium",
+        free.level === "ok" && "bg-forest/10 text-forest",
+        free.level === "warn" && "bg-amber-500/10 text-amber-700",
+        free.level === "bad" && "bg-bad-bg/60 text-bad-fg",
+      )}
+    >
+      {text}
+    </p>
+  );
+}
 
-      <div
-        className="meter w-full bg-line"
-        role="progressbar"
-        aria-label={`${name} storage usage`}
-        aria-valuenow={loc.percent}
-        aria-valuemin={0}
-        aria-valuemax={100}
-      >
-        <span
-          className={cn("h-full transition-all duration-300", barColor)}
-          style={{ width: `${Math.min(100, Math.max(0, loc.percent))}%` }}
-        />
-      </div>
+function formatAge(seconds: number): string {
+  return seconds < 3600 ? `${Math.round(seconds / 60)} min` : `${Math.round(seconds / 3600)} h`;
+}
 
-      <div className="flex items-center justify-between text-[11px] text-muted-foreground num">
-        <span>
-          {loc.used_gb.toFixed(1)} GB of {loc.total_gb.toFixed(1)} GB
-        </span>
-        {isCritical ? (
-          <span className="text-bad-fg font-medium">Critical: &lt; 20 GB blocks builds</span>
-        ) : isWarning ? (
-          <span className="text-amber-700 font-medium">Warning: low disk space (&lt; 25 GB)</span>
-        ) : (
-          <span>Safeguard: &gt; 20 GB free</span>
-        )}
-      </div>
-    </div>
+/** Keterangan di bawah pengukur: apa yang dilihat container, dan apakah drive fisik dilaporkan. */
+function DiskNotes({
+  storage,
+  host,
+}: {
+  storage: StorageDiagnostics | undefined;
+  host: HostDisk | null;
+}) {
+  const maps = storage?.maps ?? null;
+  const data = storage?.data ?? null;
+  const shared = Boolean(
+    maps && data && maps.total_bytes === data.total_bytes && maps.free_bytes === data.free_bytes,
+  );
+  const lines: string[] = [];
+  const line = (name: string, loc: StorageLocation) =>
+    `${name}: ${loc.used_gb.toFixed(1)} of ${loc.total_gb.toFixed(1)} GB used`;
+  if (shared && maps) lines.push(line("/maps and /data share one disk", maps));
+  else {
+    if (maps) lines.push(line("/maps", maps));
+    if (data) lines.push(line("/data", data));
+  }
+  const seen = maps ?? data;
+  if (host && seen && seen.total_gb > host.total_gb) {
+    lines.push(`That disk is larger than drive ${host.mount}, so not all of it can be used.`);
+  }
+  if (storage?.host?.stale) {
+    lines.push(`Drive reading is ${formatAge(storage.host.age_s)} old and ignored.`);
+  } else if (!storage?.host) {
+    lines.push("Physical drive not reported: if this disk is virtual, real free space may be lower.");
+  }
+  if (!lines.length) return null;
+  return (
+    <ul className="flex flex-col gap-0.5 text-[10px] text-muted-foreground num">
+      {lines.map((l) => (
+        <li key={l}>{l}</li>
+      ))}
+    </ul>
   );
 }
 
@@ -178,12 +198,15 @@ export function SystemDiagnosticsPopover({
 }: SystemDiagnosticsPopoverProps) {
   const { data, healthData, loading, refreshError, lastUpdated } = useDiagnostics(isOpen);
 
-  const isSharedVolume = Boolean(
-    data?.storage?.maps &&
-    data?.storage?.data &&
-    data.storage.maps.total_bytes === data.storage.data.total_bytes &&
-    data.storage.maps.free_bytes === data.storage.data.free_bytes
-  );
+  const storage = data?.storage;
+  const free = effectiveFree(storage);
+  const host = storage?.host && !storage.host.stale ? storage.host : null;
+  const volume = storage?.maps ?? storage?.data ?? null;
+  const gpu = data?.gpu ?? null;
+  const vramPct =
+    gpu && gpu.vram_used_mb !== null && gpu.vram_total_mb
+      ? Math.round((gpu.vram_used_mb / gpu.vram_total_mb) * 100)
+      : null;
 
   return (
     <div className="flex flex-col gap-3 p-3 text-xs">
@@ -231,99 +254,51 @@ export function SystemDiagnosticsPopover({
         </div>
       ) : (
         <>
-          {/* Bagian 1: Storage */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">
-                Storage Locations
-              </span>
-              {isSharedVolume && (
-                <span className="text-[10px] text-muted-foreground italic">
-                  (shared filesystem)
-                </span>
-              )}
-            </div>
-            <div className="flex flex-col gap-2">
-              <StorageMeter
-                name="Maps Storage"
-                mountPath="/maps"
-                loc={data?.storage?.maps ?? null}
+          {/* Bagian 1: kesiapan membangun peta dan pengukur */}
+          <Verdict free={free} hostKnown={host !== null} />
+          <div className="grid grid-cols-3 gap-1 py-1">
+            {host ? (
+              <Gauge
+                label={`Drive ${host.mount}`}
+                fill={host.percent}
+                display={String(Math.round(host.free_gb))}
+                unit="GB free"
+                level={freeLevel(host.free_gb, "host")}
+                caption={`${host.used_gb.toFixed(0)} of ${host.total_gb.toFixed(0)} GB used`}
               />
-              <StorageMeter
-                name="Application Data"
-                mountPath="/data"
-                loc={data?.storage?.data ?? null}
+            ) : volume ? (
+              <Gauge
+                label="Server disk"
+                fill={volume.percent}
+                display={String(Math.round(volume.free_gb))}
+                unit="GB free"
+                level={freeLevel(volume.free_gb, "volume")}
+                caption={`${volume.used_gb.toFixed(0)} of ${volume.total_gb.toFixed(0)} GB used`}
               />
-            </div>
-          </div>
-
-          {/* Bagian 2: Compute / GPU */}
-          <div className="flex flex-col gap-2 border-t border-border pt-2.5">
-            <span className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">
-              Compute & GPU
-            </span>
-
-            {data?.gpu ? (
-              <div className="flex flex-col gap-2 rounded-md bg-canvas/60 p-2.5 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-foreground truncate max-w-[200px]" title={data.gpu.name ?? "GPU"}>
-                    {data.gpu.name ?? "Discrete GPU"}
-                  </span>
-                  <span className="text-muted-foreground num font-medium">
-                    Temp:{" "}
-                    {data.gpu.temperature_c !== null ? (
-                      <span className={cn(data.gpu.temperature_c >= 80 ? "text-bad-fg font-semibold" : "text-foreground")}>
-                        {data.gpu.temperature_c} °C
-                      </span>
-                    ) : (
-                      "N/A"
-                    )}
-                  </span>
-                </div>
-
-                {data.gpu.vram_total_mb !== null && data.gpu.vram_used_mb !== null ? (
-                  <div className="flex flex-col gap-1 mt-0.5">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-muted-foreground">VRAM Usage</span>
-                      <span className="num font-semibold text-foreground">
-                        {Math.round((data.gpu.vram_used_mb / data.gpu.vram_total_mb) * 100)}%
-                      </span>
-                    </div>
-                    <div
-                      className="meter w-full bg-line"
-                      role="progressbar"
-                      aria-label="GPU VRAM usage"
-                      aria-valuenow={Math.round((data.gpu.vram_used_mb / data.gpu.vram_total_mb) * 100)}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                    >
-                      <span
-                        className="h-full bg-forest transition-all duration-300"
-                        style={{
-                          width: `${Math.min(100, Math.max(0, Math.round((data.gpu.vram_used_mb / data.gpu.vram_total_mb) * 100)))}%`,
-                        }}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between text-[11px] text-muted-foreground num">
-                      <span>{(data.gpu.vram_used_mb / 1024).toFixed(1)} GB used</span>
-                      <span>{(data.gpu.vram_total_mb / 1024).toFixed(1)} GB total</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-[11px] text-muted-foreground italic">
-                    VRAM memory metrics unavailable
-                  </div>
-                )}
-              </div>
             ) : (
-              <div className="flex items-center justify-between rounded-md bg-canvas/60 p-2.5 text-xs text-muted-foreground">
-                <span>GPU telemetry unavailable</span>
-                <span className="font-medium text-foreground">
-                  {data?.device === "cpu" ? "CPU Mode" : "Sensor unavailable"}
-                </span>
-              </div>
+              <Gauge label="Disk" fill={0} display="N/A" unit="unavailable" />
             )}
+            <Gauge
+              label="GPU memory"
+              fill={vramPct ?? 0}
+              display={vramPct !== null ? String(vramPct) : "N/A"}
+              unit={vramPct !== null ? "% used" : "unavailable"}
+              caption={
+                gpu && gpu.vram_used_mb !== null && gpu.vram_total_mb
+                  ? `${(gpu.vram_used_mb / 1024).toFixed(1)} of ${(gpu.vram_total_mb / 1024).toFixed(1)} GB`
+                  : undefined
+              }
+            />
+            <Gauge
+              label="GPU temp"
+              fill={gpu?.temperature_c ?? 0}
+              display={gpu?.temperature_c != null ? String(gpu.temperature_c) : "N/A"}
+              unit={gpu?.temperature_c != null ? "°C" : "unavailable"}
+              level={gpu?.temperature_c != null ? (gpu.temperature_c >= 80 ? "bad" : "ok") : undefined}
+            />
           </div>
+          {gpu?.name && <p className="-mt-1 text-center text-[11px] text-muted-foreground">{gpu.name}</p>}
+          <DiskNotes storage={storage} host={host} />
 
           {/* Bagian 3: System Status & Alignment */}
           <div className="flex flex-col gap-2 border-t border-border pt-2.5">

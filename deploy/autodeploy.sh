@@ -43,9 +43,24 @@ running_jobs() {
 
 up() { docker compose up -d --wait --wait-timeout "$WAIT_TIMEOUT"; }
 
+# The containers only see the WSL virtual disk (a 1 TB cap), but the real limit is the Windows drive
+# that holds it. Writes that drive's size and free space next to the maps; server/system.py reads it
+# for the dashboard. Writes nothing when it cannot (not WSL, no .env); never fails a deploy.
+write_host_disk() {
+	local drive=${HOST_DRIVE:-/mnt/c} maps total free
+	maps=$(sed -n 's/^EUTOPOS_MAPS_DIR=//p' deploy/.env 2>/dev/null | head -1 | tr -d "\"'")
+	[[ -n $maps && -d $maps && -d $drive ]] || return 0
+	read -r total free < <(df -B1 --output=size,avail "$drive" | tail -1) || return 0
+	[[ $total =~ ^[0-9]+$ && $free =~ ^[0-9]+$ ]] || return 0
+	printf '{"mount":"C:","total_bytes":%s,"free_bytes":%s,"updated_at":%s}
+' 		"$total" "$free" "$(date +%s)" >"$maps/.host-disk.json.tmp" &&
+		mv "$maps/.host-disk.json.tmp" "$maps/.host-disk.json"
+}
+
 main() {
 	if [[ ${1:-} == --dry-run ]]; then DRY=1; fi
 	cd "$(dirname "$0")/.."
+	if ((!DRY)); then write_host_disk || true; fi
 	mkdir -p "$STATE_DIR"
 	exec 9>"$STATE_DIR/lock"
 	flock -n 9 || {
