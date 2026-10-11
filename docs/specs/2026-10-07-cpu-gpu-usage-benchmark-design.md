@@ -58,6 +58,26 @@ dua arti sekaligus: beragam, dan variance ketajaman yang berbeda-beda. Seed 7, h
 | `gauss10`, `gauss25`, `gauss50` | Gaussian, sigma 10, 25, 50 (`cv2.randn`), dipotong ke 0 sampai 255 |
 | `sp2` | salt-and-pepper, 2% piksel (`cv2.randu`), sama banyak hitam dan putih |
 
+**Variasi luminance** (ditambahkan 2026-10-11 atas permintaan Bu Evi, 8 Okt: kasus sore dan malam; tingkat
+ditetapkan sebelum pengukuran, bukan disetel sesudahnya). Gambar digelapkan pada cahaya linear (`dim()` di
+`spike/bench_usage.py`), bukan dengan mengalikan nilai piksel: cahaya yang tersisa `g` berarti nilai piksel
+dikali `g^(1/2,2)`, dengan gamma 2,2 sebagai pendekatan kurva sRGB. Cara ini deterministik (tanpa seed) dan tidak
+memakai noise.
+
+| Variasi | Isi | Setara | Kecerahan rata-rata* |
+|---|---|---|---|
+| `dim50` | cahaya 50% | turun 1 stop | 99,6 |
+| `dim25` | cahaya 25% | turun 2 stop | 72,7 |
+| `dim10` | cahaya 10% | turun sekitar 3,3 stop | 47,9 |
+| `dim25-gauss10` | `dim25`, lalu Gaussian sigma 10 | gelap dan berisik | 72,7 |
+
+*Rata-rata abu-abu 0 sampai 255 atas 30 gambar; `clean` 136,5. Angka SEMENTARA, dari `prepare` pada 181 frame
+`data/floor10-v1/mapping` di laptop (bukan job 2 yang dipakai di PC lab, jadi pasangannya berbeda). Nilai yang
+dilaporkan di buku diambil dari `manifest.json` (`luma`) hasil `prepare` di PC lab, bukan dari rumus. Noise pada `dim25-gauss10` ditambahkan
+setelah redup karena sensor makin berisik saat gelap; sigma 10 sama dengan `gauss10`, jadi pengaruh noise saja dan
+redup saja bisa dipisahkan dari kombinasinya. Varian baru ditaruh di belakang daftar supaya seed noise varian lama
+(indeks varian ikut menentukan seed) dan gambar ber-noise di laporan 7 Okt tidak berubah.
+
 **Ulangan:** 3 per kombinasi, dilaporkan median dan rentang. Satu putaran pemanasan (tidak dicatat) di awal tiap
 proses.
 
@@ -89,6 +109,9 @@ angka hanya dianggap sah dari mesin Linux.
 - **GPU dipakai bersama layanan `api`** yang sedang diam (sekitar 2,2 GiB VRAM terpakai oleh modelnya). Pengukuran
   dijalankan saat tidak ada pembangunan peta atau unggahan, dan utilisasi diam dilaporkan.
 - **Noise sintetis** bukan noise sensor ponsel asli, dan satu sumber gambar (satu lorong, satu ponsel).
+- **Redup sintetis** tidak meniru exposure otomatis, motion blur akibat waktu paparan yang memanjang, atau
+  perubahan warna lampu sore dan malam. Hasilnya menjawab "bagaimana pencocokan bila gambar lebih gelap",
+  bukan "bagaimana di malam hari". Rekaman asli sore dan malam di gedung tetap diperlukan sebagai validasi.
 - **15 pasangan, 3 ulangan, satu mesin** (i7-10700K 16 thread, RTX 3070 8 GB, 15 GB RAM). Tidak menggantikan
   pengukuran di server instansi (2 vCPU), yang tetap satu-satunya yang boleh diklaim untuk "server instansi tanpa GPU".
 - Pengukuran ini **tidak mengukur akurasi dalam meter**.
@@ -112,6 +135,20 @@ docker compose exec -T worker python spike/bench_usage.py report --out /data/exp
 
 Perkiraan waktu 1,5 sampai 2 jam, dari angka laptop (belum diukur di PC lab). Hasil per konfigurasi ditulis ke
 `results/*.jsonl` begitu selesai, jadi proses yang dihentikan tetap meninggalkan hasil parsial.
+
+**Pengukuran luminance** memakai folder keluaran sendiri dan frame serta seed yang sama (pasangan sama persis).
+`child` menghapus `results/<konfigurasi>-<perangkat>.jsonl` miliknya saat mulai, jadi menjalankan sebagian
+varian di folder lama akan menghapus hasil 7 Okt. `clean` ikut dijalankan lagi sebagai pembanding pada sesi yang
+sama:
+
+```bash
+docker compose exec -T worker python spike/bench_usage.py prepare     --frames /data/jobs/2/dataset/mapping --out /data/experiments/usage-luminance
+docker compose exec -T worker sh -c 'nohup python spike/bench_usage.py run     --out /data/experiments/usage-luminance --devices gpu cpu --repeats 3     --variants clean dim50 dim25 dim10 dim25-gauss10     > /data/experiments/usage-luminance/run.log 2>&1 &'
+docker compose exec -T worker python spike/bench_usage.py report --out /data/experiments/usage-luminance
+```
+
+Lima variasi, sama banyak dengan pengukuran 7 Okt, jadi lama pengerjaannya diperkirakan serupa. Berkas `.h5`
+sisa proses yang terhenti kini dihapus di awal tiap ulangan.
 
 ## 7. Hasil
 
