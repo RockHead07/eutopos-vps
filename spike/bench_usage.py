@@ -66,6 +66,9 @@ VARIANTS = {
     "dim10": ("dim", 0.1),
     "dim25-gauss10": ("dim_gauss", (0.25, 10)),
 }
+MIN_INLIERS = (
+    50  # sama dengan ambang layanan (server/localizer.py): di bawah ini pasangan dianggap gagal
+)
 GAMMA = 2.2  # kamera menyandikan cahaya linear dengan gamma; 2,2 mendekati kurva sRGB
 OPTIONAL = (
     "gpu_util_mean",
@@ -241,6 +244,23 @@ class GpuSampler:
             self.proc.terminate()
 
 
+def per_pair_stats(group):
+    """Sebaran inlier per pasangan: median atas ulangan untuk tiap pasangan, lalu ringkasannya.
+
+    Berkas hasil lama (sebelum daftar per pasangan disimpan) tidak punya datanya: hasilnya None,
+    bukan nol, supaya tidak terbaca sebagai "tidak ada pasangan gagal".
+    """
+    lists = [r["inliers_per_pair"] for r in group if r.get("inliers_per_pair")]
+    if not lists or len({len(x) for x in lists}) != 1:
+        return {"inliers_median": None, "inliers_min": None, "pairs_below_min": None}
+    per_pair = [statistics.median(col) for col in zip(*lists, strict=True)]
+    return {
+        "inliers_median": statistics.median(per_pair),
+        "inliers_min": min(per_pair),
+        "pairs_below_min": sum(v < MIN_INLIERS for v in per_pair),
+    }
+
+
 def aggregate(records):
     """Median dan rentang per (konfigurasi, perangkat, variasi, tahap) atas ulangan."""
     groups: dict[tuple, list[dict]] = {}
@@ -268,6 +288,7 @@ def aggregate(records):
         for key in OPTIONAL:
             vals = [r[key] for r in g if r.get(key) is not None]
             row[key] = statistics.median(vals) if vals else None
+        row.update(per_pair_stats(g))
         rows.append(row)
     return rows
 
@@ -411,6 +432,7 @@ def quality(fp, mp, manifest, variant):
         "matches_mean": statistics.mean(n_match),
         "inliers_mean": statistics.mean(n_inl),
         "inlier_ratio": sum(n_inl) / total if total else None,
+        "inliers_per_pair": n_inl,  # sebaran per pasangan: rata-rata menyembunyikan kegagalan
     }
 
 
@@ -573,6 +595,24 @@ def report(a):
         cells = [
             fmt(by[(config, v)]["inliers_mean"], 0) if (config, v) in by else "-" for v in shown
         ]
+        lines.append(f"| {config} | " + " | ".join(cells) + " |")
+    lines += [
+        "",
+        f"## Sebaran per pasangan: pasangan di bawah {MIN_INLIERS} inlier (dari jumlah pasangan)",
+        "",
+    ]
+    lines.append("| Konfigurasi | " + " | ".join(shown) + " |")
+    lines.append("|---|" + "---|" * len(shown))
+    n_pairs = {}
+    for r in records:
+        if r.get("inliers_per_pair"):
+            n_pairs[(r["config"], r["variant"])] = len(r["inliers_per_pair"])
+    for config in dict.fromkeys(r["config"] for r in rows):
+        cells = []
+        for v in shown:
+            m = by.get((config, v))
+            below = m and m["pairs_below_min"]
+            cells.append("-" if below is None else f"{below:.0f} dari {n_pairs[(config, v)]}")
         lines.append(f"| {config} | " + " | ".join(cells) + " |")
     lines += ["", "## Catatan lingkungan", ""]
     for m in metas:
