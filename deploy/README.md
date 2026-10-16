@@ -154,6 +154,24 @@ dihapus setelah diekstrak. Berkas yang diberikan lewat perintah di atas tidak pe
 Kalau pekerja mati di tengah pekerjaan (misalnya `docker compose restart worker`), pekerjaan itu
 ditandai `failed` saat pekerja menyala lagi. Antrekan ulang dengan perintah yang sama.
 
+### Menyelaraskan peta ke meter dan memasang graf navigasi
+
+Setelah titik acuan diukur dan `spike/eval_meter.py` menghasilkan `align.json`, serta
+`navgraph.json` ditulis dari lembar lapangan, pasang keduanya dari container `worker`
+(di container `api`, `/maps` hanya-baca):
+
+```bash
+docker compose exec worker python -m server.manage align --version <id> \
+  --align /data/eval/align.json --navgraph /data/eval/navgraph.json
+```
+
+Berkas rusak ditolak dan tidak ada yang disalin. `align.json` terikat pada versi peta itu: peta
+yang dibangun ulang kembali "belum diselaraskan". Layanan membaca `align.json` saat memuat peta:
+kalau versi itu sedang aktif, muat ulang dengan `docker compose restart api` (dashboard tidak
+punya tombol Publish untuk versi aktif); kalau belum, ia ikut dimuat saat versi itu diterbitkan.
+`navgraph.json` dibaca langsung tiap
+permintaan `GET /navgraph`. Koordinat titik acuan dan graf tidak di-commit.
+
 ## 5. Unggahan video (tusd)
 
 Unggahan memakai protokol tus lewat container `tusd`, dengan hook ke `api` yang memeriksa identitas

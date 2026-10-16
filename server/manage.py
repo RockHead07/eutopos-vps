@@ -8,6 +8,8 @@ Contoh (di dalam container):
         --query /data/inbox/video2.mp4
     python -m server.manage jobs
     python -m server.manage previews    # pratinjau untuk job lama, dari frame yang tersimpan
+    python -m server.manage align --version 7 --align /data/eval/align.json \
+        --navgraph /data/eval/navgraph.json   # di container worker (/maps bisa ditulis)
 Setelah menerbitkan versi baru, muat ulang layanan: docker compose restart api
 """
 
@@ -17,7 +19,7 @@ from pathlib import Path
 
 from sqlmodel import Session, select
 
-from server import jobs
+from server import alignment, jobs, navgraph
 from server.db import MapJob, MapVersion, engine_from_env, publish, register
 from server.map_layout import missing_files
 from server.pipeline import missing_inputs
@@ -45,6 +47,12 @@ def main():
     sub.add_parser(
         "previews", help="buat pratinjau job selesai yang belum punya, dari frame tersimpan"
     )
+    al = sub.add_parser(
+        "align", help="pasang align.json (versi peta) dan/atau navgraph.json (area) terukur"
+    )
+    al.add_argument("--version", type=int, required=True, help="id versi peta (lihat 'list')")
+    al.add_argument("--align", type=Path, help="align.json dari spike/eval_meter.py")
+    al.add_argument("--navgraph", type=Path, help="navgraph.json untuk area versi itu")
     a = ap.parse_args()
 
     with Session(engine_from_env()) as s:
@@ -88,6 +96,35 @@ def main():
         elif a.cmd == "previews":
             made, skipped = backfill_previews(s, DATA, MAPS)
             print(f"{made} pratinjau dibuat, {skipped} dilewati (frame tidak ditemukan)")
+        elif a.cmd == "align":
+            v = s.get(MapVersion, a.version)
+            if v is None:
+                raise SystemExit(f"versi peta id {a.version} tidak ada")
+            run_name = (
+                f"kp{int(os.environ.get('EUTOPOS_MAX_KP', 1024))}"
+                f"-r{int(os.environ.get('EUTOPOS_RESIZE', 1024))}"
+            )
+            try:
+                written, warnings = alignment.install(
+                    Path(v.path), run_name, navgraph.maps_root() / v.area_id, a.align, a.navgraph
+                )
+            except ValueError as e:
+                raise SystemExit(f"tidak ada yang dipasang: {e}") from e
+            for w in warnings:
+                print(f"PERINGATAN: {w}")
+            for p in written:
+                print(f"dipasang: {p}")
+            # ponytail: dashboard tidak punya tombol Publish untuk versi yang sudah aktif
+            if a.align and v.status == "published":
+                print(
+                    f"Layanan membaca align.json saat memuat peta. Versi id {v.id} sedang aktif: "
+                    "muat ulang layanan dengan 'docker compose restart api'."
+                )
+            elif a.align:
+                print(
+                    f"align.json ikut dimuat saat versi id {v.id} diterbitkan (dashboard atau "
+                    "'manage publish')."
+                )
         else:
             for v in s.exec(select(MapVersion).order_by(MapVersion.area_id, MapVersion.version)):
                 print(f"id {v.id}  {v.area_id} v{v.version}  {v.status:9}  {v.path}")
