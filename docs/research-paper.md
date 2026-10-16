@@ -328,6 +328,120 @@ belum dibaca, jadi klaim hanya sekuat abstraknya.
 
 **Usia rujukan:** 17 dari 18 terbit 2021 atau setelahnya (Lewis 2020 dipertahankan).
 
+## 11. Rujukan Bab 2 dan 3 (Oktober 2026)
+
+Disusun 2026-10-08 untuk cicilan buku PA (dicek pembimbing Rabu 14 Okt). Struktur bab yang memakainya ada di
+kerangka buku D3 di repo privat pemilik proyek (templat D3: tanpa bab Kajian Pustaka, jadi teori masuk lewat Bab 1 dan Desain Sistem Bab 2).
+**Aturan** (arahan Bagus 2026-10-08, pedoman bukan batas mutlak): rujukan terbit **2021 atau sesudahnya**
+untuk klaim tentang kondisi terkini; pengecualian untuk sumber primer metode yang dipakai dan dibahas (ditandai "pengecualian"). Untuk teknik yang punya
+versi jurnal lebih baru, pakai versi itu. Metadata (penulis, tahun, venue, halaman, DOI) dicocokkan ke Crossref pada
+2026-10-08; semua DOI di daftar bagian 11.4 terbaca. Isi: dari **abstrak** (OpenAlex atau arXiv) untuk baris yang
+ditandai "abstrak"; baris lain hanya menunjuk metode, jangan dikutip angkanya sebelum teksnya dibaca. Peringatan: pencarian
+abstrak OpenAlex lewat DOI arXiv sempat mengembalikan abstrak **paper lain** untuk 10.48550/arXiv.1903.12261; abstrak
+Hendrycks dicocokkan ulang langsung di arxiv.org/abs.
+
+### 11.1 Teori Penunjang (Bab 2)
+
+| Topik | Rujukan | Pengenal | Dipakai untuk, dan batasnya |
+|---|---|---|---|
+| Fitur lokal klasik | Lowe, *Distinctive Image Features from Scale-Invariant Keypoints*, IJCV 60(2) 2004 | DOI 10.1023/B:VISI.0000029664.99615.94 | **Pengecualian**: definisi SIFT dan ratio test. Abstrak belum dibaca |
+| Tinjauan fitur lokal | Liu dkk., *A Review of Keypoints' Detection and Feature Description in Image Registration*, Sci. Program. 2021 | DOI 10.1155/2021/8509164 | Abstrak: tinjauan detektor dan deskriptor dari metode tradisional sampai deep learning. Konteksnya registrasi citra |
+| Fitur lokal deep | Zhao dkk., ALIKED, IEEE Trans. Instrum. Meas. 72, 2023 | DOI 10.1109/TIM.2023.3271000 | Ekstraktor utama pipeline. Abstrak |
+| Pencocok fitur | Lindenberger dkk., LightGlue, ICCV 2023 | DOI 10.1109/ICCV51070.2023.01616 | Pencocok utama. Abstrak: inferensi lebih cepat pada pasangan yang mudah dicocokkan |
+| Survei pencocokan | Xu dkk., *Local feature matching using deep learning: A survey*, Information Fusion 107, 2024 | DOI 10.1016/j.inffus.2024.102344 | Abstrak belum dibaca (OpenAlex kosong). Dasar bagi bagian pencocokan deep |
+| Retrieval global | Berton & Masone, MegaLoc, CVPR Workshops 2025 | DOI 10.1109/CVPRW67362.2025.00269 | Versi terbit. Abstrak: SOTA di beberapa dataset VPR dan LaMAR |
+| Survei VPR | Masone & Caputo, *A Survey on Deep Visual Place Recognition*, IEEE Access 9, 2021 | DOI 10.1109/ACCESS.2021.3054937 | Abstrak. Dasar retrieval global |
+| Tutorial VPR | Schubert dkk., *Visual Place Recognition: A Tutorial*, IEEE RAM 31(3), 2024 | DOI 10.1109/MRA.2023.3310859 | Abstrak |
+| Survei lokalisasi | Chen dkk., *Deep Learning for Visual Localization and Mapping: A Survey*, IEEE TNNLS 35(12), 2024 | DOI 10.1109/TNNLS.2023.3309809 | Abstrak. Dasar umum; periksa isinya dulu sebelum dipakai untuk menjelaskan kenapa regresi pose bukan jalur utama |
+| Survei lokalisasi visual | Alkendi dkk., *State of the Art in Vision-Based Localization Techniques for Autonomous Navigation Systems*, IEEE Access 9, 2021 | DOI 10.1109/ACCESS.2021.3082778 | Abstrak: VO dan VIO, termasuk lingkungan dengan kualitas citra buruk |
+| Survei RANSAC | Martínez-Otzeta dkk., *RANSAC for Robotic Applications: A Survey*, Sensors 23(1) 327, 2022 | DOI 10.3390/s23010327 | Abstrak. Menggantikan Fischler & Bolles 1981 |
+| Verifikasi geometri | Fischler & Bolles, *Random sample consensus*, CACM 24(6) 1981 | DOI 10.1145/358669.358692 | **Pengecualian**: asal-usul RANSAC; kutip berdampingan dengan survei 2022. Abstrak |
+| Alasan desain | Sattler dkk., *Understanding the Limitations of CNN-Based Absolute Camera Pose Regression*, CVPR 2019 | DOI 10.1109/CVPR.2019.00342 | **Pengecualian**: alasan memilih retrieval dan pencocokan, bukan regresi pose. Abstrak: regresi pose tidak mencapai akurasi metode berbasis struktur 3D |
+| Kerangka hloc | Sarlin dkk., *From Coarse to Fine* (HF-Net, dasar hloc), CVPR 2019 | DOI 10.1109/CVPR.2019.01300 | **Pengecualian**: kerangka yang dipakai. Abstrak |
+| Pemetaan 3D | Schönberger & Frahm, *Structure-from-Motion Revisited* (COLMAP), CVPR 2016 | DOI 10.1109/CVPR.2016.445 | **Pengecualian**: alat yang dipakai. Abstrak |
+
+### 11.2 Evaluasi, cahaya, noise, dan tekstur lemah (Bab 2 dan metode di Bab 3)
+
+| Topik | Rujukan | Pengenal | Dipakai untuk, dan batasnya |
+|---|---|---|---|
+| Benchmark lokalisasi indoor | Taira dkk., InLoc, IEEE TPAMI 43(4) 2021 | DOI 10.1109/TPAMI.2019.2952114 | Abstrak: pencocokan padat untuk indoor bertekstur lemah |
+| Benchmark pencocokan fitur | Jin dkk., *Image Matching Across Wide Baselines*, IJCV 129(2) 2021 | DOI 10.1007/s11263-020-01385-0 | Abstrak (arXiv 2003.01587): benchmark fitur lokal dan estimasi robust dengan akurasi pose sebagai metrik |
+| Korupsi sintetis bertingkat | Hendrycks & Dietterich, ICLR 2019 | arXiv 1903.12261 | **Pengecualian, boleh dibuang.** Tidak ada DOI; ubah jenis ke *Conference Paper*. Abstrak (dicek di arxiv.org). Tugasnya klasifikasi, bukan pencocokan; hanya preseden protokol "korupsi sintetis bertingkat" |
+| Lokalisasi kondisi berubah | Toft dkk., *Long-Term Visual Localization Revisited*, IEEE TPAMI 44(4) 2022 | DOI 10.1109/TPAMI.2020.3032010 | Abstrak: ground truth untuk dataset kondisi beragam (siang-malam). Luar ruangan |
+| Lokalisasi di gelap | Fan dkk., *Seeing Through Darkness*, IEEE Trans. Multimedia 25, 2023 | DOI 10.1109/TMM.2022.3154165 | Abstrak: ekstraksi fitur robust terhadap perubahan iluminasi siang-malam adalah hambatan utama |
+| Lokalisasi di gelap | Gridseth & Barfoot, IEEE RA-L 7(2) 2022 | DOI 10.1109/LRA.2021.3136867 | Abstrak: peta dibangun siang, lokalisasi sepanjang hari termasuk gelap. Robot luar ruangan |
+| Indoor cahaya rendah | Sui dkk., *A mobile robot position measurement method for indoor low-light scenes based on monocular camera*, Measurement 247, 2025 | DOI 10.1016/j.measurement.2025.116870 | **Hanya judul dan metadata**; abstrak belum dibaca. Baca dulu sebelum dikutip |
+| Bertekstur lemah | Shen dkk., *Semi-Dense Feature Matching with Transformers* (LoFTR versi jurnal), IEEE TPAMI 45(6) 2023 | DOI 10.1109/TPAMI.2022.3223530 | Versi jurnal menggantikan CVPR 2021. Abstrak: kecocokan di area bertekstur lemah |
+
+**Celah yang jujur:** soal cahaya gelap, hampir semuanya **luar ruangan atau robot**; lokalisasi visual *dalam gedung* pada
+sore atau malam belum ditemukan selain Sui 2025 (belum dibaca). Rujukan untuk "memilih teknik sesuai kondisi" (scene
+selector, saran Bu Evi 8 Okt) **belum ditemukan**; klaim itu bersandar pada pengukuran sendiri
+(`docs/specs/2026-10-07-cpu-gpu-usage-benchmark-design.md` bagian 7). Rujukan untuk avatar, speech-to-text, dan TTS belum dicari.
+
+### 11.3 Penelitian Terkait (Bab 2)
+
+Sudah ada di bagian 10: INSUS [17] [18], Yang 2025 [16], LaMAR [9], Hořejší [6], Kim 2022 [8]. Tambahan:
+
+| Rujukan | Pengenal | Dipakai untuk, dan batasnya |
+|---|---|---|
+| Liu dkk., MobileARLoc, PerCom Workshops 2024 | DOI 10.1109/PerComWorkshops59983.2024.10503320 | Abstrak: VIO drift, perlu reposisi absolut berkala. Jalur cadangan tanpa server |
+| Kim & Shin, IEEE Access 13, 2025 | DOI 10.1109/ACCESS.2025.3578354 | Deteksi lantai lewat sensor. Detail di bagian 6 |
+| Potje dkk., XFeat, CVPR 2024 | DOI 10.1109/CVPR52733.2024.00259 | Opsional, kalau CPU terlalu lambat. Abstrak: arsitektur ringan untuk perangkat terbatas |
+
+### 11.4 Daftar pengenal untuk ditempel ke Zotero
+
+Satu per baris di *Add Item by Identifier* (ikon tongkat ajaib). Periksa tiap hasil: jenis, venue, dan halaman harus cocok
+dengan tabel. Bagian 10 (Bab 1) lebih dulu, lalu bagian 11. **Dibuang dari versi pertama** (tidak ada klaim di buku yang menopangnya;
+hapus dari Zotero kalau sudah terlanjur diimpor): RootSIFT 2012, DISK 2020, SuperGlue 2020, NetVLAD 2018, EPnP 2009,
+Mikolajczyk 2005, Sattler 2018 (diganti Toft 2022).
+
+```text
+10.1016/j.jenvp.2025.102831
+10.3390/ijerph18030974
+10.31949/infotech.v9i2.7464
+10.1109/JIOT.2022.3149048
+10.3390/app11167515
+10.1109/ACCESS.2024.3420732
+10.3390/s21165435
+10.3390/s22249873
+10.1007/978-3-031-20071-7_40
+10.1049/ipr2.13032
+10.1109/CVPR46437.2021.00185
+10.1109/TIP.2025.3607640
+10.1145/3805774
+10.1007/s41019-025-00335-5
+arXiv:2005.11401
+10.1109/ISMAR67309.2025.00150
+10.3390/info14070359
+10.3390/network4030014
+10.1023/B:VISI.0000029664.99615.94
+10.1155/2021/8509164
+10.1109/TIM.2023.3271000
+10.1109/ICCV51070.2023.01616
+10.1016/j.inffus.2024.102344
+10.1109/CVPRW67362.2025.00269
+10.1109/ACCESS.2021.3054937
+10.1109/MRA.2023.3310859
+10.1109/TNNLS.2023.3309809
+10.1109/ACCESS.2021.3082778
+10.3390/s23010327
+10.1109/CVPR.2019.01300
+10.1109/CVPR.2016.445
+10.1145/358669.358692
+10.1109/CVPR.2019.00342
+10.1109/TPAMI.2019.2952114
+10.1007/s11263-020-01385-0
+arXiv:1903.12261
+10.1109/TPAMI.2020.3032010
+10.1109/TMM.2022.3154165
+10.1109/LRA.2021.3136867
+10.1016/j.measurement.2025.116870
+10.1109/TPAMI.2022.3223530
+10.1109/PerComWorkshops59983.2024.10503320
+10.1109/ACCESS.2025.3578354
+10.1109/CVPR52733.2024.00259
+```
+
 ## Yang belum diketahui
 
 1. Latensi hloc (dan varian XFeat) di server tanpa GPU. **Harus diukur sendiri lewat spike.**

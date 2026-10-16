@@ -133,7 +133,19 @@ Keputusan:
 - Pembuatan peta memang butuh GPU; laporan seterusnya di grup Bimbingan PA.
 Tugas sampai bimbingan berikutnya:
 - Jalankan spike/bench_usage.py di PC lab dan laporkan tabelnya di grup. (2026-10-08: sudah dijalankan, hasil di
-  `docs/specs/2026-10-07-cpu-gpu-usage-benchmark-design.md` bagian 7; laporan ke grup menunggu konfirmasi Bagus.)
+  `docs/specs/2026-10-07-cpu-gpu-usage-benchmark-design.md` bagian 7; dilaporkan ke grup 8 Okt.)
 Pertanyaan yang belum terjawab:
 - Target server instansi tanpa GPU: apakah hanya lokalisasi (pemahaman saat ini), atau pembuatan peta juga.
+
+Tanggal: 8 Oktober 2026 (grup Bimbingan PA)
+Pembimbing: Bu Evi
+Keputusan:
+- Buku PA dicek Rabu 14 Oktober, mengikuti template prodi; hasil pengukuran CPU dan GPU masuk ke buku.
+- Hasil pengukuran bisa jadi rujukan scene selector: teknik dipilih menurut kondisi dan pencahayaan.
+- Tambah variasi luminance; gelap atau remang mewakili sore sampai malam.
+Tugas sampai bimbingan berikutnya:
+- Cicilan buku PA, dimulai dari penyusunan rujukan.
+- Kasus sore dan malam lewat variasi luminance pada gambar atau video rekaman.
+Pertanyaan yang belum terjawab:
+- Apakah luminance sintetis cukup, atau perlu satu rekaman asli sore atau malam sebagai pembanding.
 ```

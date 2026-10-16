@@ -43,6 +43,7 @@ Most documents below are written in Indonesian.
 | [`docs/spike-plan.md`](docs/spike-plan.md) | Single-corridor feasibility test plan and results |
 | [`docs/field-test-runbook.md`](docs/field-test-runbook.md) | How to record map videos and test photos in the field |
 | [`docs/design-notes.md`](docs/design-notes.md) | Coordinate alignment, data model, routing, evaluation metrics, and the API contract |
+| [`docs/colmap-limitations.md`](docs/colmap-limitations.md) | Limitations of COLMAP and the mapping pipeline: what our own field data shows and what the literature says |
 | [`docs/research-paper.md`](docs/research-paper.md) | Research references, licenses, and method selection rationale |
 | [`docs/specs/`](docs/specs/) | Design specifications (capture and map pipeline, web upload and map build) |
 | [`docs/plans/`](docs/plans/) | Implementation plans that were executed |
