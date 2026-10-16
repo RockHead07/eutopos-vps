@@ -107,7 +107,15 @@ akal atau tidak, dan bagian mana yang sebenarnya sulit.**
   Bimbingan PA. Pembimbing juga menegaskan bahwa **membuat peta butuh GPU**; yang diincar tanpa GPU adalah
   lokalisasi di server (pemahaman ini dikonfirmasi lewat pertanyaan, belum sebagai keputusan tertulis).
   **Status 2026-10-08:** pengukuran selesai (hasil di `docs/specs/2026-10-07-cpu-gpu-usage-benchmark-design.md` bagian 7);
-  tiga tabel gambar siap, pesan ke grup Bimbingan PA masih ditahan sampai Bagus mengonfirmasi.
+  tiga tabel gambar siap. Laporan terkirim ke grup Bimbingan PA pada 8 Okt (tabel usage, noise robustness, pros and cons,
+  ditambah contoh visual variasi noise).
+- 8 Okt (balasan atas laporan di grup):
+  - **Buku PA** segera dibuat, dicek **Rabu depan (14 Okt)**, sesuai template prodi. Isinya termasuk hasil pengukuran ini.
+  - Hasil pengukuran "masukkan ke buku", dan bisa jadi rujukan untuk **scene selector**: tidak semua kondisi cocok dengan
+    satu teknik, jadi teknik bisa diganti menyesuaikan kondisi dan pencahayaan.
+  - Tambahkan variasi **luminance** (gelap sampai terang). Gelap atau remang dianggap mewakili sore sampai malam. Bagus
+    menyanggupi menyediakan data untuk kasus sore dan malam, dan pembimbing membenarkan. Bagus mengusulkan kondisi itu
+    dibuat dengan mengubah luminance gambar atau video hasil rekaman (rancangannya belum ditetapkan).
 
 **Target publikasi** yang pernah disebut pembimbing: jurnal Q2 ScienceDirect, contohnya *Computers
 and Education* dan *International Journal of Human-Computer Studies*. Keduanya berpusat pada
@@ -258,7 +266,15 @@ Tujuan dibuka dengan kalimat pola "Penelitian proyek akhir ini mengajukan suatu 
 mengatasi ... dengan menggunakan ..." diikuti klaim orisinalitas. Format inti: Times New Roman 12, spasi
 1,5, A4, margin kiri 4 cm dan sisi lain 3 cm (mirror), pustaka IEEE.
 
-**Perlu dikonfirmasi:** template menyebut Sarjana Terapan (S.Tr.Kom.), sedangkan PA ini D3; urutan
+**Templat D3 (ditemukan 2026-10-08): ini yang berlaku untuk PA D3.** Bagus menunjukkan folder *Panduan Buku D3* (satu berkas per bab).
+Strukturnya berbeda dari Rev05 di atas dan **tanpa bab Kajian Pustaka**: Bab 1 Pendahuluan (Latar Belakang, Identifikasi
+Permasalahan, Tujuan, Manfaat, Sistematika Penulisan), Bab 2 Deskripsi Sistem (Deskripsi Permasalahan, Deskripsi Solusi, Desain Sistem),
+Bab 3 Eksperimen (Parameter, Karakteristik Data, Tempat, Waktu, Spesifikasi Peralatan, Hasil), Bab 4 Penutup (Kesimpulan, Saran).
+Daftar Pustaka: templat menyebut **urut abjad nama pengarang** (format "Nama, Judul, Nama publikasi (vol/no/hal), penerbit, tahun"),
+tetapi **IEEE adalah standar PENS** untuk sitasi dan daftar pustaka (keterangan Bagus 2026-10-08), bernomor menurut urutan kemunculan. Kerangka buku yang memakainya disimpan di repo privat pemilik proyek, bukan di sini. Uraian Rev05 di atas tinggal jadi
+bahan pembanding; yang belum dikonfirmasi tinggal bagian mana yang dicek pembimbing (dugaan: Bab 1 dan 2).
+
+**Perlu dikonfirmasi (Rev05, sebagian sudah terjawab oleh templat D3):** template menyebut Sarjana Terapan (S.Tr.Kom.), sedangkan PA ini D3; urutan
 pustaka (teks menyebut urut nama pengarang, padahal IEEE bernomor); posisi keterangan tabel (teks di
 bawah, contoh di atas); bagian depan apa saja yang wajib di proposal.
 

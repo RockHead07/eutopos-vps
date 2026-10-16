@@ -37,7 +37,7 @@ Riwayat: 2026-09-20 tidak ada pengembangan sebelum ACC; 2026-09-25 pengecualian 
 lantai 10; 2026-09-29 dicabut dengan penghalang per pekerjaan di atas; 2026-09-30 judul diterima.
 Kode uji coba ada di `spike/`, data di `data/` (tidak masuk git).
 
-**Posisi terakhir (2026-10-08):**
+**Posisi terakhir (2026-10-16):**
 - Spike: pipeline, pengukuran latensi hangat, dan penilai galat meter jalan di data contoh (laptop dan
   PC lab). Rincian: `docs/spike-plan.md`.
 - Uji video lantai 10 (tanpa titik acuan): jalur ular (2026-09-30) membuat peta pecah 3 potongan,
@@ -99,9 +99,59 @@ Kode uji coba ada di `spike/`, data di `data/` (tidak masuk git).
   30 gambar dari 15 pasang frame lantai 10, tiga ulangan, lima variasi noise OpenCV. Ringkas: extraction ALIKED di GPU
   sekitar 17 kali lebih cepat (1,05 s dibanding 17,8 s untuk 30 gambar); SIFT hanya jalan di CPU; di CPU ALIKED
   dengan LightGlue memakai 110 core-seconds dan SIFT dengan LightGlue 33; inlier ALIKED + LightGlue tertinggi di
-  antara setelan 1.024 keypoint dan SIFT bawaan COLMAP paling rapuh terhadap noise. **Pesan ke grup Bimbingan PA
-  sengaja ditahan sampai Bagus mengonfirmasi**; tiga tabel gambar (putih polos, berbahasa Inggris) ada di
+  antara setelan 1.024 keypoint dan SIFT bawaan COLMAP paling rapuh terhadap noise. **Laporan sudah terkirim ke grup
+  Bimbingan PA pada 2026-10-08**; tiga tabel gambar (putih polos, berbahasa Inggris) ada di
   `outputs/usage/` (tidak masuk git, dibuat ulang oleh `outputs/usage/tables.py`).
+- **Sejak 2026-10-08 (PR #62 sampai #68):**
+  - **Dashboard operasional (#64, #65):** tahap pekerjaan (extract, build, inspect, register) dan panel kegagalan
+    yang memisahkan ringkasan galat dari log pekerja, perbandingan dua versi peta dalam satu area, penanda versi yang
+    dilayani `/localize`, chip peringatan disk, dan penanda koordinat peta (Metric atau Model) dari `GET /health`.
+    Label menyebut "acceptance rate", **bukan akurasi lokalisasi** (belum diukur).
+  - **Disk fisik di dashboard (#67):** container hanya melihat disk virtual WSL (batas 1 TB), padahal batas nyata
+    adalah drive Windows di bawahnya (447 GB, sisa 132 GB saat itu; dashboard sempat menampilkan 904 GB). `deploy/autodeploy.sh`
+    menulis `.host-disk.json` di samping peta tiap putaran timer; `GET /api/system` memuatnya sebagai `storage.host`
+    (basi setelah 15 menit, bentuk tak masuk akal ditolak). Popover diagnostik memakai pengukur melingkar dan satu
+    kalimat kesiapan membangun peta; `web/lib/storage.ts` memilih sisa ruang yang paling dekat ke batas kerasnya
+    (20 GB untuk disk container sesuai `MIN_FREE_BYTES`, 30 GB untuk drive tuan rumah sesuai aturan proyek).
+    Celah penjaga `server/worker.py` (hanya memeriksa disk virtual) ditutup di cabang
+    `feat/worker-host-disk-guard` (PR terpisah, lihat butir 2026-10-14 sampai 16).
+  - **Variasi luminance (#66, hasil di #68):** `spike/bench_usage.py` punya empat varian redup sintetis
+    (`dim50`, `dim25`, `dim10`, `dim25-gauss10`; cahaya dikurangi pada cahaya linear, gamma 2,2) dan `prepare`
+    mencatat kecerahan tiap varian di `manifest.json`. Hasil 2026-10-11 di `docs/specs/2026-10-07-cpu-gpu-usage-benchmark-design.md`
+    bagian 7.6: urutan ketahanan sama di setiap tingkat redup (ALIKED + LightGlue 71% inlier tersisa pada cahaya 10%,
+    SIFT bawaan COLMAP 46%); saat gelap ekstraktor yang paling menentukan (saat noise, matcher); gelap tidak mengubah
+    kebutuhan sumber daya; **bukan akurasi lokalisasi, hanya rata-rata 15 pasang, redup sintetis bukan malam hari**.
+    Tindak lanjut yang diusulkan: simpan inlier per pasang, rekaman sore dan malam asli.
+  - **Stack avatar fully local (2026-10-11):** riset lisensi dan pengukuran di PC lab (STT, LLM, TTS, anggaran VRAM,
+    uji RAG). Catatan lengkap ada di repo privat milik pemilik proyek, bukan di sini. Bahan uji ada di
+    `~/avatar-bench` di PC lab (belum dibersihkan; volume Docker `avatar-bench-ollama` dan `avatar-bench-hf`, container
+    `avatar-bench-py`). Avatar, TTS, dan RAG bukan kontribusi baru PA (diturunkan dari proyek tim).
+- **2026-10-14 sampai 16:**
+  - **#68 merged** (`f9afcc6`): hasil luminance di spesifikasi benchmark bagian 7.6.
+  - **Arahan pembimbing 14 Okt:** buku PA menuntut **MVP indoor navigation yang berjalan** (lokalisasi di posisi 1
+    dengan posisi dan arah hadap, set target posisi 2, uji navigasi); jurnal (yang direncanakan pembimbing) fokus
+    **VPS dan lokalisasi**, data yang ada dianggap cukup; luminance butuh **data cahaya nyata** (lux) dan "mode
+    switch"; tantangan berikutnya lokalisasi dan **barometer** (deteksi lantai, setelah satu lantai berjalan).
+    Foto uji lantai 10 ternyata frame video tanpa EXIF, jadi terang adegan saat itu tidak bisa dihitung balik.
+    Mode switch antar fitur butuh peta kedua per fitur (peta hanya bisa ditanya dengan fitur pembuatnya).
+  - **Klien baru `eutopos-mobile`** (repo publik `RockHead07/eutopos-mobile`, AGPL-3.0): spesifikasi MVP
+    navigasi satu lantai dan rencana implementasi ada di repo itu (`docs/specs/2026-10-15-mvp-navigasi-design.md`,
+    `docs/plans/2026-10-15-mvp-navigasi.md`). Unity 6000.3.14f1, AR Foundation 6.3.4, ARCore 6.3.4, 4-DoF
+    (yaw + XYZ), graf titik terukur + A*, service token Cloudflare Access. **Fase A (inti C#, 69 tes EditMode)
+    merged** di repo itu; Fase B (aplikasi di ponsel) belum.
+  - **Tambahan server untuk klien merged:** #69 (`3503b49`) `GET /navgraph` (graf per area di
+    `<maps>/<area>/navgraph.json`, `server/navgraph.py`) dan `python -m server.manage align` (`server/alignment.py`,
+    pasang `align.json` ke folder versi peta dan `navgraph.json` ke folder area, jalankan di container `worker`);
+    #70 (`aa34918`) `python -m server.navgraph build` membuat `navgraph.json` dari `reference_points.csv`,
+    `edges.csv`, `targets.csv`. Rencananya: `docs/plans/2026-10-15-navgraph-dan-align.md`.
+  - **Service token Access `eutopos-mobile` aktif (diuji 2026-10-16):** dengan token `/health` 200 dan
+    `/navgraph` 404 (graf belum dipasang); `/api/*` 403 dari `server/auth.py` (token tanpa email). Tanpa token
+    semua 302. Nilainya hanya di `vps-token.local.json` proyek Unity (gitignored).
+  - **Cabang kode yang sudah di-commit, PR terpisah:** `feat/bench-per-pair-inliers` (inlier per pasangan dan
+    tabel pasangan di bawah 50 inlier), `feat/worker-host-disk-guard` (pekerja menolak job bila umpan drive host
+    segar < 30 GB), `feat/heading-error` (`run.py` menulis `view_dir_model`; `eval_meter.py` menilai galat arah
+    hadap dari foto berakhiran `_xp/_yp/_xn/_yn`; protokol di `docs/spike-plan.md`). Ketiganya menyentuh
+    `server/` atau `spike/`: merge memicu autodeploy membuat ulang container.
 - **Kamera 360:** PRD di `docs/prd/2026-10-05-360-capture-support.md`, belum ada rekaman rute lantai 10.
 - Rancangan setelahnya: `docs/specs/2026-09-29-capture-and-map-pipeline-design.md`.
 
@@ -170,13 +220,36 @@ Komponen PA lain (aplikasi Unity, AI avatar, RAG, anchoring tool) **tidak** ada 
   di cache). Server menyajikannya benar; buka URL ikon langsung lalu Ctrl+Shift+R.
 - **WSL di PC lab bisa restart sendiri dan mematikan semua container**, termasuk pengukuran yang sedang jalan
   (2026-10-07 15:35). Berkas `.h5` fitur yang setengah tertulis lalu menggagalkan percobaan ulang
-  (`file signature not found`): hapus `work/<konfigurasi>-<perangkat>/*.h5` sebelum mengulang. Perbaikan skripnya
-  (hapus berkas lama sebelum ekstraksi) belum dikerjakan.
+  (`file signature not found`). Skrip kini menghapus berkas `.h5` sisa di awal tiap ulangan (#66).
+- **`bench_usage.py child` menghapus `results/<konfigurasi>-<perangkat>.jsonl` miliknya saat mulai.** Menjalankan
+  sebagian varian di folder keluaran lama menghapus hasil sebelumnya; pakai folder `--out` baru dan sertakan `clean`.
+- **Tahap `test` di `deploy/Dockerfile` hanya berisi `server/`, `spike/`, `web/`, `tests/`** (daftar putih di `.dockerignore`).
+  Tes yang membaca berkas lain di repo gagal di CI dengan `FileNotFoundError` walau lulus di laptop; salin berkasnya
+  hanya ke tahap `test` (contoh: `deploy/autodeploy.sh` untuk `tests/test_host_disk_feed.py`).
+- **Di Windows, `bash` polos dalam `subprocess` jatuh ke peluncur WSL di System32**, yang bisa rusak. Pakai
+  `shutil.which("bash")` dan jalankan tes shell dengan Git Bash di `PATH`.
+- **Angka disk dari container menyesatkan di PC lab:** disk virtual WSL (1 TB) lebih besar daripada drive Windows
+  di bawahnya. Pakai `storage.host` dan `web/lib/storage.ts`, jangan menjumlahkan `/maps` dan `/data`.
+- **Beberapa komponen yang membutuhkan data status yang sama harus berbagi satu putaran polling** (`useSharedPoll`
+  di `web/lib/usePoll.ts`), bukan memanggil `usePoll` masing-masing.
+- **Unduhan dari PC lab lambat per koneksi** (sekitar 0,4 sampai 1,5 MiB/s); unduhan paralel menaikkan total sekitar
+  lima kali. Image dan model besar butuh jam, bukan menit.
+- **Rantai skrip jangan menilai selesai dari status keluar saja.** Satu langkah yang gagal sebelum perintah utamanya
+  (misalnya berkas jalur pustaka tidak terbuat) membuat langkah berikutnya terlewat tanpa galat. Periksa berkas hasil.
 - **`git push` bisa menggantung di Git Credential Manager.** Pakai
   `git -c credential.helper= -c "credential.helper=!gh auth git-credential" push`. GitHub kadang menjawab
   "Internal Server Error" sementara; ulangi.
 - **Jangan menjalankan `docker compose config` di PC lab:** ia mencetak variabel yang sudah diperluas, termasuk
   kata sandi Postgres. Periksa GPU atau variabel lewat `docker compose exec`, dan jangan mencetak isi `deploy/.env`.
+
+- **`align.json` ditulis di tempat yang tidak dibaca layanan.** `spike/eval_meter.py` menulisnya di samping
+  `results.csv` (folder hasil uji), padahal `server/localizer.py` membacanya dari
+  `<folder versi peta>/kp1024-r1024/align.json`. Pasang lewat `python -m server.manage align` di container `worker`; versi yang sedang aktif lalu
+  perlu `docker compose restart api` (dashboard tidak punya tombol Publish untuk versi aktif).
+- **Foto uji lantai 10 tanpa EXIF** (frame video `video2_LabHallDemo_*`): ISO, eksposur, dan terang adegan tidak
+  bisa dihitung balik. Foto uji berikutnya wajib mode foto.
+- **Di Windows, `tests/test_db.py::test_migration_cli_runs_like_the_container` gagal juga di `main`**
+  (lingkungan lokal). CI di Docker yang menentukan.
 
 ## Aturan repo publik
 
