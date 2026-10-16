@@ -256,6 +256,102 @@ def test_aggregate_separates_devices_variants_and_stages():
     assert len(b.aggregate(rows)) == 4
 
 
+def pair_rec(per_pair, repeat=0, **kw):
+    return rec(1.0, 1.0, stage="match", repeat=repeat, inliers_per_pair=per_pair, **kw)
+
+
+def test_per_pair_stats_counts_pairs_below_the_service_threshold():
+    s = b.per_pair_stats([pair_rec([300, 49, 50, 10])])
+    assert s["pairs_below_min"] == 2  # 49 dan 10; 50 tepat sudah lolos, seperti di layanan
+    assert s["inliers_min"] == 10 and s["inliers_median"] == pytest.approx(49.5)
+
+
+def test_per_pair_stats_takes_the_median_over_repeats_per_pair():
+    runs = [
+        pair_rec([100, 40], repeat=0),
+        pair_rec([100, 60], repeat=1),
+        pair_rec([100, 55], repeat=2),
+    ]
+    s = b.per_pair_stats(runs)
+    assert (
+        s["pairs_below_min"] == 0
+    )  # median pasangan kedua 55, bukan rata-rata atau ulangan terburuk
+    assert s["inliers_min"] == 55
+
+
+def test_per_pair_stats_without_data_is_unknown_not_zero():
+    # hasil lama tidak menyimpan daftar per pasangan; "0 pasangan gagal" akan menyesatkan
+    s = b.per_pair_stats([rec(1.0, 1.0, stage="match")])
+    assert s == {"inliers_median": None, "inliers_min": None, "pairs_below_min": None}
+
+
+def test_per_pair_stats_with_mismatched_lengths_is_unknown():
+    assert (
+        b.per_pair_stats([pair_rec([1, 2]), pair_rec([1, 2, 3], repeat=1)])["pairs_below_min"]
+        is None
+    )
+
+
+def test_aggregate_adds_the_spread_columns_to_every_row():
+    out = b.aggregate([pair_rec([500, 20]), rec(1.0, 1.0)])
+    by_stage = {r["stage"]: r for r in out}
+    assert by_stage["match"]["pairs_below_min"] == 1
+    assert by_stage["extract"]["pairs_below_min"] is None  # tahap ekstraksi tidak punya inlier
+
+
+def test_quality_returns_the_inliers_of_every_pair(monkeypatch):
+    io = pytest.importorskip("hloc.utils.io")
+    rng = np.random.default_rng(0)
+    pts = rng.uniform(0, 100, (60, 2)).astype(
+        np.float32
+    )  # titik yang sama di dua gambar: semua inlier
+    shifted = pts + np.float32([5, 0])
+    idx = np.arange(60)
+    monkeypatch.setattr(
+        io, "get_keypoints", lambda fp, name: pts if name.endswith("_a.jpg") else shifted
+    )
+    monkeypatch.setattr(
+        io,
+        "get_matches",
+        lambda mp, a, b_: (np.stack([idx, idx], 1) if "p00" in a else idx[:3, None] * [1, 1], None),
+    )
+    manifest = {"pairs": [{"id": "p00"}, {"id": "p01"}]}
+    q = b.quality("f", "m", manifest, "clean")
+    assert len(q["inliers_per_pair"]) == 2
+    assert (
+        q["inliers_per_pair"][0] >= 50 and q["inliers_per_pair"][1] == 0
+    )  # 3 match: di bawah 8, tak dicoba
+    assert q["inliers_mean"] == pytest.approx(sum(q["inliers_per_pair"]) / 2)
+
+
+def test_report_lists_pairs_below_threshold_only_where_the_data_exists(tmp_path):
+    import argparse
+
+    (tmp_path / "results").mkdir()
+    base = {
+        "type": "run",
+        "config": "c",
+        "device": "cpu",
+        "repeat": 0,
+        "wall_s": 1.0,
+        "cpu_s": 1.0,
+        "items": 2,
+    }
+    rows = [
+        {**base, "variant": "clean", "stage": "match", "inliers_per_pair": [500, 30]},
+        {**base, "variant": "dim50", "stage": "match"},  # berkas lama: tanpa daftar per pasangan
+    ]
+    (tmp_path / "results" / "c-cpu.jsonl").write_text(
+        chr(10).join(json.dumps(r) for r in rows), encoding="utf-8"
+    )
+    b.report(argparse.Namespace(out=tmp_path))
+    md = (tmp_path / "summary.md").read_text(encoding="utf-8")
+    row = next(
+        ln for ln in md.split("## Sebaran per pasangan")[1].splitlines() if ln.startswith("| c |")
+    )
+    assert [c.strip() for c in row.strip("|").split("|")] == ["c", "1 dari 2", "-"]
+
+
 def test_per_item_time_uses_the_item_count_of_each_stage():
     out = b.aggregate([rec(8.0, 8.0, items=8), rec(4.0, 4.0, items=8, repeat=1)])
     assert out[0]["items"] == 8 and out[0]["per_item_s"] == pytest.approx(0.75)
