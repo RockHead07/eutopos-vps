@@ -156,9 +156,16 @@ ditandai `failed` saat pekerja menyala lagi. Antrekan ulang dengan perintah yang
 
 ### Menyelaraskan peta ke meter dan memasang graf navigasi
 
-Setelah titik acuan diukur dan `spike/eval_meter.py` menghasilkan `align.json`, serta
-`navgraph.json` ditulis dari lembar lapangan, pasang keduanya dari container `worker`
-(di container `api`, `/maps` hanya-baca):
+Setelah titik acuan diukur dan `spike/eval_meter.py` menghasilkan `align.json`, buat
+`navgraph.json` dari lembar lapangan. Koordinat simpul diambil dari `reference_points.csv`, jadi
+tidak ada salinan tangan; `edges.csv` (`a,b`, satu sisi lorong per baris) dan `targets.csv`
+(`node,name`) ditulis sendiri:
+
+```bash
+python -m server.navgraph build reference_points.csv edges.csv targets.csv navgraph.json
+```
+
+Lalu pasang keduanya dari container `worker` (di container `api`, `/maps` hanya-baca):
 
 ```bash
 docker compose exec worker python -m server.manage align --version <id> \

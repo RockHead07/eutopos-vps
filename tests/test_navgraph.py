@@ -122,3 +122,52 @@ def test_navgraph_not_json_is_500(tmp_path, monkeypatch):
     (tmp_path / "floor10").mkdir()
     (tmp_path / "floor10" / "navgraph.json").write_text("{bukan json", encoding="utf-8")
     assert client_for(tmp_path, monkeypatch).get("/navgraph").status_code == 500
+
+
+def write_sheets(tmp_path, points, edges, targets):
+    for name, header, rows in (
+        ("points.csv", "point,x_m,y_m", points),
+        ("edges.csv", "a,b", edges),
+        ("targets.csv", "node,name", targets),
+    ):
+        (tmp_path / name).write_text(header + "\n" + "\n".join(rows) + "\n", encoding="utf-8")
+    return tmp_path / "points.csv", tmp_path / "edges.csv", tmp_path / "targets.csv"
+
+
+def test_build_takes_coordinates_from_the_reference_points(tmp_path):
+    # P09 hanya titik acuan penyelarasan (tidak di sisi atau target): bukan simpul
+    sheets = write_sheets(
+        tmp_path,
+        ["P01,0.00,0.40", "P02,1.50,1.60", "P09,7.0,2.0"],
+        ["P01,P02"],
+        ["P02,Pintu Lab"],
+    )
+    assert navgraph.build(*sheets) == GOOD
+
+
+def test_build_rejects_an_edge_to_an_unmeasured_point(tmp_path):
+    sheets = write_sheets(tmp_path, ["P01,0,0", "P02,1,0"], ["P01,P07"], ["P02,Lab"])
+    with pytest.raises(ValueError, match="P07"):
+        navgraph.build(*sheets)
+
+
+def test_build_names_the_line_of_a_comma_decimal(tmp_path):
+    # Excel berlokal Indonesia menulis 1,50: baris itu punya kolom lebih
+    sheets = write_sheets(tmp_path, ["P01,0,0", 'P02,"1,50",0'], ["P01,P02"], ["P02,Lab"])
+    with pytest.raises(ValueError, match="P02"):
+        navgraph.build(*sheets)
+
+
+def test_build_cli_writes_a_valid_file(tmp_path, monkeypatch, capsys):
+    sheets = write_sheets(
+        tmp_path, ["P01,0,0", "P02,1,0", "P03,9,9"], ["P01,P02"], ["P02,Lab", "P03,Gudang"]
+    )
+    out = tmp_path / "navgraph.json"
+    monkeypatch.setattr(
+        "sys.argv",
+        ["navgraph", "build", *map(str, sheets), str(out)],
+    )
+    navgraph.main()
+    written = navgraph.validate(json.loads(out.read_text(encoding="utf-8")))
+    assert written["targets"][1]["node"] == "P03"
+    assert "P03" in capsys.readouterr().out  # peringatan simpul tidak terhubung
