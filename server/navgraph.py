@@ -6,8 +6,14 @@ Berkas <maps>/<area_id>/navgraph.json, kerangka gedung G (meter, tangan kanan, z
      "edges": [["P01", "P02"], ...],
      "targets": [{"node": "P02", "name": "Pintu Lab"}, ...]}
 Per area, bukan per versi peta: koordinat gedung tidak berubah saat peta dibangun ulang.
+
+Membuat berkasnya dari lembar lapangan (koordinat hanya dari titik acuan, tidak disalin tangan):
+    python -m server.navgraph build reference_points.csv edges.csv targets.csv navgraph.json
+    edges.csv: a,b (satu sisi lorong per baris); targets.csv: node,name
 """
 
+import argparse
+import csv
 import json
 import math
 import os
@@ -94,6 +100,51 @@ def disconnected_nodes(data: dict) -> list[str]:
     return [n["id"] for n in data["nodes"] if n["id"] not in seen]
 
 
+def _rows(path: Path, columns: tuple[str, ...]) -> list[dict]:
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        rows = list(csv.DictReader(f))
+    for i, r in enumerate(rows, start=2):
+        if any(not r.get(c) for c in columns) or None in r:
+            raise ValueError(f"{path.name} baris {i}: butuh kolom {', '.join(columns)}: {r}")
+    return rows
+
+
+def build(points_csv: Path, edges_csv: Path, targets_csv: Path) -> dict:
+    """navgraph dari lembar lapangan. Simpul = titik acuan yang dipakai sisi atau target."""
+    coords = {}
+    for i, r in enumerate(_rows(points_csv, ("point", "x_m", "y_m")), start=2):
+        try:
+            coords[r["point"]] = (float(r["x_m"]), float(r["y_m"]))
+        except ValueError as e:
+            raise ValueError(f"{points_csv.name} baris {i} ({r['point']}): {e}") from e
+    edges = [[r["a"], r["b"]] for r in _rows(edges_csv, ("a", "b"))]
+    targets = [{"node": r["node"], "name": r["name"]} for r in _rows(targets_csv, ("node", "name"))]
+    used = {i for e in edges for i in e} | {t["node"] for t in targets}
+    if missing := sorted(used - coords.keys()):
+        raise ValueError(f"titik tidak ada di {points_csv.name}: {', '.join(missing)}")
+    nodes = [{"id": p, "x": x, "y": y} for p, (x, y) in coords.items() if p in used]
+    graph = {"frame": "building", "units": "m", "nodes": nodes, "edges": edges, "targets": targets}
+    return validate(graph)
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(prog="python -m server.navgraph")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    b = sub.add_parser("build", help="navgraph.json dari reference_points, edges, dan targets CSV")
+    for name in ("points", "edges", "targets", "out"):
+        b.add_argument(name, type=Path)
+    a = ap.parse_args()
+    try:
+        graph = build(a.points, a.edges, a.targets)
+    except (OSError, ValueError) as e:
+        raise SystemExit(f"navgraph tidak dibuat: {e}") from e
+    if lost := disconnected_nodes(graph):
+        first = graph["nodes"][0]["id"]
+        print(f"PERINGATAN: simpul tidak terhubung ke {first}: {', '.join(lost)}")
+    a.out.write_text(json.dumps(graph, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(f"{a.out}: {len(graph['nodes'])} simpul, {len(graph['edges'])} sisi")
+
+
 router = APIRouter()
 
 
@@ -112,3 +163,7 @@ def get_navgraph(request: Request) -> dict:
     except ValueError as e:  # json.JSONDecodeError juga ValueError
         raise HTTPException(500, f"navgraph.json invalid: {e}") from e
     return {"area_id": area_id, "map_version": getattr(st, "map_version", None), "graph": graph}
+
+
+if __name__ == "__main__":
+    main()
