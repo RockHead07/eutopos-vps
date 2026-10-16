@@ -575,7 +575,9 @@ def install(
     if navgraph_src is not None:
         graph = navgraph.validate(_read(navgraph_src))
         if lost := navgraph.disconnected_nodes(graph):
-            warnings.append(f"simpul tidak terhubung ke {graph['nodes'][0]['id']}: {', '.join(lost)}")
+            warnings.append(
+                f"simpul tidak terhubung ke {graph['nodes'][0]['id']}: {', '.join(lost)}"
+            )
         plan.append((area_dir / navgraph.FILE_NAME, graph))
     area_dir.mkdir(parents=True, exist_ok=True)
     for dst, data in plan:  # baru menulis setelah semua masukan lolos pemeriksaan
@@ -628,8 +630,16 @@ def test_cli_installs_for_a_registered_version(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(manage, "MAPS", tmp_path / "maps")
     monkeypatch.setattr(
         "sys.argv",
-        ["manage", "align", "--version", str(vid), "--align", str(src / "align.json"),
-         "--navgraph", str(src / "navgraph.json")],
+        [
+            "manage",
+            "align",
+            "--version",
+            str(vid),
+            "--align",
+            str(src / "align.json"),
+            "--navgraph",
+            str(src / "navgraph.json"),
+        ],
     )
     manage.main()
     out = capsys.readouterr().out
