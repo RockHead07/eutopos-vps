@@ -156,8 +156,18 @@ ditandai `failed` saat pekerja menyala lagi. Antrekan ulang dengan perintah yang
 
 ### Menyelaraskan peta ke meter dan memasang graf navigasi
 
-Setelah titik acuan diukur dan `spike/eval_meter.py` menghasilkan `align.json`, buat
-`navgraph.json` dari lembar lapangan. Koordinat simpul diambil dari `reference_points.csv`, jadi
+Foto titik acuan (`P07_xp.jpg`, ...) dilokalisasi terhadap peta yang sedang dilayani, tanpa
+membangun ulang peta; hasilnya dibaca `spike/eval_meter.py`, yang mencetak galat posisi dan arah
+hadap serta menulis `align.json` di samping `results.csv`:
+
+```bash
+python spike/localize_photos.py data/lab10/query-pagi --out outputs/lab10/pagi/results.csv
+python spike/eval_meter.py outputs/lab10/pagi/results.csv data/lab10/reference_points.csv
+```
+
+`localize_photos.py` membaca token dari `CF_ACCESS_CLIENT_ID` dan `CF_ACCESS_CLIENT_SECRET`. Di
+dalam compose, `EUTOPOS_URL=http://api:8000` melewati Access. Setelah itu buat `navgraph.json` dari
+lembar lapangan. Koordinat simpul diambil dari `reference_points.csv`, jadi
 tidak ada salinan tangan; `edges.csv` (`a,b`, satu sisi lorong per baris) dan `targets.csv`
 (`node,name`) ditulis sendiri:
 
