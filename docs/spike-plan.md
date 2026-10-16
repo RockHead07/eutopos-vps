@@ -557,9 +557,17 @@ foto peta.
 4. Ukur `x_m` dan `y_m` tiap titik dari titik asal, catat di `data/floor10/reference_points.csv` dengan format
    `spike/reference-points-example.csv`. Catat juga alat ukur dan perkiraan ketelitiannya.
 
-**Memotret foto uji:** berdiri dengan ujung kaki di titik, ponsel setinggi dada, lalu ambil 2 foto
-ke arah berbeda. Namai `P07_a.jpg`, `P07_b.jpg` (ID titik di depan, sebelum `_`). Simpan di
+**Memotret foto uji:** berdiri dengan ujung kaki di titik, ponsel setinggi dada. Pakai **mode
+foto** (bukan frame video), supaya EXIF (ISO, waktu eksposur, bukaan) tersimpan. Simpan di
 `data/floor10/query/`. Foto peta tetap diambil terpisah seperti bagian 4.1.
+
+**Arah hadap yang diketahui (untuk galat orientasi, ditambahkan 2026-10-15).** Sumbu y harus 90°
+berlawanan arah jarum jam dari sumbu x bila dilihat dari atas (berdiri menghadap +x, +y ada di
+kiri), supaya kerangka gedung punya sumbu z ke atas seperti yang dibutuhkan klien navigasi
+nanti. Di tiap titik, ambil foto menghadap sumbu dan beri akhiran arah:
+`P07_xp.jpg` (menghadap +x), `P07_yp.jpg` (+y), `P07_xn.jpg` (-x), `P07_yn.jpg` (-y). Paling
+sedikit dua arah per titik; empat lebih baik. Luruskan badan ke garis selotip atau sambungan keramik
+yang sejajar sumbu. Foto tanpa akhiran arah (`P07_a.jpg`) tetap dinilai posisinya saja.
 
 **Menghitung galat:**
 
@@ -578,6 +586,15 @@ navigasi ini lebih berbahaya daripada gagal, karena aplikasi tidak tahu harus me
 inlier setinggi foto yang benar, ambang inlier saja tidak cukup untuk menyaringnya.
 Foto yang gagal dilokalisasi dihitung gagal. Galat dilaporkan 2D (bidang lantai), tinggi ponsel
 dianggap tetap (`--height`, bawaan 1,3 m). Uji logikanya dengan `--self-test`.
+
+**Galat arah hadap.** `spike/run.py` menulis kolom `view_dir_model` (sumbu optik kamera di kerangka
+peta) di `results.csv`. Untuk foto berakhiran arah, `eval_meter.py` memutar sumbu itu dengan Sim3
+leave-one-out yang sama, lalu membandingkan sudut horizontalnya dengan arah yang diketahui. Keluaran
+tambahan: `heading_err_deg` per foto di `errors_m.csv`, serta median, persentil 90, dan persen foto
+dengan galat ≤ 10° dan ≤ 30°. Dua angka itu ambang pelaporan, bukan target PA. Foto berarah yang
+gagal dilokalisasi dihitung melewati ambang. `results.csv` lama (tanpa `view_dir_model`) tetap
+terbaca, hanya tanpa galat arah. Ketelitiannya dibatasi ketelitian meluruskan ponsel ke sumbu
+(beberapa derajat).
 
 **Batas:** posisi ponsel di tangan tidak persis di atas titik (puluhan sentimeter, lihat 4.1).
 Koordinat titik acuan gedung tidak di-commit sebelum ditanyakan ke pembimbing.
@@ -618,7 +635,7 @@ potret ponsel (`bench_localize.py`, peta contoh):
 | Skala meter dari titik acuan, leave-one-out | ✅ |
 | Foto potret | ✅ Ditegakkan dulu (`fix_orientation.py`) |
 | Intrinsik foto uji | 🟡 Peta dari frame video dan foto uji dari mode foto berbeda ukuran, jadi intrinsik foto uji selalu ditaksir dari EXIF-nya. Dicek dengan data lapangan |
-| Galat orientasi | ❌ Belum diukur. Benchmark standar (visuallocalization.net) mengukur posisi dan rotasi. Butuh protokol foto dengan arah diketahui |
+| Galat orientasi | 🟡 Alat dan protokol siap (2026-10-15: foto berakhiran `_xp`/`_yp`/`_xn`/`_yn`, galat sudut horizontal di `eval_meter.py`). Belum ada data lapangan. Benchmark standar (visuallocalization.net) mengukur posisi dan rotasi |
 | Covisibility clustering | 🟡 Pipeline resmi hloc mematikannya. Tersedia sebagai varian `run.py --covis` untuk area yang tampak mirip |
 | Jumlah kandidat retrieval | 🟡 k = 10 di `run.py`, pipeline resmi 10 sampai 50. Varian uji kalau perlu |
 

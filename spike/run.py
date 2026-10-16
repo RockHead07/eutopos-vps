@@ -366,7 +366,10 @@ def main():
                 ret = r
         dt = round(time.perf_counter() - t0, 3)
         ok = ret is not None
-        center = ret["cam_from_world"].inverse().translation.tolist() if ok else None
+        world_from_cam = ret["cam_from_world"].inverse() if ok else None
+        center = world_from_cam.translation.tolist() if ok else None
+        # sumbu optik kamera (z) di kerangka peta: eval_meter.py memakainya untuk galat arah hadap
+        view = world_from_cam.rotation.matrix()[:, 2].tolist() if ok else None
         rows.append(
             {
                 "query": q,
@@ -375,6 +378,7 @@ def main():
                 "correspondences": len(ret["inlier_mask"]) if ok else 0,
                 "t_pose_s": dt,
                 "center_xyz_model": center,
+                "view_dir_model": view,
             }
         )
 
