@@ -119,6 +119,11 @@ POST /localize          (multipart)
 
 GET /health
   status (ok / no_map), area_id, map_version, map_images, device, aligned
+
+GET /navgraph
+  keluaran: area_id, map_version, graph (isi navgraph.json area aktif, kerangka gedung G, meter)
+  404 kalau area belum punya navgraph.json, 503 kalau belum ada peta aktif,
+  500 kalau berkasnya rusak (pesan menyebut kesalahannya)
 ```
 
 API dashboard (di balik Cloudflare Access): `GET/POST /api/jobs`, `GET /api/jobs/{id}`,

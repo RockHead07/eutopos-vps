@@ -1,4 +1,4 @@
-"""Layanan lokalisasi eutopos: POST /localize dan GET /health.
+"""Layanan lokalisasi eutopos: POST /localize, GET /health, dan GET /navgraph.
 
 Peta yang dimuat:
     - Kalau DATABASE_URL ada: versi peta aktif area EUTOPOS_AREA (bawaan "demo") dari
@@ -15,6 +15,7 @@ Konfigurasi lain lewat variabel lingkungan:
     EUTOPOS_THREADS          batas thread torch, 0 = bawaan (bawaan 0)
     EUTOPOS_MIN_INLIERS      di bawah ini status "failed" (bawaan 50)
     CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD   autentikasi /api/* (server/auth.py)
+    EUTOPOS_MAPS_ROOT        folder akar peta untuk navgraph.json per area (bawaan /maps)
 
 Menjalankan tanpa database:
     set EUTOPOS_MAP_DIR=outputs\\demo
@@ -35,7 +36,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlmodel import Session
 
-from server import active_map, maps_api, uploads
+from server import active_map, maps_api, navgraph, uploads
 from server.db import active_version, engine_from_env
 from server.localizer import Localizer
 from server.photo import decode_upright, exif_camera, pinhole
@@ -73,6 +74,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="eutopos-vps", lifespan=lifespan)
 app.include_router(uploads.router)
 app.include_router(maps_api.router)
+app.include_router(navgraph.router)
 
 
 class Pose(BaseModel):
