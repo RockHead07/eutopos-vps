@@ -1,7 +1,9 @@
 """Uji pekerja dengan perintah subprocess palsu: tanpa GPU, tanpa hloc."""
 
+import json
 import shutil
 import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -124,6 +126,80 @@ def test_process_refuses_when_disk_is_low(session, tmp_path):
     assert (job.status, job.stage) == ("failed", "extract")
     assert "free disk" in job.error and calls == []
     assert not uploaded.exists()  # pekerjaan gagal tidak pernah diulang, video tidak ditinggal
+
+
+def host(free_gb, stale=False, mount="C:"):
+    return worker.HostDisk(
+        mount=mount,
+        total_bytes=500 * 1024**3,
+        used_bytes=0,
+        free_bytes=int(free_gb * 1024**3),
+        total_gb=500.0,
+        used_gb=0.0,
+        free_gb=float(free_gb),
+        percent=0.0,
+        age_s=0.0,
+        stale=stale,
+    )
+
+
+def run_with_host(session, tmp_path, host_disk):
+    data, maps, uploaded, _, videos = make_inputs(tmp_path)
+    job = queued(session, videos)
+    calls = []
+    worker.process(
+        session,
+        job,
+        data,
+        maps,
+        runner=fake_runner(calls),
+        free_bytes=lambda p: 10**12,
+        host_disk=lambda m: host_disk,
+    )
+    return job, calls, uploaded
+
+
+def test_process_refuses_when_the_host_drive_is_low_even_if_the_virtual_disk_looks_empty(
+    session, tmp_path
+):
+    job, calls, uploaded = run_with_host(session, tmp_path, host(12))
+    assert (job.status, job.stage) == ("failed", "extract")
+    assert "host drive C:" in job.error and calls == []
+    assert not uploaded.exists()  # sama seperti penolakan disk virtual: video tidak ditinggal
+
+
+def test_process_runs_when_the_host_drive_has_room(session, tmp_path):
+    job, calls, _ = run_with_host(session, tmp_path, host(31))
+    assert job.status != "failed" and calls
+
+
+def test_process_ignores_a_stale_host_feed(session, tmp_path):
+    job, calls, _ = run_with_host(session, tmp_path, host(5, stale=True))
+    assert job.status != "failed" and calls  # angka basi bukan dasar untuk menolak
+
+
+def test_process_runs_without_any_host_feed(session, tmp_path):
+    job, calls, _ = run_with_host(session, tmp_path, None)
+    assert job.status != "failed" and calls
+
+
+def test_default_host_check_reads_the_feed_next_to_the_maps(session, tmp_path):
+    data, maps, _, _, videos = make_inputs(tmp_path)
+    maps.mkdir(exist_ok=True)
+    (maps / ".host-disk.json").write_text(
+        json.dumps(
+            {
+                "mount": "C:",
+                "total_bytes": 500 * 1024**3,
+                "free_bytes": 8 * 1024**3,
+                "updated_at": int(time.time()),
+            }
+        ),
+        encoding="utf-8",
+    )
+    job = queued(session, videos)
+    worker.process(session, job, data, maps, runner=fake_runner([]), free_bytes=lambda p: 10**12)
+    assert job.status == "failed" and "host drive" in job.error
 
 
 def test_process_reports_missing_input(session, tmp_path):

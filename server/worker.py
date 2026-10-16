@@ -32,12 +32,16 @@ from server.pipeline import (
     run_dir,
 )
 from server.previews import make_preview
+from server.system import HostDisk, get_host_disk_path, read_host_disk
 from server.video_meta import recorded_at
 
 DATA, MAPS = Path("/data"), Path("/maps")  # jalur di dalam container (deploy/compose.yaml)
 UPLOAD_MAX_AGE = timedelta(hours=24)
 UPLOAD_ID = re.compile(r"^[A-Za-z0-9-]+$")  # pola ID buatan server, tanpa / atau ..
 MIN_FREE_BYTES = 20 * 1024**3
+# Drive Windows di bawah disk virtual WSL (aturan proyek: sisakan 30 GB). Disk virtual melapor
+# 1 TB walau drive sebenarnya tinggal puluhan GB, jadi batas di atas tidak melindungi drive itu.
+MIN_HOST_FREE_BYTES = 30 * 1024**3
 POLL_S = 5
 LOG_LINES = 50
 # ponytail: satu batas untuk semua tahap. Peta lantai 10 (181 frame) selesai ±3,5 menit di GPU;
@@ -132,6 +136,7 @@ def process(
     maps: Path,
     runner: Callable[[list[str], Path], None] = run,
     free_bytes: Callable[[Path], int] = lambda p: shutil.disk_usage(p).free,
+    host_disk: Callable[[Path], HostDisk | None] = lambda m: read_host_disk(get_host_disk_path(m)),
 ) -> None:
     job_dir = data / "jobs" / str(job.id)
     dataset, log = job_dir / "dataset", job_dir / "log.txt"
@@ -141,6 +146,13 @@ def process(
         job_dir.mkdir(parents=True, exist_ok=True)  # di dalam try: folder tak bisa ditulis = gagal
         if min(free_bytes(data), free_bytes(maps)) < MIN_FREE_BYTES:
             raise StageError("less than 20 GB of free disk; job not started")
+        # ponytail: umpan hilang atau basi (timer deploy mati) tidak memblokir pekerjaan:
+        # tanpa angka segar tidak ada dasar menolak. Balik bila disk penuh lebih mahal.
+        host = host_disk(maps)
+        if host and not host.stale and host.free_bytes < MIN_HOST_FREE_BYTES:
+            raise StageError(
+                f"less than 30 GB of free space on host drive {host.mount}; job not started"
+            )
         if missing := missing_inputs(job.videos):
             raise StageError(f"input files not found: {', '.join(missing)}")
         stamp_recorded(session, job)
