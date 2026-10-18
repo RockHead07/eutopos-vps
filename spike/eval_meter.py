@@ -70,13 +70,21 @@ def fit(src, tgt, ransac_m):
     return ret["tgt_from_src"] if ret else None
 
 
-def evaluate(rows, gt, height_m, ransac_m, salah_m=SALAH_M, dirs=None):
+def evaluate(rows, gt, height_m, ransac_m, salah_m=SALAH_M, dirs=None, holdout=()):
     """rows: dict query -> pusat kamera (xyz model) atau None. gt: dict titik -> (x_m, y_m).
 
     dirs (opsional): dict query -> sumbu optik kamera (xyz model). Bila ada, foto berakhiran arah
     (lihat HEADING_DEG) juga dinilai arah hadapnya dengan Sim3 leave-one-out yang sama.
+
+    holdout (opsional): titik uji lapangan (P1, P2 uji navigasi). Tetap dinilai leave-one-out,
+    tetapi tidak ikut menaksir Sim3 align.json, karena aplikasi memakai align.json itu saat diuji di
+    titik tersebut; galatnya terhadap align.json dilaporkan terpisah.
     """
     dirs = dirs or {}
+    holdout = set(holdout)
+    unknown = sorted(holdout - set(gt))
+    if unknown:
+        raise SystemExit(f"titik holdout tidak ada di titik acuan: {', '.join(unknown)}")
     loc = {q: c for q, c in rows.items() if c is not None and point_id(q) in gt}
     pts = sorted({point_id(q) for q in loc})
     if len(pts) < 4:
@@ -109,9 +117,15 @@ def evaluate(rows, gt, height_m, ransac_m, salah_m=SALAH_M, dirs=None):
                     herr = heading_error(sim, dirs[q], heading_gt(q))
         out.append({"query": q, "point": point_id(q), "error_m": err, "heading_err_deg": herr})
 
-    # Satu Sim3 dari SEMUA titik: disimpan sebagai align.json (peta ke meter). Sisa per foto yang
-    # menonjol biasanya berarti salah ukur atau salah nama file, bukan kesalahan VPS.
-    names = list(loc)
+    # Satu Sim3 dari semua titik KECUALI holdout: disimpan sebagai align.json (peta ke meter). Sisa
+    # per foto yang menonjol biasanya berarti salah ukur atau salah nama file, bukan kesalahan VPS.
+    names = [k for k in loc if point_id(k) not in holdout]
+    align_pts = sorted({point_id(k) for k in names})
+    if holdout and len(align_pts) < 4:
+        raise SystemExit(
+            f"sisa titik penyelarasan setelah holdout {len(align_pts)}, "
+            "butuh >= 4 yang terlokalisasi"
+        )
     src = np.array([loc[k] for k in names], float)
     sim_all = fit(src, np.array([target(k) for k in names], float), ransac_m)
     sisa = (
@@ -119,6 +133,12 @@ def evaluate(rows, gt, height_m, ransac_m, salah_m=SALAH_M, dirs=None):
         if sim_all is not None
         else None
     )
+    held = [q for q in sorted(rows) if point_id(q) in holdout]
+    held_err = [
+        float(np.linalg.norm((sim_all * np.array([rows[q]], float))[0, :2] - gt[point_id(q)]))
+        for q in held
+        if rows[q] is not None and sim_all is not None
+    ]
 
     errs = [r["error_m"] for r in out]
     ok = [e for e in errs if e is not None]
@@ -139,7 +159,15 @@ def evaluate(rows, gt, height_m, ransac_m, salah_m=SALAH_M, dirs=None):
         "residual_median_m": round(float(np.median(sisa)), 3) if sisa is not None else None,
         "residual_max_m": round(float(sisa.max()), 3) if sisa is not None else None,
         "residual_worst": names[int(sisa.argmax())] if sisa is not None else None,
+        "alignment_points": len(align_pts),
     }
+    if holdout:
+        summary["holdout_points"] = sorted(holdout)
+        summary["holdout_queries"] = len(held)
+        summary["holdout_queries_with_error"] = len(held_err)
+        summary["holdout_median_error_m"] = (
+            round(float(np.median(held_err)), 3) if held_err else None
+        )
     # foto berarah yang gagal dilokalisasi juga dihitung melewati ambang, sama seperti posisi
     with_heading = [r for r in out if heading_gt(r["query"]) is not None]
     if with_heading:
@@ -237,6 +265,9 @@ def main():
     ap.add_argument("--height", type=float, default=1.3, help="tinggi ponsel dari lantai (m)")
     ap.add_argument("--ransac-m", type=float, default=1.0, help="ambang inlier Sim3 (m)")
     ap.add_argument("--wrong-m", type=float, default=SALAH_M, help="galat 'salah yakin' (m)")
+    ap.add_argument(
+        "--holdout", default="", help="titik uji lapangan, dipisah koma; tidak ikut align.json"
+    )
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
     if a.self_test:
@@ -245,7 +276,10 @@ def main():
         ap.error("butuh results dan points, atau --self-test")
 
     rows, inliers, dirs = read_results(a.results)
-    out, summary, sim = evaluate(rows, read_gt(a.points), a.height, a.ransac_m, a.wrong_m, dirs)
+    holdout = {p.strip() for p in a.holdout.split(",") if p.strip()}
+    out, summary, sim = evaluate(
+        rows, read_gt(a.points), a.height, a.ransac_m, a.wrong_m, dirs, holdout
+    )
     if sim is not None:
         align = {
             "meter_from_model": {
@@ -254,7 +288,8 @@ def main():
                 "translation": sim.translation.tolist(),
             },
             "phone_height_m": a.height,
-            "reference_points": summary["reference_points_used"],
+            "reference_points": summary["alignment_points"],
+            "holdout_points": sorted(holdout),
             "residual_median_m": summary["residual_median_m"],
         }
         # results.csv -> align.json, results-covis.csv -> align-covis.json
