@@ -7,12 +7,15 @@ setengah.
 """
 
 import json
+import logging
 import math
 import os
 from pathlib import Path
 
 from server import navgraph
 from server.navgraph import _number
+
+log = logging.getLogger("eutopos")
 
 
 def validate_align(data) -> dict:
@@ -34,6 +37,34 @@ def validate_align(data) -> dict:
     if not _number(data.get("residual_median_m")):
         raise ValueError("residual_median_m tidak ada")
     return data
+
+
+class AlignFile:
+    """align.json versi peta, dibaca ulang saat berkasnya berganti (manage align menulis atomik).
+
+    Diperiksa dengan stat di setiap permintaan, jadi align.json yang dipasang untuk versi aktif
+    langsung berlaku tanpa memuat ulang layanan. Berkas rusak tidak menggantikan penyelarasan
+    terakhir yang sah; berkas yang dihapus berarti belum diselaraskan.
+    """
+
+    def __init__(self, path: Path):
+        self.path = path
+        self._stamp = self._data = None
+
+    def get(self) -> dict | None:
+        try:
+            st = self.path.stat()
+        except FileNotFoundError:
+            self._stamp = self._data = None
+            return None
+        stamp = (st.st_ino, st.st_mtime_ns, st.st_size)
+        if stamp != self._stamp:
+            self._stamp = stamp  # berkas rusak tidak dicoba lagi sampai berkasnya berganti
+            try:
+                self._data = validate_align(_read(self.path))
+            except ValueError as e:
+                log.warning("align.json diabaikan, penyelarasan sebelumnya tetap dipakai: %s", e)
+        return self._data
 
 
 def _read(path: Path):

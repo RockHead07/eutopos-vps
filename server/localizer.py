@@ -10,7 +10,6 @@ hloc.localize_sfm.main(): saat PnP gagal, fungsi itu menulis pose foto peta tera
 melaporkan gagal (docs/multi-map-localization-research.md).
 """
 
-import json
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -25,6 +24,7 @@ from hloc.extract_features import resize_image
 from hloc.localize_sfm import QueryLocalizer
 from hloc.utils.base_model import dynamic_load
 
+from server.alignment import AlignFile
 from server.map_layout import missing_files
 
 # ponytail: ambang awal. Di spike, pose salah punya 6 sampai 14 inlier dan pose benar ratusan.
@@ -102,9 +102,13 @@ class Localizer:
         self.db_global = np.stack([self.db[n]["global"] for n in self.db_names])
         self.map_camera = next(iter(self.model.cameras.values()))
         self.pnp = QueryLocalizer(self.model, {"estimation": {"ransac": {"max_error": 12}}})
-        align = run_dir / "align.json"  # ditulis spike/eval_meter.py, kalau titik acuan sudah ada
-        self.align = json.loads(align.read_text(encoding="utf-8")) if align.exists() else None
+        # ditulis spike/eval_meter.py lalu dipasang manage align; dibaca ulang saat berganti
+        self._align = AlignFile(run_dir / "align.json")
         self.t_load_map = time.perf_counter() - t0
+
+    @property
+    def align(self) -> dict | None:
+        return self._align.get()
 
     def _load(self, pkg, conf):
         return dynamic_load(pkg, conf["model"]["name"])(conf["model"]).eval().to(self.dev)
@@ -212,9 +216,10 @@ class Localizer:
 
     def to_building(self, cam_from_world: pycolmap.Rigid3d):
         """Pose kamera di kerangka gedung (meter) lewat align.json, atau None kalau belum ada."""
-        if self.align is None:
+        align = self.align
+        if align is None:
             return None
-        m = self.align["meter_from_model"]
+        m = align["meter_from_model"]
         sim = pycolmap.Sim3d(
             m["scale"],
             pycolmap.Rotation3d(np.array(m["rotation_xyzw"])),

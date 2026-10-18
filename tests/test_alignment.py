@@ -143,7 +143,7 @@ def test_cli_installs_for_a_registered_version(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert (map_dir / "kp1024-r1024" / "align.json").exists()
     assert (area_dir / "navgraph.json").exists()
-    assert "docker compose restart api" in out and "sedang aktif" in out
+    assert "tanpa restart" in out and "sedang aktif" in out
 
 
 def test_cli_unknown_version_exits_with_message(tmp_path, monkeypatch):
@@ -153,3 +153,27 @@ def test_cli_unknown_version_exits_with_message(tmp_path, monkeypatch):
     monkeypatch.setattr("sys.argv", ["manage", "align", "--version", "99", "--align", "x.json"])
     with pytest.raises(SystemExit, match="99"):
         manage.main()
+
+
+def test_align_file_follows_the_file_without_restarting_the_service(tmp_path):
+    # manage align pada versi aktif: /localize memakai align.json baru tanpa docker compose restart.
+    p = tmp_path / "align.json"
+    f = alignment.AlignFile(p)
+    assert f.get() is None
+    alignment._write_atomic(p, GOOD_ALIGN)
+    assert f.get()["reference_points"] == 10
+    newer = copy.deepcopy(GOOD_ALIGN)
+    newer["reference_points"] = 8
+    alignment._write_atomic(p, newer)
+    assert f.get()["reference_points"] == 8
+    p.unlink()
+    assert f.get() is None
+
+
+def test_broken_align_file_keeps_serving_the_last_good_alignment(tmp_path):
+    p = tmp_path / "align.json"
+    alignment._write_atomic(p, GOOD_ALIGN)
+    f = alignment.AlignFile(p)
+    assert f.get() is not None
+    p.write_text('{"meter_from_model": rusak', encoding="utf-8")
+    assert f.get()["reference_points"] == 10
