@@ -114,11 +114,10 @@ def main():
                 print(f"PERINGATAN: {w}")
             for p in written:
                 print(f"dipasang: {p}")
-            # ponytail: dashboard tidak punya tombol Publish untuk versi yang sudah aktif
             if a.align and v.status == "published":
                 print(
-                    f"Layanan membaca align.json saat memuat peta. Versi id {v.id} sedang aktif: "
-                    "muat ulang layanan dengan 'docker compose restart api'."
+                    f"Versi id {v.id} sedang aktif: layanan memakai align.json baru pada "
+                    "permintaan berikutnya, tanpa restart (cek /health aligned)."
                 )
             elif a.align:
                 print(
