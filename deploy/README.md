@@ -183,9 +183,9 @@ docker compose exec worker python -m server.manage align --version <id> \
 ```
 
 Berkas rusak ditolak dan tidak ada yang disalin. `align.json` terikat pada versi peta itu: peta
-yang dibangun ulang kembali "belum diselaraskan". Layanan membaca `align.json` saat memuat peta:
-kalau versi itu sedang aktif, muat ulang dengan `docker compose restart api` (dashboard tidak
-punya tombol Publish untuk versi aktif); kalau belum, ia ikut dimuat saat versi itu diterbitkan.
+yang dibangun ulang kembali "belum diselaraskan". Layanan memeriksa `align.json` di setiap permintaan
+dan memakai berkas baru tanpa restart (`/health` menunjukkan `aligned: true`); berkas rusak tidak
+menggantikan penyelarasan terakhir yang sah.
 `navgraph.json` dibaca langsung tiap
 permintaan `GET /navgraph`. Koordinat titik acuan dan graf tidak di-commit.
 
@@ -339,6 +339,18 @@ Host eutopos-pclab
 
 Lalu `ssh eutopos-pclab`. Percobaan pertama membuka browser untuk kode email Access (sesi 24 jam). SSH
 hanya untuk manusia; deploy otomatis tidak memakai kunci ini.
+
+**Tahu saat PC lab mati (2026-10-17).** PC lab sempat mati semalaman tanpa ada yang tahu (16 Okt; yang
+terlihat hanya Error 1033 di dashboard). Sekarang ada Notification policy Cloudflare jenis Tunnel Health
+Alert, hanya untuk terowongan `eutopos-pclab`, dikirim ke email pemilik akun. Email datang saat status
+terowongan berubah, baik turun (Down, Degraded) maupun pulih (Healthy). Dibuat dengan:
+
+```bash
+cf alerting policies create --body '{"name":"eutopos-pclab tunnel down","alert_type":"tunnel_health_event","enabled":true,"filters":{"tunnel_id":["<id terowongan>"]},"mechanisms":{"email":[{"id":"<email>"}]}}'
+```
+
+ID terowongan dari `cf tunnels list`. Cegahnya tetap di BIOS (*Restore on AC Power Loss* = Power On) dan
+Windows (Sleep = Never); notifikasi hanya memberi tahu.
 
 ## 9. Deploy otomatis dari `main` (CD, 2026-10-04)
 
