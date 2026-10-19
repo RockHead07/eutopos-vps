@@ -110,6 +110,61 @@ export type SystemDiagnostics = {
   reload_error: string | null;
 };
 
+// Sesuai validasi server di server/uploads.py (JobIn.area_id)
+export const AREA_ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
+
+const FIELD_LABELS: Record<string, string> = {
+  area_id: "Area ID",
+  area_name: "Area name",
+  videos: "Videos",
+};
+
+export function formatApiError(detail: unknown, status: number): string {
+  if (typeof detail === "string" && detail.trim().length > 0) {
+    return detail;
+  }
+  if (Array.isArray(detail) && detail.length > 0) {
+    const formatted = detail
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+        const loc = Array.isArray((item as { loc?: unknown[] }).loc)
+          ? (item as { loc: unknown[] }).loc
+          : [];
+        const rawField = loc.length > 0 ? String(loc[loc.length - 1]) : "";
+        const fieldLabel = FIELD_LABELS[rawField] ?? rawField;
+
+        const type =
+          typeof (item as { type?: unknown }).type === "string"
+            ? (item as { type: string }).type
+            : "";
+        let message = "";
+        if (type === "string_pattern_mismatch") {
+          message = "has invalid characters or the wrong format";
+        } else if (type === "string_too_long") {
+          message = "is too long";
+        } else if (type === "string_too_short") {
+          message = "is too short";
+        } else if (type === "missing") {
+          message = "is required";
+        } else if (
+          typeof (item as { msg?: unknown }).msg === "string" &&
+          (item as { msg: string }).msg
+        ) {
+          message = (item as { msg: string }).msg;
+        }
+
+        if (!message) return null;
+        return fieldLabel ? `${fieldLabel}: ${message}` : message;
+      })
+      .filter((line): line is string => line !== null);
+
+    if (formatted.length > 0) {
+      return formatted.join("; ");
+    }
+  }
+  return `error ${status}`;
+}
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   let r: Response;
   try {
@@ -122,7 +177,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     let detail = `error ${r.status}`;
     try {
       const body = await r.json();
-      if (body?.detail) detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+      detail = formatApiError(body?.detail, r.status);
     } catch {}
     throw new Error(detail);
   }
