@@ -223,11 +223,13 @@ function JobsContent() {
                 <TableBody>
                   {filteredAndSortedJobs.map((j) => {
                     const isDeletingStatus = j.status === "deleting";
-                    const isNotDoneOrFailed = j.status !== "done" && j.status !== "failed";
-                    const isDeleteDisabled = isDeletingStatus || isNotDoneOrFailed;
+                    const canDelete = j.status === "done" || j.status === "failed" || (j.status === "uploading" && j.stalled);
+                    const isDeleteDisabled = isDeletingStatus || !canDelete;
                     const deleteDisabledReason = isDeletingStatus
                       ? "Job is already being deleted"
-                      : "Only completed or failed jobs can be deleted";
+                      : j.status === "uploading"
+                        ? "Upload is still receiving data"
+                        : "Only completed, failed, or stalled jobs can be deleted";
                     const petaVideo = j.videos?.find((v) => v.role === "peta" && v.recorded_at);
                     const recordedAt = petaVideo?.recorded_at ?? null;
 
@@ -243,7 +245,12 @@ function JobsContent() {
                         </TableCell>
                         <TableCell className="text-left"><Link href={`/job/?id=${j.id}`}>{j.id}</Link></TableCell>
                         <TableCell className="text-left">{j.area_id}</TableCell>
-                        <TableCell className="text-left"><StatusBadge status={j.status} /></TableCell>
+                        <TableCell className="text-left">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <StatusBadge status={j.status} />
+                            {j.stalled && <StatusBadge status="stalled">stalled</StatusBadge>}
+                          </div>
+                        </TableCell>
                         <TableCell className="text-left text-muted-foreground">
                           {j.status === "running" ? (
                             <span className="inline-flex items-center gap-1.5 rounded-full bg-forest/15 px-2 py-0.5 text-[11px] font-medium text-forest whitespace-nowrap">
@@ -357,6 +364,7 @@ function JobsContent() {
                     Job {selectedJob.id}
                   </SheetTitle>
                   <StatusBadge status={selectedJob.status} />
+                  {selectedJob.stalled && <StatusBadge status="stalled">stalled</StatusBadge>}
                 </div>
                 <SheetDescription className="sr-only">Job {selectedJob.id} properties</SheetDescription>
                 <p className="mt-1 text-xs text-muted-foreground truncate" title={selectedJob.created_by}>
@@ -547,7 +555,9 @@ function JobsContent() {
                     className="rounded-full text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive hover:border-destructive cursor-pointer"
                     disabled={
                       selectedJob.status === "deleting" ||
-                      (selectedJob.status !== "done" && selectedJob.status !== "failed")
+                      (selectedJob.status !== "done" &&
+                        selectedJob.status !== "failed" &&
+                        !(selectedJob.status === "uploading" && selectedJob.stalled))
                     }
                     onClick={() => {
                       const j = selectedJob;

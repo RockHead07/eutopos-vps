@@ -19,22 +19,34 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Icon } from "@/lib/Icon";
 import { PageHead } from "@/lib/PageHead";
+import { shouldRetryUpload, stalledFileIds } from "@/lib/uploadRetry";
 import "@uppy/core/css/style.min.css";
 import "@uppy/dashboard/css/style.min.css";
 
-const CHUNK = 50 * 1024 * 1024; // di bawah batas Cloudflare Free 100 MB per permintaan
+const CHUNK = 8 * 1024 * 1024; // 8 MiB (kelipatan 256 KiB), toleran terhadap koneksi ponsel yang putus
 
-function createUppy() {
+type RetryHandler = (msg: string | null) => void;
+
+function createUppy(onRetryRef: React.RefObject<RetryHandler | null>) {
   return new Uppy({
     autoProceed: false,
     restrictions: { allowedFileTypes: ["video/*"], maxNumberOfFiles: 4, maxFileSize: 2 * 1024 ** 3 },
   }).use(Tus, {
     endpoint: "/files/",
     chunkSize: CHUNK,
-    retryDelays: [0, 1000, 3000, 5000, 10000],
+    retryDelays: [0, 1000, 3000, 5000, 10000, 20000, 30000, 60000, 60000, 60000],
     allowedMetaFields: ["job_id", "name"], // dicocokkan hook pre-create dengan video terdaftar
     // Unggahan lama terikat ke pekerjaan lamanya: jangan dilanjutkan ke pekerjaan baru.
     storeFingerprintForResuming: false,
+    // Aturan sendiri (lib/uploadRetry.ts), bukan next(err): aturan bawaan tidak mengulang 429 dan berhenti saat offline.
+    onShouldRetry(err, retryAttempt) {
+      if (!shouldRetryUpload(err.originalResponse?.getStatus())) {
+        onRetryRef.current?.(null);
+        return false;
+      }
+      onRetryRef.current?.(`Connection lost, retrying (attempt ${retryAttempt + 1})`);
+      return true;
+    },
   });
 }
 
@@ -43,7 +55,10 @@ type Picked = { id: string; name: string; size: number };
 
 export default function NewSessionPage() {
   const router = useRouter();
-  const [uppy] = useState(createUppy);
+  const [retryStatus, setRetryStatus] = useState<string | null>(null);
+  const onRetryRef = useRef<RetryHandler | null>(null);
+  onRetryRef.current = setRetryStatus;
+  const [uppy] = useState(() => createUppy(onRetryRef));
   const [files, setFiles] = useState<Picked[]>([]);
   const [roles, setRoles] = useState<Record<string, Role>>({});
   const [areaId, setAreaId] = useState("floor10");
@@ -53,6 +68,100 @@ export default function NewSessionPage() {
   // Pekerjaan dari klik sebelumnya. Isian sama = ulangi video yang gagal ke pekerjaan yang sama,
   // supaya pekerjaan tidak tertinggal setengah terunggah sampai kedaluwarsa 24 jam.
   const last = useRef<{ id: number; key: string } | null>(null);
+  const wakeLockRef = useRef<any>(null);
+
+  // Wake lock dan beforeunload saat unggahan berjalan
+  useEffect(() => {
+    if (!busy) return;
+
+    const acquireLock = async () => {
+      try {
+        if ("wakeLock" in navigator && !wakeLockRef.current) {
+          wakeLockRef.current = await (navigator as any).wakeLock.request("screen");
+          wakeLockRef.current.addEventListener("release", () => {
+            wakeLockRef.current = null;
+          });
+        }
+      } catch {
+        // Feature detection / permission failure: abaikan tanpa error
+      }
+    };
+
+    acquireLock();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        acquireLock();
+      }
+    };
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      if (wakeLockRef.current) {
+        try {
+          wakeLockRef.current.release();
+        } catch {
+          // ignore
+        }
+        wakeLockRef.current = null;
+      }
+    };
+  }, [busy]);
+
+  // Pengawas: permintaan yang menggantung (respons hilang di jalan) tidak pernah menjadi galat, jadi tus tidak
+  // mengulangnya. Tanpa kemajuan byte selama STALL_MS, jeda lalu lanjutkan berkas itu: tus membatalkan
+  // permintaan, bertanya offset ke server (HEAD), dan meneruskan dari sana.
+  const lastProgress = useRef(new Map<string, number>());
+  useEffect(() => {
+    if (!busy) return;
+    const mark = (file?: { id: string }) => {
+      if (file) lastProgress.current.set(file.id, Date.now());
+    };
+    const markAll = (started: { id: string }[]) => started.forEach(mark);
+    uppy.on("upload-start", markAll);
+    uppy.on("upload-progress", mark);
+    const timer = setInterval(() => {
+      for (const id of stalledFileIds(uppy.getFiles(), lastProgress.current, Date.now())) {
+        lastProgress.current.set(id, Date.now()); // satu pemicu per STALL_MS
+        setRetryStatus("No data for 90 seconds, reconnecting");
+        uppy.pauseResume(id);
+        setTimeout(() => uppy.pauseResume(id), 500);
+      }
+    }, 10_000);
+    return () => {
+      clearInterval(timer);
+      uppy.off("upload-start", markAll);
+      uppy.off("upload-progress", mark);
+    };
+  }, [uppy, busy]);
+
+  useEffect(() => {
+    const clearRetry = () => setRetryStatus(null);
+    uppy.on("upload-progress", clearRetry);
+    uppy.on("upload-success", clearRetry);
+    uppy.on("complete", clearRetry);
+    uppy.on("error", clearRetry);
+    const onCancel = () => {
+      clearRetry();
+      setBusy(false);
+    };
+    uppy.on("cancel-all", onCancel);
+    return () => {
+      uppy.off("upload-progress", clearRetry);
+      uppy.off("upload-success", clearRetry);
+      uppy.off("complete", clearRetry);
+      uppy.off("error", clearRetry);
+      uppy.off("cancel-all", onCancel);
+    };
+  }, [uppy]);
 
   useEffect(() => {
     const sync = () =>
@@ -103,7 +212,7 @@ export default function NewSessionPage() {
   return (
     <>
       <PageHead crumbs={[{ label: "New map session" }]} title="New map session">
-        Walk the area with your back to the wall, camera facing the room. Videos are uploaded in 50 MiB chunks.
+        Walk the area with your back to the wall, camera facing the room. Videos are uploaded in 8 MiB chunks.
       </PageHead>
       <div className="split">
       <Panel>
@@ -158,6 +267,7 @@ export default function NewSessionPage() {
             {busy ? "Uploading..." : "Start upload"}
           </Button>
         </div>
+        {retryStatus && <p className="notice" role="status" aria-live="polite">{retryStatus}</p>}
         {error && <p className="error">{error}</p>}
       </Panel>
       </div>

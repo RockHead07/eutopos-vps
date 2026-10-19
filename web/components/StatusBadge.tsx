@@ -7,6 +7,7 @@ const TONE: Record<string, string> = {
   published: "bg-[var(--ok-bg)] text-[var(--ok-fg)]",
   failed: "bg-[var(--bad-bg)] text-[var(--bad-fg)]",
   rejected: "bg-[var(--bad-bg)] text-[var(--bad-fg)]",
+  stalled: "bg-[var(--bad-bg)] text-[var(--bad-fg)]",
   running: "bg-[var(--busy-bg)] text-[var(--busy-fg)]",
   uploading: "bg-[var(--busy-bg)] text-[var(--busy-fg)]",
   queued: "bg-[var(--busy-bg)] text-[var(--busy-fg)]",

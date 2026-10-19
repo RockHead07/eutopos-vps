@@ -1,16 +1,17 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Panel } from "@/components/Panel";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PipelineStageIndicator } from "@/components/PipelineStageIndicator";
 import { JobFailureDiagnosis } from "@/components/JobFailureDiagnosis";
+import { DeleteConsentDialog } from "@/components/DeleteConsentDialog";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Icon } from "@/lib/Icon";
 import Link from "@/lib/Link";
-import { api, formatDate, formatDuration, mb, ROLE } from "@/lib/api";
+import { api, formatDate, formatDuration, formatRelativeTime, mb, ROLE } from "@/lib/api";
 import { PageHead } from "@/lib/PageHead";
 import { Rows } from "@/lib/Rows";
 import { usePoll } from "@/lib/usePoll";
@@ -35,18 +36,38 @@ function Stat({ label, value, of, note }: { label: string; value?: number; of?: 
 }
 
 function JobDetail() {
+  const router = useRouter();
   const id = Number(useSearchParams().get("id"));
   const { data: job, error } = usePoll(() => api.job(id), 5000, [id]);
+  const { data: me } = usePoll(api.me, 60000);
   const [message, setMessage] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Update clock every second while viewing a running job so elapsed duration stays fresh
+  // Update clock every second while viewing a running or uploading job so elapsed duration and relative time stay fresh
   useEffect(() => {
-    if (job?.status === "running") {
+    if (job?.status === "running" || job?.status === "uploading") {
       const interval = setInterval(() => setNow(Date.now()), 1000);
       return () => clearInterval(interval);
     }
   }, [job?.status]);
+
+  async function handleDelete() {
+    if (!job) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.deleteJob(job.id);
+      setDeleteDialogOpen(false);
+      router.push("/jobs/");
+    } catch (e) {
+      setDeleteError((e as Error).message);
+    } finally {
+      setIsDeleting(false);
+    }
+  }
 
   async function publish(versionId: number) {
     if (!window.confirm("Publish this map? /localize will use this version.")) return;
@@ -82,6 +103,7 @@ function JobDetail() {
       >
         <div className="flex flex-wrap items-center gap-2 mt-1 text-xs">
           <StatusBadge status={job.status} />
+          {job.stalled && <StatusBadge status="stalled">stalled</StatusBadge>}
           {job.stage && job.status !== "done" && (
             <span className="text-muted-foreground">
               stage <strong className="text-foreground">{job.stage}</strong>
@@ -90,6 +112,31 @@ function JobDetail() {
           <span className="text-muted-foreground">· created by {job.created_by}</span>
         </div>
       </PageHead>
+
+      {/* Stalled upload warning and delete action */}
+      {job.status === "uploading" && job.stalled && (
+        <Panel className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-[var(--bad-fg)]/30 bg-[var(--bad-bg)]">
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-2">
+              <StatusBadge status="stalled">stalled</StatusBadge>
+              <span className="font-semibold text-[var(--bad-fg)] text-sm">Upload stalled</span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              No upload progress received for at least 10 minutes.
+            </p>
+          </div>
+          {me?.is_admin && (
+            <Button
+              variant="destructive"
+              size="sm"
+              className="rounded-full cursor-pointer shrink-0"
+              onClick={() => setDeleteDialogOpen(true)}
+            >
+              Delete stalled job
+            </Button>
+          )}
+        </Panel>
+      )}
 
       {/* Execution Status Card */}
       <Panel className="flex flex-col gap-3">
@@ -181,19 +228,41 @@ function JobDetail() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {job.videos.map((v) => (
-              <TableRow key={v.name}>
-                <TableCell className="font-medium">{v.name}</TableCell>
-                <TableCell>{ROLE[v.role] ?? v.role}</TableCell>
-                <TableCell className="num">{v.size === null ? "-" : mb(v.size)}</TableCell>
-                <TableCell className="text-muted-foreground whitespace-nowrap">
-                  {v.recorded_at ? formatDate(v.recorded_at) : "-"}
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {v.uploaded === null ? "from CLI" : v.uploaded ? "uploaded" : "incomplete"}
-                </TableCell>
-              </TableRow>
-            ))}
+            {job.videos.map((v) => {
+              let uploadContent: React.ReactNode;
+              if (v.uploaded) {
+                uploadContent = "uploaded";
+              } else if (v.received != null && v.activity_at) {
+                const pct = v.size ? Math.round((v.received / v.size) * 100) : null;
+                uploadContent = (
+                  <div className="flex flex-col gap-0.5">
+                    <span>
+                      {mb(v.received)} / {v.size === null ? "-" : mb(v.size)}
+                      {pct !== null ? ` (${pct}%)` : ""}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                      last data {formatRelativeTime(v.activity_at, now)} ago
+                    </span>
+                  </div>
+                );
+              } else {
+                uploadContent = "no progress data";
+              }
+
+              return (
+                <TableRow key={v.name}>
+                  <TableCell className="font-medium">{v.name}</TableCell>
+                  <TableCell>{ROLE[v.role] ?? v.role}</TableCell>
+                  <TableCell className="num">{v.size === null ? "-" : mb(v.size)}</TableCell>
+                  <TableCell className="text-muted-foreground whitespace-nowrap">
+                    {v.recorded_at ? formatDate(v.recorded_at) : "-"}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {uploadContent}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </Panel>
@@ -214,6 +283,17 @@ function JobDetail() {
           </div>
           {message && <p className="notice">{message}</p>}
         </Panel>
+      )}
+
+      {job.status === "uploading" && job.stalled && (
+        <DeleteConsentDialog
+          target={{ type: "job", id: job.id, area_id: job.area_id }}
+          open={deleteDialogOpen}
+          onOpenChange={setDeleteDialogOpen}
+          onConfirm={handleDelete}
+          isDeleting={isDeleting}
+          error={deleteError}
+        />
       )}
     </>
   );

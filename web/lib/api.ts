@@ -5,6 +5,8 @@ export type Video = {
   size: number | null;
   uploaded: boolean | null;
   recorded_at?: string | null;
+  received?: number | null;
+  activity_at?: string | null;
 };
 export type Summary = {
   run?: {
@@ -35,6 +37,7 @@ export type Job = {
   started_at: string | null;
   finished_at: string | null;
   has_preview?: boolean;
+  stalled?: boolean;
 };
 export type Version = {
   id: number;
@@ -197,6 +200,27 @@ export function formatDuration(
     if (h > 0) return `${h}h ${m}m ${sec}s`;
     if (m > 0) return `${m}m ${sec}s`;
     return `${sec}s`;
+  } catch {
+    return "-";
+  }
+}
+
+export function formatRelativeTime(
+  iso: string | null | undefined,
+  nowMs: number = Date.now()
+): string {
+  if (!iso) return "-";
+  try {
+    const t = new Date(iso).getTime();
+    if (isNaN(t)) return "-";
+    const diffSec = Math.max(0, Math.floor((nowMs - t) / 1000));
+    if (diffSec < 60) return `${diffSec}s`;
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin}m`;
+    const diffHours = Math.floor(diffMin / 60);
+    if (diffHours < 24) return `${diffHours}h`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d`;
   } catch {
     return "-";
   }
