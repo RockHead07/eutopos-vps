@@ -14,6 +14,45 @@ from server.db import Area, MapJob, MapVersion
 ROLES = {"peta", "uji"}
 ERROR_MAX = 4000  # cukup untuk 50 baris log terakhir
 DELETABLE = {"done", "failed"}  # pekerjaan yang sudah berhenti
+STALL_AFTER = timedelta(minutes=10)
+UPLOAD_IDLE_MAX = timedelta(hours=6)
+UPLOAD_MAX_AGE = timedelta(hours=24)
+
+
+def newest_activity(job: MapJob) -> datetime:
+    """Waktu aktivitas paling baru dari video-video job, atau created_at jika belum ada."""
+    acts: list[datetime] = []
+    for v in job.videos:
+        if isinstance(v, dict) and (act := v.get("activity_at")):
+            try:
+                dt = datetime.fromisoformat(act)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=UTC)
+                acts.append(dt)
+            except ValueError:
+                pass
+    if acts:
+        return max(acts)
+    created = job.created_at
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=UTC)
+    return created
+
+
+def is_stalled(job: MapJob, now: datetime | None = None) -> bool:
+    """Periksa apakah pekerjaan uploading mandek (tidak ada data masuk > STALL_AFTER).
+
+    Aturan tunggal di server: status uploading, setidaknya satu video belum lengkap
+    (uploaded bukan True), dan aktivitas paling baru (fallback created_at) lebih
+    tua dari STALL_AFTER (10 menit).
+    """
+    if job.status != "uploading":
+        return False
+    if not any(v.get("uploaded") is not True for v in job.videos if isinstance(v, dict)):
+        return False
+    if now is None:
+        now = datetime.now(UTC)
+    return (now - newest_activity(job)) > STALL_AFTER
 
 
 def _save(session: Session, job: MapJob) -> None:
@@ -97,15 +136,25 @@ def recover_stale(session: Session) -> int:
     return len(stale)
 
 
-def expire_uploading(session: Session, max_age: timedelta) -> list[MapJob]:
+def expire_uploading(
+    session: Session,
+    max_age: timedelta = UPLOAD_MAX_AGE,
+    idle_max: timedelta = UPLOAD_IDLE_MAX,
+) -> list[MapJob]:
     """Unggahan yang ditinggal (spesifikasi bagian 10): uploading terlalu lama menjadi failed."""
-    limit = datetime.now(UTC) - max_age
-    stmt = select(MapJob).where(MapJob.status == "uploading", MapJob.created_at < limit)
-    # Kunci baris: pre-finish yang mengantrekan tepat di batas 24 jam tidak tertimpa failed.
-    stmt = stmt.with_for_update(skip_locked=True)
-    stale = session.exec(stmt).all()
-    for job in stale:
-        fail(session, job, "upload did not finish within 24 hours; start a new session")
+    now = datetime.now(UTC)
+    stmt = select(MapJob).where(MapJob.status == "uploading").with_for_update(skip_locked=True)
+    stale: list[MapJob] = []
+    for job in session.exec(stmt).all():
+        created = job.created_at
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=UTC)
+        if created < (now - max_age):
+            fail(session, job, "upload did not finish within 24 hours; start a new session")
+            stale.append(job)
+        elif newest_activity(job) < (now - idle_max):
+            fail(session, job, "upload stalled for 6 hours; start a new session")
+            stale.append(job)
     return stale
 
 
@@ -113,7 +162,10 @@ def delete_block_reason(session: Session, job: MapJob) -> str | None:
     """Alasan pekerjaan belum boleh dihapus, atau None. 'deleting' lolos: permintaan ulang aman."""
     if job.status == "deleting":
         return None
-    if job.status not in DELETABLE:
+    if job.status == "uploading":
+        if not is_stalled(job):
+            return "upload is still receiving data"
+    elif job.status not in DELETABLE:
         return f"job is {job.status}; only finished or failed jobs can be deleted"
     version = session.get(MapVersion, job.map_version_id) if job.map_version_id else None
     if version is not None and version.status == "published":

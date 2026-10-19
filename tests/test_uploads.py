@@ -87,7 +87,10 @@ def test_full_upload_flow_queues_after_last_video(client):
     out = client.get(f"/api/jobs/{job['id']}").json()
     assert out["status"] == "queued"
     # ID unggahan dan path tidak dibocorkan ke klien: dengan ID itu orang bisa mengganggu unggahan
-    assert all(set(v) == {"name", "role", "size", "uploaded", "recorded_at"} for v in out["videos"])
+    assert all(
+        set(v) == {"name", "role", "size", "uploaded", "recorded_at", "received", "activity_at"}
+        for v in out["videos"]
+    )
 
 
 @pytest.mark.parametrize(
@@ -163,3 +166,111 @@ def test_create_job_validation(client):
 def test_api_without_auth_config_is_closed(client, monkeypatch):
     monkeypatch.delenv("EUTOPOS_DEV_NO_AUTH")
     assert client.post("/api/jobs", json=BODY).status_code == 503
+
+
+def test_post_receive_updates_received_and_activity_at_throttled(client, monkeypatch):
+    from datetime import datetime, timedelta
+
+    job = client.post("/api/jobs", json=BODY).json()
+    uid = hook(client, "pre-create", job["id"], "loop.mp4", 100)["ChangeFileInfo"]["ID"]
+
+    # First post-receive updates received and activity_at
+    res = post_hook(
+        client,
+        "post-receive",
+        {"ID": uid, "Offset": 30, "MetaData": {"job_id": str(job["id"])}},
+    )
+    assert res.status_code == 200 and res.json() == {}
+    row = job_row(client, job["id"])
+    v0 = row.videos[0]
+    assert v0.get("received") == 30
+    first_activity = v0.get("activity_at")
+    assert first_activity is not None
+
+    out = client.get(f"/api/jobs/{job['id']}").json()
+    assert out["videos"][0]["received"] == 30
+    assert datetime.fromisoformat(out["videos"][0]["activity_at"]) == datetime.fromisoformat(
+        first_activity
+    )
+    assert out["stalled"] is False
+
+    # Second post-receive within 5 seconds is throttled (db not updated)
+    res2 = post_hook(
+        client,
+        "post-receive",
+        {"ID": uid, "Offset": 60, "MetaData": {"job_id": str(job["id"])}},
+    )
+    assert res2.status_code == 200 and res2.json() == {}
+    row = job_row(client, job["id"])
+    assert row.videos[0].get("received") == 30
+    assert row.videos[0].get("activity_at") == first_activity
+
+    # After 5 seconds elapsed, post-receive writes the new progress
+    t_later = datetime.fromisoformat(first_activity) + timedelta(seconds=6)
+    monkeypatch.setattr(uploads, "_utc_now", lambda: t_later)
+
+    res3 = post_hook(
+        client,
+        "post-receive",
+        {"ID": uid, "Offset": 80, "MetaData": {"job_id": str(job["id"])}},
+    )
+    assert res3.status_code == 200 and res3.json() == {}
+    row = job_row(client, job["id"])
+    assert row.videos[0].get("received") == 80
+    assert datetime.fromisoformat(row.videos[0].get("activity_at")) == t_later
+
+
+def test_post_receive_ignores_unknown_finished_or_non_uploading(client):
+    job = client.post("/api/jobs", json=BODY).json()
+    uid = hook(client, "pre-create", job["id"], "loop.mp4", 100)["ChangeFileInfo"]["ID"]
+
+    # Unknown ID returns {} without error
+    res = post_hook(client, "post-receive", {"ID": "unknown-id", "Offset": 10})
+    assert res.status_code == 200 and res.json() == {}
+
+    # Complete the job to queued
+    finish(client, job["id"], "loop.mp4", 100, uid)
+    uid2 = hook(client, "pre-create", job["id"], "uji.mp4", 50)["ChangeFileInfo"]["ID"]
+    finish(client, job["id"], "uji.mp4", 50, uid2)
+    assert job_row(client, job["id"]).status == "queued"
+
+    # Post-receive on a queued job is ignored
+    res = post_hook(
+        client,
+        "post-receive",
+        {"ID": uid, "Offset": 50, "MetaData": {"job_id": str(job["id"])}},
+    )
+    assert res.status_code == 200 and res.json() == {}
+
+
+def test_delete_stalled_upload_flow(client, monkeypatch):
+    monkeypatch.setattr(uploads.auth, "is_admin", lambda user: True)
+    job = client.post("/api/jobs", json=BODY).json()
+    uid = hook(client, "pre-create", job["id"], "loop.mp4", 100)["ChangeFileInfo"]["ID"]
+    post_hook(
+        client,
+        "post-receive",
+        {"ID": uid, "Offset": 10, "MetaData": {"job_id": str(job["id"])}},
+    )
+
+    # While receiving data (not stalled), delete returns 409
+    del_res = client.delete(f"/api/jobs/{job['id']}")
+    assert del_res.status_code == 409
+    assert del_res.json()["detail"] == "upload is still receiving data"
+
+    # Mark stalled by setting activity_at to 15 minutes ago
+    from datetime import UTC, datetime, timedelta
+
+    row = job_row(client, job["id"])
+    vids = list(row.videos)
+    vids[0]["activity_at"] = (datetime.now(UTC) - timedelta(minutes=15)).isoformat()
+    with Session(create_engine(client.db_url)) as s:
+        j = s.get(MapJob, job["id"])
+        j.videos = vids
+        s.add(j)
+        s.commit()
+
+    # Now it is stalled, delete is allowed (status deleting)
+    del_res2 = client.delete(f"/api/jobs/{job['id']}")
+    assert del_res2.status_code == 202
+    assert del_res2.json() == {"status": "deleting"}
