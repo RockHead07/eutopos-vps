@@ -345,6 +345,27 @@ def test_purge_survives_a_missing_map_folder(session, tmp_path):
     assert session.get(MapJob, job.id) is None
 
 
+def test_purge_removes_partial_tusd_upload_files(session, tmp_path):
+    maps, uploads = tmp_path / "maps", tmp_path / "uploads"
+    maps.mkdir()
+    uploads.mkdir()
+    uid = "job1-v0-abcdef123456"
+    (uploads / uid).write_bytes(b"partial video data")
+    (uploads / f"{uid}.info").write_text('{"ID":"job1-v0-abcdef123456"}')
+
+    videos = [
+        {"name": "loop.mp4", "role": "peta", "size": 100, "upload_id": uid, "uploaded": False}
+    ]
+    job = jobs.create_job(session, "floor10", "L10", "a@x.id", videos, status="uploading")
+    jobs.request_delete(session, job)
+
+    worker.purge(session, job, maps, uploads=uploads)
+
+    assert not (uploads / uid).exists()
+    assert not (uploads / f"{uid}.info").exists()
+    assert session.get(MapJob, job.id) is None
+
+
 WHEN = datetime(2026, 10, 1, 4, 15, 49, tzinfo=UTC)
 
 

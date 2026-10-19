@@ -12,7 +12,6 @@ import shutil
 import subprocess
 import time
 from collections.abc import Callable
-from datetime import timedelta
 from pathlib import Path
 
 from sqlmodel import Session, select
@@ -36,7 +35,7 @@ from server.system import HostDisk, get_host_disk_path, read_host_disk
 from server.video_meta import recorded_at
 
 DATA, MAPS = Path("/data"), Path("/maps")  # jalur di dalam container (deploy/compose.yaml)
-UPLOAD_MAX_AGE = timedelta(hours=24)
+UPLOAD_MAX_AGE = jobs.UPLOAD_MAX_AGE
 UPLOAD_ID = re.compile(r"^[A-Za-z0-9-]+$")  # pola ID buatan server, tanpa / atau ..
 MIN_FREE_BYTES = 20 * 1024**3
 # Drive Windows di bawah disk virtual WSL (aturan proyek: sisakan 30 GB). Disk virtual melapor
@@ -188,7 +187,7 @@ def process(
         jobs.fail(session, job, f"{msg}\n{tail}".strip())
 
 
-def purge(session: Session, job: MapJob, maps: Path) -> None:
+def purge(session: Session, job: MapJob, maps: Path, uploads: Path = DATA / "uploads") -> None:
     """Hapus peta hasil dan baris database sebuah pekerjaan yang diminta dihapus (DELETE /api/jobs).
 
     Folder frame di data/jobs/<id> sengaja dibiarkan: itu masukan yang bisa membangun ulang peta
@@ -205,6 +204,8 @@ def purge(session: Session, job: MapJob, maps: Path) -> None:
             raise StageError(f"refusing to delete outside the maps folder: {map_dir}")
         if map_dir.exists():
             shutil.rmtree(map_dir)
+        uids = [v["upload_id"] for v in job.videos if isinstance(v, dict) and v.get("upload_id")]
+        delete_upload_files(uids, uploads)
         session.delete(job)
         session.flush()  # job merujuk versi: baris job harus hilang lebih dulu
         if version is not None:

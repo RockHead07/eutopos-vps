@@ -139,7 +139,15 @@ def test_jobs_from_cli_are_listed(client):
     )
     videos = client.get("/api/jobs").json()[0]["videos"]
     assert videos == [
-        {"name": "a.mp4", "role": "peta", "size": None, "uploaded": None, "recorded_at": None}
+        {
+            "name": "a.mp4",
+            "role": "peta",
+            "size": None,
+            "uploaded": None,
+            "recorded_at": None,
+            "received": None,
+            "activity_at": None,
+        }
     ]
 
 
@@ -199,7 +207,8 @@ def test_delete_refuses_unfinished_jobs(client, status):
         status=status,
     )
     r = client.delete(f"/api/jobs/{j.id}")
-    assert r.status_code == 409 and status in r.json()["detail"]
+    expected = "upload is still receiving data" if status == "uploading" else f"job is {status}"
+    assert r.status_code == 409 and expected in r.json()["detail"]
 
 
 def test_delete_refuses_a_published_version(client):

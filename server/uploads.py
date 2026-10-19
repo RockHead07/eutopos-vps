@@ -11,7 +11,7 @@ api terbuka di jaringan lab, dan hook palsu bisa mengantrekan atau merusak peker
 import json
 import os
 import secrets
-from datetime import datetime
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
@@ -69,6 +69,8 @@ class VideoOut(BaseModel):
     # Waktu rekam dari dalam berkas video (server/video_meta.py). None: tidak diketahui, termasuk
     # semua pekerjaan yang dibuat sebelum fitur ini (videonya sudah dihapus).
     recorded_at: datetime | None = None
+    received: int | None = None
+    activity_at: datetime | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -93,6 +95,7 @@ class JobOut(BaseModel):
     started_at: datetime | None
     finished_at: datetime | None
     has_preview: bool = False  # GET /api/jobs/{id}/preview
+    stalled: bool = False
 
 
 def _job_out(job: MapJob) -> JobOut:
@@ -100,6 +103,7 @@ def _job_out(job: MapJob) -> JobOut:
 
     out = JobOut.model_validate(job, from_attributes=True)
     out.has_preview = maps_api.preview_path(job) is not None
+    out.stalled = jobs.is_stalled(job)
     return out
 
 
@@ -228,6 +232,71 @@ def _pre_finish(s: Session, upload: dict) -> None:
     s.commit()
 
 
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _post_receive(s: Session, upload: dict) -> dict:
+    uid = upload.get("ID")
+    if not uid or not isinstance(uid, str):
+        return {}
+    offset = upload.get("Offset")
+    if offset is None or not isinstance(offset, int) or offset < 0:
+        return {}
+
+    meta = upload.get("MetaData") or {}
+    job_id: int | None = None
+    if isinstance(meta, dict) and "job_id" in meta:
+        try:
+            job_id = int(meta["job_id"])
+        except (ValueError, TypeError):
+            pass
+    if job_id is None and uid.startswith("job"):
+        prefix = uid.split("-")[0]
+        if prefix[3:].isdigit():
+            job_id = int(prefix[3:])
+
+    if job_id is None:
+        return {}
+
+    stmt = select(MapJob).where(MapJob.id == job_id).with_for_update()
+    job = s.exec(stmt).first()
+    if job is None or job.status != "uploading":
+        return {}
+
+    videos = list(job.videos)
+    idx = next(
+        (i for i, v in enumerate(videos) if isinstance(v, dict) and v.get("upload_id") == uid),
+        None,
+    )
+    if idx is None:
+        return {}
+    video = videos[idx]
+    if video.get("uploaded") is True:
+        return {}
+
+    now = _utc_now()
+    if prev_act := video.get("activity_at"):
+        try:
+            dt_prev = datetime.fromisoformat(prev_act)
+            if dt_prev.tzinfo is None:
+                dt_prev = dt_prev.replace(tzinfo=UTC)
+            if (now - dt_prev).total_seconds() < 5:
+                return {}
+        except ValueError:
+            pass
+
+    videos[idx] = {
+        **video,
+        "received": offset,
+        "activity_at": now.isoformat(),
+    }
+    job.videos = videos
+    s.add(job)
+    s.commit()
+    return {}
+
+
 def _hook_key(key: Annotated[str | None, Query()] = None) -> None:
     secret = os.environ.get("TUS_HOOK_SECRET", "")
     if not secret:
@@ -244,6 +313,8 @@ def tus_hook(hook: dict, s: DB) -> dict:
         if kind == "pre-create":
             headers = (event.get("HTTPRequest") or {}).get("Header") or {}
             return _pre_create(s, upload, headers)
+        if kind == "post-receive":
+            return _post_receive(s, upload)
         if kind == "pre-finish":
             _pre_finish(s, upload)
     except HookReject as e:
