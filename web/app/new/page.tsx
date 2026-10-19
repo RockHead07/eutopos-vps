@@ -4,7 +4,7 @@ import Dashboard from "@uppy/react/dashboard";
 import Tus from "@uppy/tus";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { api, mb, ROLE } from "@/lib/api";
+import { api, AREA_ID_RE, mb, ROLE } from "@/lib/api";
 import { Panel } from "@/components/Panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -178,13 +178,30 @@ export default function NewSessionPage() {
   const roleOf = (f: Picked, i: number): Role => roles[f.id] ?? (i === 0 ? "peta" : "uji");
 
   async function start() {
-    setBusy(true);
     setError(null);
+    const area = areaId.trim().toLowerCase();
+    const name = areaName.trim();
+    if (!area) {
+      setError("Area ID is required.");
+      return;
+    }
+    if (!AREA_ID_RE.test(area)) {
+      setError(
+        "Area ID must start with a lowercase letter or digit and contain only lowercase letters, digits and hyphens (max 40 characters)."
+      );
+      return;
+    }
+    if (!name) {
+      setError("Area name is required.");
+      return;
+    }
+
+    setBusy(true);
     try {
       const videos = files.map((f, i) => ({ name: f.name, size: f.size, role: roleOf(f, i) }));
-      const key = JSON.stringify([areaId, areaName, videos]);
+      const key = JSON.stringify([area, name, videos]);
       if (last.current?.key !== key) {
-        const job = await api.createJob({ area_id: areaId, area_name: areaName, videos });
+        const job = await api.createJob({ area_id: area, area_name: name, videos });
         last.current = { id: job.id, key };
         uppy.setMeta({ job_id: String(job.id) });
         uppy.resetProgress(); // pekerjaan baru butuh semua video, termasuk yang sudah terunggah
@@ -220,7 +237,17 @@ export default function NewSessionPage() {
         <div className="grid gap-3.5">
           <div className="grid gap-1.5">
             <Label htmlFor="area-id">Area ID (lowercase letters, digits, hyphens)</Label>
-            <Input id="area-id" value={areaId} onChange={(e) => setAreaId(e.target.value)} pattern="[a-z0-9][a-z0-9-]{0,39}" />
+            <Input
+              id="area-id"
+              value={areaId}
+              onChange={(e) => setAreaId(e.target.value)}
+              onBlur={() => setAreaId(areaId.trim().toLowerCase())}
+              pattern="[a-z0-9][a-z0-9-]{0,39}"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              autoComplete="off"
+            />
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="area-name">Area name</Label>
@@ -268,7 +295,7 @@ export default function NewSessionPage() {
           </Button>
         </div>
         {retryStatus && <p className="notice" role="status" aria-live="polite">{retryStatus}</p>}
-        {error && <p className="error">{error}</p>}
+        {error && <p className="error" role="alert">{error}</p>}
       </Panel>
       </div>
     </>
