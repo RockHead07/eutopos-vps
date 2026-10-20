@@ -113,11 +113,53 @@ export type SystemDiagnostics = {
 // Sesuai validasi server di server/uploads.py (JobIn.area_id)
 export const AREA_ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
+export type ApiField = "area_id" | "area_name" | "videos";
+
 const FIELD_LABELS: Record<string, string> = {
   area_id: "Area ID",
   area_name: "Area name",
   videos: "Videos",
 };
+
+type ApiIssue = {
+  field: string;
+  label: string;
+  message: string;
+  type: string;
+};
+
+/** Satu item 422 FastAPI menjadi pesan dan field asalnya. */
+function parseIssue(item: unknown): ApiIssue | null {
+  if (!item || typeof item !== "object") return null;
+  const loc = Array.isArray((item as { loc?: unknown[] }).loc)
+    ? (item as { loc: unknown[] }).loc
+    : [];
+  const field = loc.length > 0 ? String(loc[loc.length - 1]) : "";
+  const label = FIELD_LABELS[field] ?? field;
+
+  const type =
+    typeof (item as { type?: unknown }).type === "string"
+      ? (item as { type: string }).type
+      : "";
+  let message = "";
+  if (type === "string_pattern_mismatch") {
+    message = "has invalid characters or the wrong format";
+  } else if (type === "string_too_long") {
+    message = "is too long";
+  } else if (type === "string_too_short") {
+    message = "is too short";
+  } else if (type === "missing") {
+    message = "is required";
+  } else if (
+    typeof (item as { msg?: unknown }).msg === "string" &&
+    (item as { msg: string }).msg
+  ) {
+    message = (item as { msg: string }).msg;
+  }
+
+  if (!message) return null;
+  return { field, label, message, type };
+}
 
 export function formatApiError(detail: unknown, status: number): string {
   if (typeof detail === "string" && detail.trim().length > 0) {
@@ -125,38 +167,9 @@ export function formatApiError(detail: unknown, status: number): string {
   }
   if (Array.isArray(detail) && detail.length > 0) {
     const formatted = detail
-      .map((item) => {
-        if (!item || typeof item !== "object") return null;
-        const loc = Array.isArray((item as { loc?: unknown[] }).loc)
-          ? (item as { loc: unknown[] }).loc
-          : [];
-        const rawField = loc.length > 0 ? String(loc[loc.length - 1]) : "";
-        const fieldLabel = FIELD_LABELS[rawField] ?? rawField;
-
-        const type =
-          typeof (item as { type?: unknown }).type === "string"
-            ? (item as { type: string }).type
-            : "";
-        let message = "";
-        if (type === "string_pattern_mismatch") {
-          message = "has invalid characters or the wrong format";
-        } else if (type === "string_too_long") {
-          message = "is too long";
-        } else if (type === "string_too_short") {
-          message = "is too short";
-        } else if (type === "missing") {
-          message = "is required";
-        } else if (
-          typeof (item as { msg?: unknown }).msg === "string" &&
-          (item as { msg: string }).msg
-        ) {
-          message = (item as { msg: string }).msg;
-        }
-
-        if (!message) return null;
-        return fieldLabel ? `${fieldLabel}: ${message}` : message;
-      })
-      .filter((line): line is string => line !== null);
+      .map(parseIssue)
+      .filter((issue): issue is ApiIssue => issue !== null)
+      .map((issue) => (issue.label ? `${issue.label}: ${issue.message}` : issue.message));
 
     if (formatted.length > 0) {
       return formatted.join("; ");
@@ -165,21 +178,63 @@ export function formatApiError(detail: unknown, status: number): string {
   return `error ${status}`;
 }
 
+/** Pesan per field dari 422 FastAPI, tanpa label berkolon, siap dipasang di dekat kolom. */
+export function fieldErrorsFromApi(detail: unknown): Partial<Record<ApiField, string>> {
+  const fields: Partial<Record<ApiField, string>> = {};
+  if (!Array.isArray(detail)) return fields;
+  for (const item of detail) {
+    const issue = parseIssue(item);
+    if (!issue) continue;
+    const field = issue.field;
+    if (field === "area_id" || field === "area_name" || field === "videos") {
+      fields[field] = fieldSentence(issue);
+    }
+  }
+  return fields;
+}
+
+function fieldSentence(issue: ApiIssue): string {
+  if (issue.type === "string_too_long") {
+    if (issue.field === "area_id") return "Area ID is too long (maximum 40 characters).";
+    if (issue.field === "area_name") return "Area name is too long (maximum 100 characters).";
+  }
+  if (issue.type === "string_too_short" || issue.type === "missing") {
+    return `${issue.label} is required.`;
+  }
+  const sentence = issue.label ? `${issue.label} ${issue.message}` : issue.message;
+  return /[.!?]$/.test(sentence) ? sentence : `${sentence}.`;
+}
+
+/** Galat HTTP dengan pesan yang sama seperti sebelumnya, plus pesan per field bila ada. */
+export class ApiError extends Error {
+  status: number;
+  fields: Partial<Record<ApiField, string>>;
+
+  constructor(message: string, status: number, fields: Partial<Record<ApiField, string>> = {}) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.fields = fields;
+  }
+}
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   let r: Response;
   try {
     r = await fetch(path, { ...init, headers: { "Content-Type": "application/json" } });
   } catch {
     // Sesi Cloudflare Access habis: permintaan diarahkan ke halaman login lain asal dan gagal.
-    throw new Error("Cannot reach the server. If your login session expired, reload the page.");
+    throw new ApiError("Cannot reach the server. If your login session expired, reload the page.", 0);
   }
   if (!r.ok) {
     let detail = `error ${r.status}`;
+    let fields: Partial<Record<ApiField, string>> = {};
     try {
       const body = await r.json();
       detail = formatApiError(body?.detail, r.status);
+      fields = fieldErrorsFromApi(body?.detail);
     } catch {}
-    throw new Error(detail);
+    throw new ApiError(detail, r.status, fields);
   }
   return (await r.json()) as T;
 }

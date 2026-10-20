@@ -4,7 +4,17 @@ import Dashboard from "@uppy/react/dashboard";
 import Tus from "@uppy/tus";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { api, AREA_ID_RE, mb, ROLE } from "@/lib/api";
+import { ApiError, api, mb, ROLE } from "@/lib/api";
+import {
+  AREA_ID_HINT,
+  AREA_ID_MAX,
+  AREA_NAME_HINT,
+  AREA_NAME_MAX,
+  normalizeAreaId,
+  normalizeAreaName,
+  validateAreaId,
+  validateAreaName,
+} from "@/lib/areaFields";
 import { Panel } from "@/components/Panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,6 +86,12 @@ function fileIdentity(file: { name?: string; size?: number | null; data?: unknow
   };
 }
 
+function focusField(id: "area-id" | "area-name") {
+  const field = document.getElementById(id);
+  field?.scrollIntoView({ block: "center" });
+  field?.focus();
+}
+
 export default function NewSessionPage() {
   const router = useRouter();
   const [retryStatus, setRetryStatus] = useState<string | null>(null);
@@ -89,6 +105,11 @@ export default function NewSessionPage() {
   const [areaName, setAreaName] = useState("Lantai 10");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [touched, setTouched] = useState({ id: false, name: false });
+  const [serverFieldErrors, setServerFieldErrors] = useState<{
+    area_id?: string;
+    area_name?: string;
+  }>({});
   // Pekerjaan dari klik sebelumnya. Isian sama = ulangi video yang gagal ke pekerjaan yang sama,
   // supaya pekerjaan tidak tertinggal setengah terunggah sampai kedaluwarsa 24 jam.
   const last = useRef<{ id: number; key: string } | null>(null);
@@ -331,24 +352,43 @@ export default function NewSessionPage() {
   // Bawaan seperti uji 2026-09-30: video pertama untuk peta, sisanya untuk uji.
   const roleOf = (f: Picked, i: number): Role => roles[f.id] ?? (i === 0 ? "peta" : "uji");
 
+  const idValidation = validateAreaId(areaId);
+  const nameValidation = validateAreaName(areaName);
+  const idError =
+    serverFieldErrors.area_id ??
+    (touched.id && !idValidation.ok ? idValidation.message : null);
+  const nameError =
+    serverFieldErrors.area_name ??
+    (touched.name && !nameValidation.ok ? nameValidation.message : null);
+  const idSuggestion = touched.id && !idValidation.ok ? idValidation.suggestion : undefined;
+  const idLength = normalizeAreaId(areaId).length;
+  const nameLength = normalizeAreaName(areaName).length;
+  const idCounter =
+    idLength >= Math.ceil(AREA_ID_MAX * 0.8) && idLength <= AREA_ID_MAX
+      ? `${idLength} / ${AREA_ID_MAX}`
+      : null;
+  const nameCounter =
+    nameLength >= Math.ceil(AREA_NAME_MAX * 0.8) && nameLength <= AREA_NAME_MAX
+      ? `${nameLength} / ${AREA_NAME_MAX}`
+      : null;
+
   async function start() {
     setError(null);
-    const area = areaId.trim().toLowerCase();
-    const name = areaName.trim();
-    if (!area) {
-      setError("Area ID is required.");
+    setServerFieldErrors({});
+    setTouched({ id: true, name: true });
+
+    const idCheck = validateAreaId(areaId);
+    const nameCheck = validateAreaName(areaName);
+    if (!idCheck.ok) {
+      focusField("area-id");
       return;
     }
-    if (!AREA_ID_RE.test(area)) {
-      setError(
-        "Area ID must start with a lowercase letter or digit and contain only lowercase letters, digits and hyphens (max 40 characters)."
-      );
+    if (!nameCheck.ok) {
+      focusField("area-name");
       return;
     }
-    if (!name) {
-      setError("Area name is required.");
-      return;
-    }
+    const area = idCheck.value;
+    const name = nameCheck.value;
 
     setBusy(true);
     try {
@@ -394,7 +434,15 @@ export default function NewSessionPage() {
       sessionRef.current = null;
       router.push(`/job/?id=${job.id}`);
     } catch (e) {
-      setError((e as Error).message);
+      if (e instanceof ApiError && (e.fields.area_id || e.fields.area_name)) {
+        setServerFieldErrors({
+          area_id: e.fields.area_id,
+          area_name: e.fields.area_name,
+        });
+        focusField(e.fields.area_id ? "area-id" : "area-name");
+      } else {
+        setError((e as Error).message);
+      }
     } finally {
       setBusy(false);
     }
@@ -414,18 +462,72 @@ export default function NewSessionPage() {
             <Input
               id="area-id"
               value={areaId}
-              onChange={(e) => setAreaId(e.target.value)}
-              onBlur={() => setAreaId(areaId.trim().toLowerCase())}
+              onChange={(e) => {
+                setAreaId(e.target.value);
+                if (serverFieldErrors.area_id) {
+                  setServerFieldErrors((current) => ({ ...current, area_id: undefined }));
+                }
+              }}
+              onBlur={() => {
+                setAreaId((current) => normalizeAreaId(current));
+                setTouched((current) => ({ ...current, id: true }));
+              }}
               pattern="[a-z0-9][a-z0-9-]{0,39}"
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
               autoComplete="off"
+              aria-invalid={idError ? true : undefined}
+              aria-describedby="area-id-msg"
+              aria-required="true"
             />
+            <p id="area-id-msg" className="min-h-5" aria-live="polite">
+              {idError ? (
+                <span className="text-destructive">{idError}</span>
+              ) : (
+                <span className="muted">{AREA_ID_HINT}</span>
+              )}
+              {idCounter && <span className="muted"> {idCounter}</span>}
+            </p>
+            {idSuggestion && (
+              <Button
+                type="button"
+                variant="link"
+                size="lg"
+                className="underline"
+                onClick={() => {
+                  setAreaId(idSuggestion);
+                  setServerFieldErrors((current) => ({ ...current, area_id: undefined }));
+                }}
+              >
+                Use "{idSuggestion}"
+              </Button>
+            )}
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="area-name">Area name</Label>
-            <Input id="area-name" value={areaName} onChange={(e) => setAreaName(e.target.value)} />
+            <Input
+              id="area-name"
+              value={areaName}
+              onChange={(e) => {
+                setAreaName(e.target.value);
+                if (serverFieldErrors.area_name) {
+                  setServerFieldErrors((current) => ({ ...current, area_name: undefined }));
+                }
+              }}
+              onBlur={() => setTouched((current) => ({ ...current, name: true }))}
+              aria-invalid={nameError ? true : undefined}
+              aria-describedby="area-name-msg"
+              aria-required="true"
+            />
+            <p id="area-name-msg" className="min-h-5" aria-live="polite">
+              {nameError ? (
+                <span className="text-destructive">{nameError}</span>
+              ) : (
+                <span className="muted">{AREA_NAME_HINT}</span>
+              )}
+              {nameCounter && <span className="muted"> {nameCounter}</span>}
+            </p>
           </div>
         </div>
       </Panel>
