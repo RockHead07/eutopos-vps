@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { SearchBar } from "@/components/SearchBar";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { Panel } from "@/components/Panel";
+import { ActiveJobsBanner } from "@/components/ActiveJobsBanner";
 import {
   Select,
   SelectContent,
@@ -21,6 +22,7 @@ import { Rows } from "@/lib/Rows";
 import { Thumbnail } from "@/components/Thumbnail";
 import { Sparkline, type SparkPoint } from "@/lib/Sparkline";
 import { api, formatDate, type Job } from "@/lib/api";
+import { BUSY } from "@/lib/activeJobs";
 import {
   extractNameFromEmail,
   formatGreeting,
@@ -29,8 +31,6 @@ import {
   type HourBucket,
 } from "@/lib/greeting";
 import { usePoll, useSharedPoll } from "@/lib/usePoll";
-
-const BUSY = ["uploading", "queued", "running"];
 
 const fmtDuration = (s: number) =>
   s < 60 ? `${Math.round(s)} s` : `${Math.floor(s / 60)} min ${Math.round(s % 60)} s`;
@@ -194,7 +194,6 @@ export default function OverviewPage() {
     .sort((a, b) => a.id - b.id);
   const minInliers = [...new Set(scored.map((j) => j.summary?.inspect?.min_inliers))];
   const latest = filteredJobs.filter((j) => j.status === "done").sort((a, b) => b.id - a.id)[0];
-  const activeJobs = allJobs.filter((j) => BUSY.includes(j.status));
   const failedJobs = filteredJobs.filter((j) => j.status === "failed");
   const latestFailed = failedJobs.sort((a, b) => b.id - a.id)[0];
   const counts = [
@@ -296,32 +295,7 @@ export default function OverviewPage() {
         Map builds, map quality, and the map /localize is serving.
       </PageHead>
       {error && <p className="error">{error}</p>}
-      {activeJobs.length > 0 && (
-        <div className="mb-4 rounded-lg border border-forest/30 bg-forest/5 p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="size-2 rounded-full bg-forest animate-pulse" />
-            <span className="font-semibold text-foreground">
-              {activeJobs.length === 1 ? "Active Reconstruction Job:" : `${activeJobs.length} Active Reconstruction Jobs:`}
-            </span>
-            {activeJobs.map((j) => (
-              <Link
-                key={j.id}
-                href={`/job/?id=${j.id}`}
-                className="inline-flex items-center gap-1.5 rounded-full bg-forest/15 px-2.5 py-1 text-forest hover:bg-forest/25 font-medium transition-colors"
-              >
-                <span>Job #{j.id} ({j.area_id})</span>
-                <span className="text-[10px] font-mono uppercase">
-                  {j.status === "running" ? (j.stage ? `stage ${j.stage}` : "running") : j.status}
-                </span>
-                <Icon name="arrow-up-right" />
-              </Link>
-            ))}
-          </div>
-          <span className="text-muted-foreground text-[11px]">
-            Updating live
-          </span>
-        </div>
-      )}
+      <ActiveJobsBanner jobs={allJobs} />
       <div className="overview">
         {/* Active map is NEVER filtered */}
         <Panel className="area-active">
