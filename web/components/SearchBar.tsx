@@ -27,6 +27,7 @@ export function SearchBar({
 }: SearchBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isMac, setIsMac] = useState(false);
+  const [focused, setFocused] = useState(false);
 
   useEffect(() => {
     setIsMac(/(Mac|iPhone|iPod|iPad)/i.test(navigator.userAgent || navigator.platform || ""));
@@ -131,16 +132,40 @@ export function SearchBar({
     </div>
   );
 
+  const heroField = (
+    <div className="finder-well">
+      <span className="finder-glyph" aria-hidden="true" />
+      <input
+        ref={inputRef}
+        type="search"
+        role="searchbox"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={handleKeyDown}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        placeholder={placeholder || defaultPlaceholder}
+        aria-label="Search"
+        aria-keyshortcuts="Control+/ Meta+/ /"
+        autoFocus={autoFocus}
+        style={{ outline: "none" }}
+        className={cn(
+          "w-full min-w-0 bg-transparent text-foreground placeholder:text-muted-foreground [outline:none] outline-none border-0 shadow-none ring-0 focus:[outline:none] focus:outline-none focus:ring-0 focus-visible:[outline:none] focus-visible:outline-none focus-visible:ring-0 [appearance:textfield] [&::-webkit-search-cancel-button]:hidden",
+          "text-xs sm:text-sm"
+        )}
+      />
+      {chips}
+    </div>
+  );
+
   if (variant === "hero") {
     return (
       <div
         role="search"
-        className={cn(
-          "w-full p-1 rounded-[28px] border border-line/80 bg-gradient-to-b from-mist/50 to-card/60 backdrop-blur-md shadow-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]",
-          className
-        )}
+        data-active={focused || value.length > 0 ? "true" : undefined}
+        className={cn("finder-plate", className)}
       >
-        {innerField}
+        {heroField}
       </div>
     );
   }
