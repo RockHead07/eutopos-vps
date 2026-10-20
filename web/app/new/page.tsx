@@ -20,6 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Icon } from "@/lib/Icon";
 import { PageHead } from "@/lib/PageHead";
 import { RETRY_DELAYS, shouldRetryUpload, stalledFileIds } from "@/lib/uploadRetry";
+import { lastUploadProtocol, probeFile, watchUploadProtocol } from "@/lib/uploadDiag";
 import { clearSession, fileKey, loadSession, matchUrl, saveSession, type SavedSession } from "@/lib/uploadSession";
 import "@uppy/core/css/style.min.css";
 import "@uppy/dashboard/css/style.min.css";
@@ -28,11 +29,26 @@ const CHUNK = 8 * 1024 * 1024; // 8 MiB (kelipatan 256 KiB), toleran terhadap ko
 
 type RetryHandler = (msg: string | null) => void;
 
+// Setelah galat tanpa respons: bila berkas video tidak lagi terbaca di offset terakhir, itu penyebabnya (bukan jaringan).
+async function explainUnreadable(uppy: Uppy, say: RetryHandler) {
+  for (const f of uppy.getFiles()) {
+    if (!f.progress.uploadStarted || f.progress.uploadComplete || !(f.data instanceof Blob)) continue;
+    const at = f.progress.bytesUploaded || 0;
+    const bad = await probeFile(f.data, at);
+    // Bila sudah ada kemajuan lagi, unggahan pulih sendiri: jangan menimpa status dengan kabar basi.
+    if (bad && (uppy.getFile(f.id)?.progress.bytesUploaded || 0) === at) {
+      say(`Cannot read the video file (${bad}). Copy it to the Downloads folder, select it again and press Start upload.`);
+      return;
+    }
+  }
+}
+
 function createUppy(onRetryRef: React.RefObject<RetryHandler | null>) {
-  return new Uppy({
+  const uppy = new Uppy({
     autoProceed: false,
     restrictions: { allowedFileTypes: ["video/*"], maxNumberOfFiles: 4, maxFileSize: 2 * 1024 ** 3 },
-  }).use(Tus, {
+  });
+  uppy.use(Tus, {
     endpoint: "/files/",
     chunkSize: CHUNK,
     retryDelays: RETRY_DELAYS,
@@ -49,14 +65,19 @@ function createUppy(onRetryRef: React.RefObject<RetryHandler | null>) {
       const cause = err.originalResponse
         ? `server answered ${status}`
         : "no response from the server";
+      const proto = lastUploadProtocol();
       onRetryRef.current?.(
         typeof navigator !== "undefined" && !navigator.onLine
           ? "Offline, waiting for connection"
-          : `Connection lost, retrying (attempt ${retryAttempt + 1}), ${cause}`,
+          : `Connection lost, retrying (attempt ${retryAttempt + 1}), ${cause}${proto ? `, ${proto}` : ""}`,
       );
+      if (!err.originalResponse) {
+        explainUnreadable(uppy, (msg) => onRetryRef.current?.(msg)).catch(() => {});
+      }
       return true;
     },
   });
+  return uppy;
 }
 
 type Role = "peta" | "uji";
@@ -95,6 +116,8 @@ export default function NewSessionPage() {
   const sessionRef = useRef<SavedSession | null>(null);
   const offlinePaused = useRef(false);
   const wakeLockRef = useRef<any>(null);
+
+  useEffect(() => watchUploadProtocol(), []);
 
   useEffect(() => {
     const saved = loadSession(Date.now());
