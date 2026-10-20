@@ -27,7 +27,6 @@ export function SearchBar({
 }: SearchBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isMac, setIsMac] = useState(false);
-  const [focused, setFocused] = useState(false);
 
   useEffect(() => {
     setIsMac(/(Mac|iPhone|iPod|iPad)/i.test(navigator.userAgent || navigator.platform || ""));
@@ -134,7 +133,9 @@ export function SearchBar({
 
   const heroField = (
     <div className="finder-well">
-      <span className="finder-glyph" aria-hidden="true" />
+      <span className="shrink-0 flex items-center text-muted-foreground">
+        <Icon name="search" />
+      </span>
       <input
         ref={inputRef}
         type="search"
@@ -142,8 +143,6 @@ export function SearchBar({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
         placeholder={placeholder || defaultPlaceholder}
         aria-label="Search"
         aria-keyshortcuts="Control+/ Meta+/ /"
@@ -160,11 +159,7 @@ export function SearchBar({
 
   if (variant === "hero") {
     return (
-      <div
-        role="search"
-        data-active={focused || value.length > 0 ? "true" : undefined}
-        className={cn("finder-plate", className)}
-      >
+      <div role="search" className={cn("finder-plate", className)}>
         {heroField}
       </div>
     );
