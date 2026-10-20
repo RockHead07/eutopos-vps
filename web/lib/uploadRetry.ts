@@ -1,5 +1,17 @@
 /** Aturan ulang dan pengawas unggahan tus (halaman New map session). Fungsi murni supaya bisa diuji tanpa browser. */
 
+/** Total jeda: 69 detik + 29 × 60 detik = 1.809 detik (30 menit 9 detik). */
+export const RETRY_DELAYS = [
+  0,
+  1000,
+  3000,
+  5000,
+  10000,
+  20000,
+  30000,
+  ...Array.from({ length: 29 }, () => 60000),
+];
+
 /** Tanpa kemajuan byte selama ini, unggahan dianggap menggantung dan dipicu ulang. Lebih panjang dari jeda ulang terbesar (60 s). */
 export const STALL_MS = 90_000;
 

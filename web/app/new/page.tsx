@@ -19,7 +19,8 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Icon } from "@/lib/Icon";
 import { PageHead } from "@/lib/PageHead";
-import { shouldRetryUpload, stalledFileIds } from "@/lib/uploadRetry";
+import { RETRY_DELAYS, shouldRetryUpload, stalledFileIds } from "@/lib/uploadRetry";
+import { clearSession, fileKey, loadSession, matchUrl, saveSession, type SavedSession } from "@/lib/uploadSession";
 import "@uppy/core/css/style.min.css";
 import "@uppy/dashboard/css/style.min.css";
 
@@ -34,17 +35,25 @@ function createUppy(onRetryRef: React.RefObject<RetryHandler | null>) {
   }).use(Tus, {
     endpoint: "/files/",
     chunkSize: CHUNK,
-    retryDelays: [0, 1000, 3000, 5000, 10000, 20000, 30000, 60000, 60000, 60000],
+    retryDelays: RETRY_DELAYS,
     allowedMetaFields: ["job_id", "name"], // dicocokkan hook pre-create dengan video terdaftar
     // Unggahan lama terikat ke pekerjaan lamanya: jangan dilanjutkan ke pekerjaan baru.
     storeFingerprintForResuming: false,
     // Aturan sendiri (lib/uploadRetry.ts), bukan next(err): aturan bawaan tidak mengulang 429 dan berhenti saat offline.
     onShouldRetry(err, retryAttempt) {
-      if (!shouldRetryUpload(err.originalResponse?.getStatus())) {
+      const status = err.originalResponse?.getStatus();
+      if (!shouldRetryUpload(status)) {
         onRetryRef.current?.(null);
         return false;
       }
-      onRetryRef.current?.(`Connection lost, retrying (attempt ${retryAttempt + 1})`);
+      const cause = err.originalResponse
+        ? `server answered ${status}`
+        : "no response from the server";
+      onRetryRef.current?.(
+        typeof navigator !== "undefined" && !navigator.onLine
+          ? "Offline, waiting for connection"
+          : `Connection lost, retrying (attempt ${retryAttempt + 1}), ${cause}`,
+      );
       return true;
     },
   });
@@ -53,9 +62,24 @@ function createUppy(onRetryRef: React.RefObject<RetryHandler | null>) {
 type Role = "peta" | "uji";
 type Picked = { id: string; name: string; size: number };
 
+function fileIdentity(file: { name?: string; size?: number | null; data?: unknown }) {
+  if (typeof file.name !== "string" || typeof file.size !== "number") return null;
+  const data = file.data;
+  const lastModified =
+    data && typeof data === "object" && "lastModified" in data
+      ? (data as { lastModified?: unknown }).lastModified
+      : undefined;
+  return {
+    name: file.name,
+    size: file.size,
+    lastModified: typeof lastModified === "number" ? lastModified : undefined,
+  };
+}
+
 export default function NewSessionPage() {
   const router = useRouter();
   const [retryStatus, setRetryStatus] = useState<string | null>(null);
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   const onRetryRef = useRef<RetryHandler | null>(null);
   onRetryRef.current = setRetryStatus;
   const [uppy] = useState(() => createUppy(onRetryRef));
@@ -68,7 +92,54 @@ export default function NewSessionPage() {
   // Pekerjaan dari klik sebelumnya. Isian sama = ulangi video yang gagal ke pekerjaan yang sama,
   // supaya pekerjaan tidak tertinggal setengah terunggah sampai kedaluwarsa 24 jam.
   const last = useRef<{ id: number; key: string } | null>(null);
+  const sessionRef = useRef<SavedSession | null>(null);
+  const offlinePaused = useRef(false);
   const wakeLockRef = useRef<any>(null);
+
+  useEffect(() => {
+    const saved = loadSession(Date.now());
+    if (!saved) return;
+
+    let cancelled = false;
+    api
+      .job(saved.jobId)
+      .then((job) => {
+        if (cancelled) return;
+        if (job.status !== "uploading" || !job.videos.some((video) => !video.uploaded)) {
+          clearSession();
+          return;
+        }
+
+        sessionRef.current = saved;
+        last.current = { id: saved.jobId, key: saved.key };
+        uppy.setMeta({ job_id: String(saved.jobId) });
+        setAreaId(saved.areaId);
+        setAreaName(saved.areaName);
+
+        const progressKnown =
+          job.videos.length > 0 &&
+          job.videos.every(
+            (video) =>
+              typeof video.size === "number" &&
+              Number.isFinite(video.size) &&
+              typeof video.received === "number" &&
+              Number.isFinite(video.received),
+          );
+        const progress = progressKnown
+          ? `: ${mb(job.videos.reduce((sum, video) => sum + (video.received as number), 0))} of ${mb(job.videos.reduce((sum, video) => sum + (video.size as number), 0))} received`
+          : "";
+        setSessionNotice(
+          `Unfinished upload found${progress}. Select the same video file again and press Start upload to continue.`,
+        );
+      })
+      .catch(() => {
+        if (!cancelled) clearSession();
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [uppy]);
 
   // Wake lock dan beforeunload saat unggahan berjalan
   useEffect(() => {
@@ -116,6 +187,37 @@ export default function NewSessionPage() {
     };
   }, [busy]);
 
+  useEffect(() => {
+    if (!busy) return;
+
+    const handleOffline = () => {
+      if (offlinePaused.current) return;
+      offlinePaused.current = true;
+      uppy.pauseAll();
+      setRetryStatus("Offline, waiting for connection");
+    };
+    const handleOnline = () => {
+      if (!offlinePaused.current) return;
+      offlinePaused.current = false;
+      uppy.resumeAll();
+      setRetryStatus(null);
+    };
+
+    window.addEventListener("offline", handleOffline);
+    window.addEventListener("online", handleOnline);
+    uppy.on("is-offline", handleOffline);
+    uppy.on("back-online", handleOnline);
+    if (!navigator.onLine) handleOffline();
+
+    return () => {
+      offlinePaused.current = false;
+      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("online", handleOnline);
+      uppy.off("is-offline", handleOffline);
+      uppy.off("back-online", handleOnline);
+    };
+  }, [uppy, busy]);
+
   // Pengawas: permintaan yang menggantung (respons hilang di jalan) tidak pernah menjadi galat, jadi tus tidak
   // mengulangnya. Tanpa kemajuan byte selama STALL_MS, jeda lalu lanjutkan berkas itu: tus membatalkan
   // permintaan, bertanya offset ke server (HEAD), dan meneruskan dari sana.
@@ -144,13 +246,20 @@ export default function NewSessionPage() {
   }, [uppy, busy]);
 
   useEffect(() => {
-    const clearRetry = () => setRetryStatus(null);
+    const clearRetry = () =>
+      setRetryStatus((current) =>
+        current === "Offline, waiting for connection" &&
+        typeof navigator !== "undefined" &&
+        !navigator.onLine
+          ? current
+          : null,
+      );
     uppy.on("upload-progress", clearRetry);
     uppy.on("upload-success", clearRetry);
     uppy.on("complete", clearRetry);
     uppy.on("error", clearRetry);
     const onCancel = () => {
-      clearRetry();
+      setRetryStatus(null);
       setBusy(false);
     };
     uppy.on("cancel-all", onCancel);
@@ -164,12 +273,57 @@ export default function NewSessionPage() {
   }, [uppy]);
 
   useEffect(() => {
+    const saveUploadUrl = (file: ReturnType<typeof uppy.getFile> | undefined) => {
+      const session = sessionRef.current;
+      const currentFile = file && uppy.getFile(file.id);
+      const identity = currentFile && fileIdentity(currentFile);
+      const uploadUrl = currentFile?.tus?.uploadUrl;
+      if (!session || !identity || typeof uploadUrl !== "string" || !uploadUrl) return;
+      if (!session.videos.some((video) => video.name === identity.name && video.size === identity.size)) {
+        return;
+      }
+
+      const key = fileKey(identity);
+      if (session.urls[key] === uploadUrl) return;
+      const updated = {
+        ...session,
+        urls: { ...session.urls, [key]: uploadUrl },
+        savedAt: Date.now(),
+      };
+      sessionRef.current = updated;
+      saveSession(updated);
+    };
+
+    uppy.on("upload-progress", saveUploadUrl);
+    return () => {
+      uppy.off("upload-progress", saveUploadUrl);
+    };
+  }, [uppy]);
+
+  useEffect(() => {
     const sync = () =>
       setFiles(uppy.getFiles().map((f) => ({ id: f.id, name: f.name ?? "", size: f.size ?? 0 })));
+    const restoreFile = (file: ReturnType<typeof uppy.getFile>) => {
+      const session = sessionRef.current;
+      const identity = fileIdentity(file);
+      if (!session || !identity) return;
+
+      const video = session.videos.find((item) => item.name === identity.name && item.size === identity.size);
+      if (video && (video.role === "peta" || video.role === "uji")) {
+        setRoles((current) => ({ ...current, [file.id]: video.role as Role }));
+      }
+
+      const uploadUrl = matchUrl(session, identity);
+      if (uploadUrl) {
+        uppy.setFileState(file.id, { tus: { ...file.tus, uploadUrl } });
+      }
+    };
     uppy.on("file-added", sync);
+    uppy.on("file-added", restoreFile);
     uppy.on("file-removed", sync);
     return () => {
       uppy.off("file-added", sync);
+      uppy.off("file-added", restoreFile);
       uppy.off("file-removed", sync);
     };
   }, [uppy]);
@@ -203,6 +357,24 @@ export default function NewSessionPage() {
       if (last.current?.key !== key) {
         const job = await api.createJob({ area_id: area, area_name: name, videos });
         last.current = { id: job.id, key };
+        clearSession();
+        for (const file of uppy.getFiles()) {
+          if (file.tus?.uploadUrl) {
+            uppy.setFileState(file.id, { tus: { ...file.tus, uploadUrl: undefined } });
+          }
+        }
+        const session: SavedSession = {
+          jobId: job.id,
+          key,
+          areaId: area,
+          areaName: name,
+          videos,
+          urls: {},
+          savedAt: Date.now(),
+        };
+        sessionRef.current = session;
+        saveSession(session);
+        setSessionNotice(null);
         uppy.setMeta({ job_id: String(job.id) });
         uppy.resetProgress(); // pekerjaan baru butuh semua video, termasuk yang sudah terunggah
       }
@@ -218,6 +390,8 @@ export default function NewSessionPage() {
             "to retry. If your login session expired, reload the page (the upload starts over).",
         );
       }
+      clearSession();
+      sessionRef.current = null;
       router.push(`/job/?id=${job.id}`);
     } catch (e) {
       setError((e as Error).message);
@@ -257,6 +431,7 @@ export default function NewSessionPage() {
       </Panel>
       <Panel>
         <h2>Videos</h2>
+        {sessionNotice && <p className="muted" role="status">{sessionNotice}</p>}
         <Dashboard uppy={uppy} hideUploadButton proudlyDisplayPoweredByUppy={false} height={300} width="100%" />
         {files.length > 0 && (
           <Table>
