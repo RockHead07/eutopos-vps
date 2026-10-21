@@ -36,7 +36,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlmodel import Session
 
-from server import active_map, maps_api, navgraph, uploads
+from server import active_map, area_api, maps_api, navgraph, uploads
 from server.db import active_version, engine_from_env
 from server.localizer import Localizer
 from server.photo import decode_upright, exif_camera, pinhole
@@ -75,6 +75,7 @@ app = FastAPI(title="eutopos-vps", lifespan=lifespan)
 app.include_router(uploads.router)
 app.include_router(maps_api.router)
 app.include_router(navgraph.router)
+app.include_router(area_api.router)
 
 
 class Pose(BaseModel):

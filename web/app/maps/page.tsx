@@ -199,6 +199,7 @@ export default function MapsPage() {
         <Panel>
           <span className="stat-label">Serving area</span>
           <span className="stat-value">{s ? (s.area_id ?? "none") : <span className="skeleton row" />}</span>
+          {s?.area_id && <Link href={`/area/?id=${encodeURIComponent(s.area_id)}`}>Edit rooms and routes</Link>}
         </Panel>
         <Panel>
           <span className="stat-label">Active version</span>

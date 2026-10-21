@@ -65,6 +65,53 @@ class MapJob(SQLModel, table=True):
     finished_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
 
 
+class Room(SQLModel, table=True):
+    """Ruangan yang ditaruh staf di dashboard, posisi di kerangka gedung G (spek 2026-10-21 5b)."""
+
+    __table_args__ = (UniqueConstraint("area_id", "name"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    area_id: str = Field(foreign_key="area.id", index=True)
+    name: str
+    x: float
+    y: float
+    created_by: str
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC), sa_type=DateTime(timezone=True)
+    )
+
+
+class RouteEdit(SQLModel, table=True):
+    """Koreksi graf rute dengan koordinat G, supaya bertahan saat graf dasar dibuat ulang."""
+
+    __tablename__ = "route_edit"
+
+    id: int | None = Field(default=None, primary_key=True)
+    area_id: str = Field(foreign_key="area.id", index=True)
+    kind: str  # add_edge, remove_edge, move_node
+    ax: float
+    ay: float
+    bx: float
+    by: float
+    created_by: str
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC), sa_type=DateTime(timezone=True)
+    )
+
+
+class PublishedGraph(SQLModel, table=True):
+    """navgraph.json terbit per area; /navgraph membacanya lebih dulu daripada berkas di /maps."""
+
+    __tablename__ = "published_graph"
+
+    area_id: str = Field(foreign_key="area.id", primary_key=True)
+    graph: dict = Field(sa_type=JSON)
+    published_by: str
+    published_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC), sa_type=DateTime(timezone=True)
+    )
+
+
 def engine_from_env():
     return create_engine(os.environ["DATABASE_URL"])
 
