@@ -98,7 +98,7 @@ export function DeleteConsentDialog({
             onOpenChange(false);
           }
         }}
-        className="max-w-md"
+        className="max-w-[calc(100vw-2rem)] sm:max-w-md"
       >
         <AlertDialogHeader>
           <AlertDialogTitle className="text-left font-semibold text-foreground">
@@ -145,7 +145,7 @@ export function DeleteConsentDialog({
             />
             <label
               htmlFor="delete-consent-checkbox"
-              className="text-sm font-medium leading-none cursor-pointer peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-foreground"
+              className="flex min-h-11 items-center text-sm font-medium leading-none cursor-pointer peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-foreground"
             >
               I understand this cannot be undone
             </label>

@@ -269,15 +269,15 @@ export default function MapsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-16"><span className="sr-only">Preview</span></TableHead>
+                    <TableHead className="w-16 max-sm:hidden"><span className="sr-only">Preview</span></TableHead>
                     <SortableHead column="area_id" label="Area" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
                     <SortableHead column="version" label="Version" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
                     <SortableHead column="status" label="Status" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
-                    <SortableHead column="job_id" label="Job" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
-                    <SortableHead column="published_by" label="Published by" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
-                    <SortableHead column="recorded_at" label="Recorded" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
-                    <SortableHead column="created_at" label="Created" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
-                    <TableHead className="text-left sticky right-12 bg-card border-l border-line/70 z-20">Action</TableHead>
+                    <SortableHead column="job_id" label="Job" activeKey={sortKey} direction={sortDir} onSort={handleSort} className="max-[959px]:hidden" />
+                    <SortableHead column="published_by" label="Published by" activeKey={sortKey} direction={sortDir} onSort={handleSort} className="max-[959px]:hidden" />
+                    <SortableHead column="recorded_at" label="Recorded" activeKey={sortKey} direction={sortDir} onSort={handleSort} className="max-[959px]:hidden" />
+                    <SortableHead column="created_at" label="Created" activeKey={sortKey} direction={sortDir} onSort={handleSort} className="max-[959px]:hidden" />
+                    <TableHead className="text-left sticky right-12 bg-card border-l border-line/70 z-20 max-sm:hidden">Action</TableHead>
                     <TableHead className="w-12 min-w-12 text-right sticky right-0 bg-card z-20"><span className="sr-only">Actions</span></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -300,7 +300,7 @@ export default function MapsPage() {
 
                     return (
                       <TableRow key={v.id} className="group">
-                        <TableCell className="w-16 p-2">
+                        <TableCell className="w-16 p-2 max-sm:hidden">
                           <Thumbnail
                             jobId={v.job_id}
                             hasPreview={sourceJob?.has_preview}
@@ -308,30 +308,30 @@ export default function MapsPage() {
                             onClick={() => setSelectedVersion(v)}
                           />
                         </TableCell>
-                        <TableCell className="text-left">{v.area_id}</TableCell>
+                        <TableCell className="text-left max-sm:whitespace-normal max-sm:break-words">{v.area_id}</TableCell>
                         <TableCell className="text-left">{v.version}</TableCell>
                         <TableCell className="text-left">
                           <VersionBadge status={effectiveStatus} />
                         </TableCell>
-                        <TableCell className="text-left">
+                        <TableCell className="text-left max-[959px]:hidden">
                           {v.job_id ? <Link href={`/job/?id=${v.job_id}`}>{v.job_id}</Link> : "-"}
                         </TableCell>
-                        <TableCell className="text-left text-muted-foreground">
+                        <TableCell className="text-left text-muted-foreground max-[959px]:hidden">
                           {v.published_by ?? "-"}
                         </TableCell>
                         <TableCell
-                          className="text-left text-muted-foreground whitespace-nowrap"
+                          className="text-left text-muted-foreground whitespace-nowrap max-[959px]:hidden"
                           title={recordedAt || undefined}
                         >
                           {formatDate(recordedAt)}
                         </TableCell>
                         <TableCell
-                          className="text-left text-muted-foreground whitespace-nowrap"
+                          className="text-left text-muted-foreground whitespace-nowrap max-[959px]:hidden"
                           title={v.created_at || undefined}
                         >
                           {formatDate(v.created_at)}
                         </TableCell>
-                        <TableCell className="text-left sticky right-12 bg-card group-hover:bg-muted/50 border-l border-line/70 z-10">
+                        <TableCell className="text-left sticky right-12 bg-card group-hover:bg-muted/50 border-l border-line/70 z-10 max-sm:hidden">
                           {v.status !== "published" ? (
                             <Button
                               variant="outline"

@@ -214,9 +214,10 @@ export function DateRangePicker({ value, onChange, className }: DateRangePickerP
         <Button
           variant="outline"
           className={cn(
-            "h-9 rounded-lg border-line bg-card px-3 text-xs text-foreground font-normal hover:bg-muted/50 flex items-center justify-between gap-2 shadow-xs cursor-pointer",
+            "h-9 rounded-lg border-line bg-card px-3 text-xs max-[959px]:text-base text-foreground font-normal hover:bg-muted/50 flex items-center justify-between gap-2 shadow-xs cursor-pointer",
             className
           )}
+          title={label}
           aria-label="Select date range"
         >
           <span className="truncate">{label}</span>
@@ -226,7 +227,7 @@ export function DateRangePicker({ value, onChange, className }: DateRangePickerP
       <PopoverContent
         align="end"
         collisionPadding={16}
-        className="w-auto p-3 bg-card border-line rounded-2xl shadow-lg max-w-[calc(100vw-2rem)]"
+        className="mobile-popover w-auto p-3 bg-card border-line rounded-2xl shadow-lg"
       >
         <div
           onClickCapture={handleClickCapture}
