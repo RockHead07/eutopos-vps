@@ -207,16 +207,16 @@ function JobsContent() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-16"><span className="sr-only">Preview</span></TableHead>
+                    <TableHead className="w-16 max-sm:hidden"><span className="sr-only">Preview</span></TableHead>
                     <SortableHead column="id" label="#" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
                     <SortableHead column="area_id" label="Area" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
                     <SortableHead column="status" label="Status" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
-                    <TableHead className="text-left">Stage</TableHead>
-                    <SortableHead column="created_by" label="By" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
-                    <SortableHead column="recorded_at" label="Recorded" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
-                    <SortableHead column="created_at" label="Uploaded" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
-                    <TableHead className="text-left">Duration</TableHead>
-                    <TableHead className="text-left sticky right-12 bg-card border-l border-line/70 z-20">Action</TableHead>
+                    <TableHead className="text-left max-[959px]:hidden">Stage</TableHead>
+                    <SortableHead column="created_by" label="By" activeKey={sortKey} direction={sortDir} onSort={handleSort} className="max-[959px]:hidden" />
+                    <SortableHead column="recorded_at" label="Recorded" activeKey={sortKey} direction={sortDir} onSort={handleSort} className="max-[959px]:hidden" />
+                    <SortableHead column="created_at" label="Uploaded" activeKey={sortKey} direction={sortDir} onSort={handleSort} className="max-[959px]:hidden" />
+                    <TableHead className="text-left max-[959px]:hidden">Duration</TableHead>
+                    <TableHead className="text-left sticky right-12 bg-card border-l border-line/70 z-20 max-sm:hidden">Action</TableHead>
                     <TableHead className="w-12 min-w-12 text-right sticky right-0 bg-card z-20"><span className="sr-only">Actions</span></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -235,7 +235,7 @@ function JobsContent() {
 
                     return (
                       <TableRow key={j.id} className="group">
-                        <TableCell className="w-16 p-2">
+                        <TableCell className="w-16 p-2 max-sm:hidden">
                           <Thumbnail
                             jobId={j.id}
                             hasPreview={j.has_preview}
@@ -244,14 +244,14 @@ function JobsContent() {
                           />
                         </TableCell>
                         <TableCell className="text-left"><Link href={`/job/?id=${j.id}`}>{j.id}</Link></TableCell>
-                        <TableCell className="text-left">{j.area_id}</TableCell>
+                        <TableCell className="text-left max-sm:whitespace-normal max-sm:break-words">{j.area_id}</TableCell>
                         <TableCell className="text-left">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <StatusBadge status={j.status} />
                             {j.stalled && <StatusBadge status="stalled">stalled</StatusBadge>}
                           </div>
                         </TableCell>
-                        <TableCell className="text-left text-muted-foreground">
+                        <TableCell className="text-left text-muted-foreground max-[959px]:hidden">
                           {j.status === "running" ? (
                             <span className="inline-flex items-center gap-1.5 rounded-full bg-forest/15 px-2 py-0.5 text-[11px] font-medium text-forest whitespace-nowrap">
                               <span className="size-1.5 rounded-full bg-forest animate-pulse" />
@@ -267,20 +267,20 @@ function JobsContent() {
                             <span className="text-muted-foreground">{j.stage ?? "-"}</span>
                           )}
                         </TableCell>
-                        <TableCell className="text-left text-muted-foreground">{j.created_by}</TableCell>
-                        <TableCell className="text-left text-muted-foreground whitespace-nowrap" title={recordedAt || undefined}>
+                        <TableCell className="text-left text-muted-foreground max-[959px]:hidden">{j.created_by}</TableCell>
+                        <TableCell className="text-left text-muted-foreground whitespace-nowrap max-[959px]:hidden" title={recordedAt || undefined}>
                           {formatDate(recordedAt)}
                         </TableCell>
-                        <TableCell className="text-left text-muted-foreground whitespace-nowrap" title={j.created_at || undefined}>
+                        <TableCell className="text-left text-muted-foreground whitespace-nowrap max-[959px]:hidden" title={j.created_at || undefined}>
                           {formatDate(j.created_at)}
                         </TableCell>
-                        <TableCell className="text-left text-muted-foreground whitespace-nowrap font-mono text-xs">
+                        <TableCell className="text-left text-muted-foreground whitespace-nowrap font-mono text-xs max-[959px]:hidden">
                           {formatDuration(j.started_at, j.finished_at, { isRunning: j.status === "running" })}
                           {j.status === "running" && (
                             <span className="ml-1 inline-block size-1.5 rounded-full bg-forest animate-pulse" />
                           )}
                         </TableCell>
-                        <TableCell className="text-left sticky right-12 bg-card group-hover:bg-muted/50 border-l border-line/70 z-10">
+                        <TableCell className="text-left sticky right-12 bg-card group-hover:bg-muted/50 border-l border-line/70 z-10 max-sm:hidden">
                           <Button asChild variant="outline" size="sm" className="rounded-full gap-1.5 font-medium text-xs whitespace-nowrap">
                             <Link href={`/job/?id=${j.id}`}>
                               <Icon name={j.status === "done" ? "view-3d" : "arrow-up-right"} />

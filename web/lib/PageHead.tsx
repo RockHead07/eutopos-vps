@@ -93,7 +93,7 @@ function ServiceChips() {
         <PopoverContent
           align="end"
           sideOffset={8}
-          className="w-[calc(100vw-2rem)] sm:w-[360px] max-w-[380px] p-0 shadow-lg border border-border bg-card overflow-hidden"
+          className="mobile-popover sm:w-[360px] p-0 shadow-lg border border-border bg-card"
         >
           <SystemDiagnosticsPopover isOpen={open} onClose={() => setOpen(false)} />
         </PopoverContent>

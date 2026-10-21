@@ -84,7 +84,7 @@ export function SearchBar({
 
   const chips = (
     <div
-      className="hidden sm:inline-flex items-center gap-1 shrink-0 select-none text-[11px] font-medium text-muted-foreground"
+      className="hidden min-[960px]:inline-flex items-center gap-1 shrink-0 select-none text-[11px] font-medium text-muted-foreground"
       aria-hidden="true"
     >
       <kbd className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded bg-muted/60 border border-line text-[11px] font-sans leading-none shadow-xs">
@@ -103,7 +103,7 @@ export function SearchBar({
         "relative flex items-center w-full bg-card border transition-colors focus-within:border-forest focus-within:ring-1 focus-within:ring-forest",
         variant === "hero"
           ? "h-12 rounded-2xl border-line/70 px-3.5 gap-2.5 shadow-[inset_0_1px_2px_rgba(0,0,0,0.03)]"
-          : "h-9 rounded-lg border-line px-3 gap-2 shadow-[inset_0_1px_2px_rgba(0,0,0,0.03)]",
+          : "h-9 max-[959px]:h-11 rounded-lg border-line px-3 gap-2 shadow-[inset_0_1px_2px_rgba(0,0,0,0.03)]",
         variant === "compact" && className
       )}
     >
@@ -124,7 +124,7 @@ export function SearchBar({
         style={{ outline: "none" }}
         className={cn(
           "w-full min-w-0 bg-transparent text-foreground placeholder:text-muted-foreground [outline:none] outline-none border-0 shadow-none ring-0 focus:[outline:none] focus:outline-none focus:ring-0 focus-visible:[outline:none] focus-visible:outline-none focus-visible:ring-0 [appearance:textfield] [&::-webkit-search-cancel-button]:hidden",
-          variant === "hero" ? "text-xs sm:text-sm" : "text-xs"
+          "text-xs max-[959px]:text-base"
         )}
       />
       {chips}
@@ -150,7 +150,7 @@ export function SearchBar({
         style={{ outline: "none" }}
         className={cn(
           "w-full min-w-0 bg-transparent text-foreground placeholder:text-muted-foreground [outline:none] outline-none border-0 shadow-none ring-0 focus:[outline:none] focus:outline-none focus:ring-0 focus-visible:[outline:none] focus-visible:outline-none focus-visible:ring-0 [appearance:textfield] [&::-webkit-search-cancel-button]:hidden",
-          "text-xs sm:text-sm"
+          "text-xs sm:text-sm max-[959px]:!text-base"
         )}
       />
       {chips}

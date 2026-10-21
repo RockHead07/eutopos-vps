@@ -17,3 +17,22 @@ export function Nav() {
     </nav>
   );
 }
+
+export function MobileNav() {
+  const path = usePathname();
+  return (
+    <nav className="mobile-nav" aria-label="Main">
+      {LINKS.map((l) => (
+        <Link
+          key={l.href}
+          href={l.href}
+          className="mobile-nav-link"
+          aria-current={l.match(path) ? "page" : undefined}
+        >
+          <Icon name={l.icon} />
+          <span>{l.label}</span>
+        </Link>
+      ))}
+    </nav>
+  );
+}

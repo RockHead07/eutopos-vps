@@ -59,15 +59,15 @@ function Calendar({
           defaultClassNames.nav
         ),
         button_previous: cn(
-          "size-8 p-0 rounded-full hover:bg-mist text-foreground inline-flex items-center justify-center cursor-pointer select-none disabled:opacity-30",
+          "size-8 max-[959px]:size-11 p-0 rounded-full hover:bg-mist text-foreground inline-flex items-center justify-center cursor-pointer select-none disabled:opacity-30",
           defaultClassNames.button_previous
         ),
         button_next: cn(
-          "size-8 p-0 rounded-full hover:bg-mist text-foreground inline-flex items-center justify-center cursor-pointer select-none disabled:opacity-30",
+          "size-8 max-[959px]:size-11 p-0 rounded-full hover:bg-mist text-foreground inline-flex items-center justify-center cursor-pointer select-none disabled:opacity-30",
           defaultClassNames.button_next
         ),
         month_caption: cn(
-          "flex h-8 w-full items-center justify-start px-1 text-base font-semibold text-foreground select-none",
+          "flex h-8 max-[959px]:h-11 w-full items-center justify-start px-1 text-base font-semibold text-foreground select-none",
           defaultClassNames.month_caption
         ),
         dropdowns: cn(
@@ -89,7 +89,7 @@ function Calendar({
         month_grid: cn("w-full border-collapse touch-none select-none", defaultClassNames.month_grid),
         weekdays: cn("flex w-full", defaultClassNames.weekdays),
         weekday: cn(
-          "size-10 flex items-center justify-center text-xs font-medium text-muted-foreground select-none",
+          "size-10 max-[959px]:size-11 flex items-center justify-center text-xs font-medium text-muted-foreground select-none",
           defaultClassNames.weekday
         ),
         week: cn("flex w-full", defaultClassNames.week),
@@ -102,7 +102,7 @@ function Calendar({
           defaultClassNames.week_number
         ),
         day: cn(
-          "group/day relative size-10 p-0 text-center select-none touch-none",
+          "group/day relative size-10 max-[959px]:size-11 p-0 text-center select-none touch-none",
           defaultClassNames.day
         ),
         range_start: cn("p-0", defaultClassNames.range_start),

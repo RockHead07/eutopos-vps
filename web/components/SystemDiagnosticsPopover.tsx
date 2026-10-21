@@ -228,6 +228,7 @@ export function SystemDiagnosticsPopover({
         {onClose && (
           <button
             type="button"
+            data-slot="diagnostics-close"
             onClick={onClose}
             className="rounded p-1 text-muted-foreground hover:bg-canvas hover:text-foreground transition-colors cursor-pointer"
             aria-label="Close diagnostics"
