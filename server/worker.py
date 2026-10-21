@@ -32,6 +32,7 @@ from server.pipeline import (
 )
 from server.previews import make_preview
 from server.system import HostDisk, get_host_disk_path, read_host_disk
+from server.thumbs import make_thumbs
 from server.video_meta import recorded_at
 
 DATA, MAPS = Path("/data"), Path("/maps")  # jalur di dalam container (deploy/compose.yaml)
@@ -128,6 +129,25 @@ def backfill_previews(session: Session, data: Path, maps: Path) -> tuple[int, in
     return made, skipped
 
 
+def backfill_thumbs(session: Session, data: Path, maps: Path) -> tuple[int, int]:
+    """Foto kecil frame scan untuk job selesai yang belum punya (dari frame yang masih tersimpan).
+
+    Hasil: (job dibuatkan, job dilewati karena frame-nya sudah tidak ada).
+    """
+    made = skipped = 0
+    root = maps.resolve()
+    for job in session.exec(select(MapJob).where(MapJob.status == "done")).all():
+        map_dir = (maps / job.area_id / f"job-{job.id}").resolve()
+        out = map_dir / "thumbs"
+        if map_dir.parent.parent != root or not map_dir.is_dir() or out.is_dir():
+            continue
+        if make_thumbs(data / "jobs" / str(job.id) / "dataset" / "mapping", out):
+            made += 1
+        else:
+            skipped += 1
+    return made, skipped
+
+
 def process(
     session: Session,
     job: MapJob,
@@ -168,6 +188,7 @@ def process(
         jobs.set_stage(session, job, "inspect")
         runner(inspect_command(map_dir), log)
         make_preview(dataset / "mapping", job.videos, map_dir / "preview.jpg")
+        make_thumbs(dataset / "mapping", map_dir / "thumbs")
 
         jobs.set_stage(session, job, "register")
         if missing := missing_files(map_dir, MAX_KP, RESIZE, GLOBAL_RESIZE):

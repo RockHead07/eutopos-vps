@@ -8,6 +8,7 @@ Contoh (di dalam container):
         --query /data/inbox/video2.mp4
     python -m server.manage jobs
     python -m server.manage previews    # pratinjau untuk job lama, dari frame yang tersimpan
+    python -m server.manage thumbs      # foto kecil frame scan untuk halaman area (job lama)
     python -m server.manage align --version 7 --align /data/eval/align.json \
         --navgraph /data/eval/navgraph.json   # di container worker (/maps bisa ditulis)
 Setelah menerbitkan versi baru, muat ulang layanan: docker compose restart api
@@ -23,7 +24,7 @@ from server import alignment, jobs, navgraph
 from server.db import MapJob, MapVersion, engine_from_env, publish, register
 from server.map_layout import missing_files
 from server.pipeline import missing_inputs
-from server.worker import DATA, MAPS, backfill_previews
+from server.worker import DATA, MAPS, backfill_previews, backfill_thumbs
 
 
 def main():
@@ -47,6 +48,7 @@ def main():
     sub.add_parser(
         "previews", help="buat pratinjau job selesai yang belum punya, dari frame tersimpan"
     )
+    sub.add_parser("thumbs", help="buat foto kecil frame scan untuk job selesai yang belum punya")
     al = sub.add_parser(
         "align", help="pasang align.json (versi peta) dan/atau navgraph.json (area) terukur"
     )
@@ -96,6 +98,9 @@ def main():
         elif a.cmd == "previews":
             made, skipped = backfill_previews(s, DATA, MAPS)
             print(f"{made} pratinjau dibuat, {skipped} dilewati (frame tidak ditemukan)")
+        elif a.cmd == "thumbs":
+            made, skipped = backfill_thumbs(s, DATA, MAPS)
+            print(f"foto kecil dibuat untuk {made} job, {skipped} dilewati (frame tidak ditemukan)")
         elif a.cmd == "align":
             v = s.get(MapVersion, a.version)
             if v is None:

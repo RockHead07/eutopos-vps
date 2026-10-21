@@ -17,6 +17,7 @@ import csv
 import json
 import math
 import os
+from functools import lru_cache
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
@@ -148,6 +149,32 @@ def main() -> None:
 router = APIRouter()
 
 
+@lru_cache
+def _engine(url: str):
+    from sqlalchemy import create_engine
+
+    return create_engine(url)
+
+
+def _published(area_id: str) -> dict | None:
+    """Graf terbit dari dashboard (tabel published_graph), bila layanan memakai database."""
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        return None
+    from sqlmodel import Session
+
+    from server.db import PublishedGraph
+
+    with Session(_engine(url)) as s:
+        row = s.get(PublishedGraph, area_id)
+    if row is None:
+        return None
+    try:
+        return validate(row.graph)
+    except ValueError as e:
+        raise HTTPException(500, f"published route graph invalid: {e}") from e
+
+
 @router.get("/navgraph")
 def get_navgraph(request: Request) -> dict:
     """Graf navigasi area aktif. Tanpa identitas pengguna, sama seperti /localize."""
@@ -155,6 +182,12 @@ def get_navgraph(request: Request) -> dict:
     area_id = getattr(st, "area_id", None)
     if area_id is None:
         raise HTTPException(503, "no active map")
+    if published := _published(area_id):
+        return {
+            "area_id": area_id,
+            "map_version": getattr(st, "map_version", None),
+            "graph": published,
+        }
     path = graph_path(maps_root(), area_id)
     if not path.exists():
         raise HTTPException(404, f"no navgraph for area {area_id}")

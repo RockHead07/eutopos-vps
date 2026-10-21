@@ -236,6 +236,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {}
     throw new ApiError(detail, r.status, fields);
   }
+  if (r.status === 204) return undefined as T; // DELETE tanpa isi
   return (await r.json()) as T;
 }
 
@@ -246,6 +247,63 @@ export type HealthStatus = {
   map_images: number;
   device: string | null;
   aligned: boolean;
+};
+
+export type XY = [number, number];
+export type NavNode = { id: string; x: number; y: number };
+export type NavGraph = {
+  frame: string;
+  units: string;
+  nodes: NavNode[];
+  edges: [string, string][];
+  targets: { node: string; name: string }[];
+};
+export type Room = { id: number; name: string; x: number; y: number };
+export type EditKind = "add_edge" | "remove_edge" | "move_node";
+export type RouteEdit = { id: number; kind: EditKind; a: XY; b: XY };
+export type AreaGraph = {
+  base: NavGraph;
+  edits: RouteEdit[];
+  rooms: Room[];
+  draft: NavGraph;
+  warnings: string[];
+  unmatched_edits: number[];
+  published_at: string | null;
+};
+export type PlanMeta = {
+  origin_x: number;
+  origin_y: number;
+  res_m: number;
+  width: number;
+  height: number;
+  trajectory: XY[];
+};
+export type RouteResult =
+  | { status: "ok"; points: XY[]; nodes: string[]; length_m: number }
+  | { status: "unreachable" };
+
+const area = (id: string) => `/api/areas/${encodeURIComponent(id)}`;
+export const planImageUrl = (id: string) => `${area(id)}/plan.png`;
+export const photoUrl = (id: string, [x, y]: XY) => `${area(id)}/photo?x=${x}&y=${y}`;
+
+export const areaApi = {
+  graph: (id: string) => call<AreaGraph>(`${area(id)}/graph`),
+  plan: (id: string) => call<PlanMeta>(`${area(id)}/plan`),
+  addRoom: (id: string, room: Omit<Room, "id">) =>
+    call<Room>(`${area(id)}/rooms`, { method: "POST", body: JSON.stringify(room) }),
+  editRoom: (id: string, roomId: number, patch: Partial<Omit<Room, "id">>) =>
+    call<Room>(`${area(id)}/rooms/${roomId}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  deleteRoom: (id: string, roomId: number) => call<void>(`${area(id)}/rooms/${roomId}`, { method: "DELETE" }),
+  addEdit: (id: string, edit: Omit<RouteEdit, "id">) =>
+    call<RouteEdit>(`${area(id)}/edits`, { method: "POST", body: JSON.stringify(edit) }),
+  deleteEdit: (id: string, editId: number) => call<void>(`${area(id)}/edits/${editId}`, { method: "DELETE" }),
+  route: (id: string, from: XY, roomId: number) =>
+    call<RouteResult>(`${area(id)}/route`, { method: "POST", body: JSON.stringify({ from, room_id: roomId }) }),
+  publish: (id: string) =>
+    call<{ published_at: string; warnings: string[] }>(`${area(id)}/publish-graph`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
 };
 
 export const api = {

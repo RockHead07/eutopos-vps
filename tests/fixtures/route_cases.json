@@ -1,0 +1,42 @@
+{
+  "_about": "Kasus aturan rute bersama eutopos-vps (server.routegraph.plan_route) dan eutopos-mobile (NavGraph C#). Sumber: eutopos-vps tests/fixtures/route_cases.json. Jalur terpendek tunggal, tanpa seri.",
+  "routes": [
+    {
+      "name": "L dari samping ruas pertama ke ujung",
+      "graph": {
+        "frame": "building", "units": "m",
+        "nodes": [{"id": "P01", "x": 0, "y": 0}, {"id": "P02", "x": 4, "y": 0}, {"id": "P03", "x": 4, "y": 3}],
+        "edges": [["P01", "P02"], ["P02", "P03"]],
+        "targets": [{"node": "P03", "name": "Ujung"}]
+      },
+      "from": [1, 1], "target": "P03",
+      "expect": {"nodes": ["P02", "P03"], "length_m": 7.0}
+    },
+    {
+      "name": "Pulau tanpa sisi tidak terjangkau",
+      "graph": {
+        "frame": "building", "units": "m",
+        "nodes": [{"id": "P01", "x": 0, "y": 0}, {"id": "P02", "x": 4, "y": 0}, {"id": "P03", "x": 4, "y": 3}, {"id": "P04", "x": 10, "y": 10}],
+        "edges": [["P01", "P02"], ["P02", "P03"]],
+        "targets": [{"node": "P04", "name": "Pulau"}]
+      },
+      "from": [1, 1], "target": "P04",
+      "expect": {"unreachable": true}
+    },
+    {
+      "name": "Persegi panjang memilih sisi yang lebih pendek",
+      "graph": {
+        "frame": "building", "units": "m",
+        "nodes": [{"id": "A", "x": 0, "y": 0}, {"id": "B", "x": 6, "y": 0}, {"id": "C", "x": 6, "y": 4}, {"id": "D", "x": 0, "y": 4}],
+        "edges": [["A", "B"], ["B", "C"], ["A", "D"], ["D", "C"]],
+        "targets": [{"node": "C", "name": "Seberang"}]
+      },
+      "from": [0.5, 0], "target": "C",
+      "expect": {"nodes": ["B", "C"], "length_m": 9.5}
+    }
+  ],
+  "arrivals": [
+    {"user": [0.99, 0], "target": [0, 0], "expect": true},
+    {"user": [1.0, 0], "target": [0, 0], "expect": false}
+  ]
+}

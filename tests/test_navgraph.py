@@ -171,3 +171,28 @@ def test_build_cli_writes_a_valid_file(tmp_path, monkeypatch, capsys):
     written = navgraph.validate(json.loads(out.read_text(encoding="utf-8")))
     assert written["targets"][1]["node"] == "P03"
     assert "P03" in capsys.readouterr().out  # peringatan simpul tidak terhubung
+
+
+def test_navgraph_prefers_the_published_graph(tmp_path, monkeypatch):
+    from sqlmodel import Session, SQLModel, create_engine
+
+    from server.db import Area, PublishedGraph
+
+    url = f"sqlite:///{tmp_path / 'n.db'}"
+    engine = create_engine(url)
+    SQLModel.metadata.create_all(engine)
+    published = broken(["targets"], [{"node": "P01", "name": "Dari dashboard"}])
+    with Session(engine) as s:
+        s.add(Area(id="floor10", name="L10"))
+        s.add(PublishedGraph(area_id="floor10", graph=published, published_by="dev@local"))
+        s.commit()
+    write_graph(tmp_path, "floor10", GOOD)
+    monkeypatch.setenv("DATABASE_URL", url)
+    r = client_for(tmp_path, monkeypatch).get("/navgraph")
+    assert r.status_code == 200 and r.json()["graph"] == published
+
+
+def test_navgraph_falls_back_to_the_file_without_database(tmp_path, monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    write_graph(tmp_path, "floor10", GOOD)
+    assert client_for(tmp_path, monkeypatch).get("/navgraph").json()["graph"] == GOOD
