@@ -101,8 +101,8 @@ export function SearchBar({
       className={cn(
         "relative flex items-center w-full bg-card border transition-colors focus-within:border-forest focus-within:ring-1 focus-within:ring-forest",
         variant === "hero"
-          ? "h-12 rounded-2xl border-line/70 px-3.5 gap-2.5 shadow-[inset_0_1px_2px_rgba(0,0,0,0.03)]"
-          : "h-9 max-[959px]:h-11 rounded-lg border-line px-3 gap-2 shadow-[inset_0_1px_2px_rgba(0,0,0,0.03)]",
+          ? "h-12 rounded-2xl border-line/70 px-3.5 gap-2.5 shadow-[inset_0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[inset_0_1px_2px_var(--finder-shadow-dark)]"
+          : "h-9 max-[959px]:h-11 rounded-lg border-line px-3 gap-2 shadow-[inset_0_1px_2px_rgba(0,0,0,0.03)] dark:shadow-[inset_0_1px_2px_var(--finder-shadow-dark)]",
         variant === "compact" && className
       )}
     >

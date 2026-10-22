@@ -10,13 +10,28 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { api, type Me } from "@/lib/api";
-import { LOCALES, useLocale, useT } from "@/lib/i18n";
+import { LOCALES, useLocale, useT, type TranslationKey } from "@/lib/i18n";
+import { useTheme, type Theme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
-function LanguageToggle({ rounded = false }: { rounded?: boolean }) {
-  const { locale, setLocale } = useLocale();
-  const t = useT();
+interface SegmentedOption<T extends string> {
+  id: T;
+  label: string;
+}
 
+function SegmentedControl<T extends string>({
+  options,
+  value,
+  onChange,
+  ariaLabel,
+  rounded = false,
+}: {
+  options: SegmentedOption<T>[];
+  value: T;
+  onChange: (val: T) => void;
+  ariaLabel: string;
+  rounded?: boolean;
+}) {
   return (
     <div
       className={cn(
@@ -24,19 +39,19 @@ function LanguageToggle({ rounded = false }: { rounded?: boolean }) {
         rounded ? "rounded-full bg-card shadow-xs" : "rounded-md bg-canvas"
       )}
       role="radiogroup"
-      aria-label={t("account.selectLanguage")}
+      aria-label={ariaLabel}
     >
-      {LOCALES.map(({ id, label }) => {
-        const checked = locale === id;
+      {options.map(({ id, label }) => {
+        const checked = value === id;
         return (
           <button
             key={id}
             type="button"
             role="radio"
             aria-checked={checked}
-            onClick={() => setLocale(id)}
+            onClick={() => onChange(id)}
             className={cn(
-              "px-2 text-xs font-medium transition-colors cursor-pointer flex items-center justify-center max-[959px]:min-w-[44px]",
+              "px-2 text-xs font-medium transition-colors cursor-pointer flex items-center justify-center max-[959px]:min-w-[44px] max-[959px]:min-h-[44px]",
               rounded ? "rounded-full py-1 min-h-[28px] min-w-[28px]" : "rounded py-0.5 min-h-[24px] min-w-[28px]",
               checked
                 ? "bg-foreground text-background font-semibold"
@@ -48,6 +63,40 @@ function LanguageToggle({ rounded = false }: { rounded?: boolean }) {
         );
       })}
     </div>
+  );
+}
+
+const THEME_OPTIONS: { id: Theme; labelKey: TranslationKey }[] = [
+  { id: "light", labelKey: "theme.light" },
+  { id: "dark", labelKey: "theme.dark" },
+  { id: "system", labelKey: "theme.system" },
+];
+
+function LanguageToggle({ rounded = false }: { rounded?: boolean }) {
+  const { locale, setLocale } = useLocale();
+  const t = useT();
+  return (
+    <SegmentedControl
+      options={LOCALES}
+      value={locale}
+      onChange={setLocale}
+      ariaLabel={t("account.selectLanguage")}
+      rounded={rounded}
+    />
+  );
+}
+
+function ThemeToggle({ rounded = false }: { rounded?: boolean }) {
+  const { theme, setTheme } = useTheme();
+  const t = useT();
+  return (
+    <SegmentedControl
+      options={THEME_OPTIONS.map(({ id, labelKey }) => ({ id, label: t(labelKey) }))}
+      value={theme}
+      onChange={setTheme}
+      ariaLabel={t("theme.selectTheme")}
+      rounded={rounded}
+    />
   );
 }
 
@@ -87,9 +136,14 @@ export function AccountMenu() {
     );
   }
 
-  // When unauthenticated, show a compact language toggle button
+  // When unauthenticated, show compact language and theme toggles
   if (error || !me || !me.email) {
-    return <LanguageToggle rounded />;
+    return (
+      <div className="flex items-center gap-1.5">
+        <LanguageToggle rounded />
+        <ThemeToggle rounded />
+      </div>
+    );
   }
 
   const initial = me.email.split("@")[0]?.charAt(0).toUpperCase() || "?";
@@ -122,6 +176,10 @@ export function AccountMenu() {
           <div className="flex items-center justify-between gap-2 px-2 py-1.5 text-xs">
             <span className="text-muted-foreground font-medium">{t("account.language")}</span>
             <LanguageToggle />
+          </div>
+          <div className="flex items-center justify-between gap-2 px-2 py-1.5 text-xs">
+            <span className="text-muted-foreground font-medium">{t("theme.title")}</span>
+            <ThemeToggle />
           </div>
           {me.email !== "dev@local" && (
             <>
