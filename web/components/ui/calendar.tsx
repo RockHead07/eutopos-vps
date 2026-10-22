@@ -221,10 +221,10 @@ function CalendarDayButton({
       data-range-middle={modifiers.range_middle}
       className={cn(
         "relative isolate z-10 flex size-10 items-center justify-center p-0 rounded-full border-0 leading-none text-sm font-normal text-foreground cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest",
-        "data-[range-start=true]:rounded-full data-[range-start=true]:bg-forest data-[range-start=true]:text-white data-[range-start=true]:font-medium data-[range-start=true]:hover:bg-forest-hover data-[range-start=true]:shadow-xs",
-        "data-[range-end=true]:rounded-full data-[range-end=true]:bg-forest data-[range-end=true]:text-white data-[range-end=true]:font-medium data-[range-end=true]:hover:bg-forest-hover data-[range-end=true]:shadow-xs",
+        "data-[range-start=true]:rounded-full data-[range-start=true]:bg-forest data-[range-start=true]:text-white dark:data-[range-start=true]:text-primary-foreground data-[range-start=true]:font-medium data-[range-start=true]:hover:bg-forest-hover data-[range-start=true]:shadow-xs",
+        "data-[range-end=true]:rounded-full data-[range-end=true]:bg-forest data-[range-end=true]:text-white dark:data-[range-end=true]:text-primary-foreground data-[range-end=true]:font-medium data-[range-end=true]:hover:bg-forest-hover data-[range-end=true]:shadow-xs",
         "data-[range-middle=true]:rounded-full data-[range-middle=true]:bg-transparent data-[range-middle=true]:text-foreground data-[range-middle=true]:hover:bg-forest/20 data-[range-middle=true]:font-normal",
-        "data-[selected-single=true]:rounded-full data-[selected-single=true]:bg-forest data-[selected-single=true]:text-white data-[selected-single=true]:font-medium data-[selected-single=true]:hover:bg-forest-hover data-[selected-single=true]:shadow-xs",
+        "data-[selected-single=true]:rounded-full data-[selected-single=true]:bg-forest data-[selected-single=true]:text-white dark:data-[selected-single=true]:text-primary-foreground data-[selected-single=true]:font-medium data-[selected-single=true]:hover:bg-forest-hover data-[selected-single=true]:shadow-xs",
         "[&:not([data-range-start=true]):not([data-range-end=true]):not([data-range-middle=true]):not([data-selected-single=true])]:hover:bg-mist",
         className
       )}

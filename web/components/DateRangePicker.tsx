@@ -253,7 +253,7 @@ export function DateRangePicker({ value, onChange, className }: DateRangePickerP
             type="button"
             size="sm"
             onClick={() => setOpen(false)}
-            className="text-xs bg-forest hover:bg-forest-hover text-white h-8 px-3.5 rounded-lg cursor-pointer font-medium"
+            className="text-xs bg-forest hover:bg-forest-hover text-white dark:text-primary-foreground h-8 px-3.5 rounded-lg cursor-pointer font-medium"
           >
             {t("date.done")}
           </Button>

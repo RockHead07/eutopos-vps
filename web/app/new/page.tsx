@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useT, type TranslationKey } from "@/lib/i18n";
+import { useTheme } from "@/lib/theme";
 import { Icon } from "@/lib/Icon";
 import { PageHead } from "@/lib/PageHead";
 import { RETRY_DELAYS, shouldRetryUpload } from "@/lib/uploadRetry";
@@ -124,6 +125,7 @@ function focusField(id: "area-id" | "area-name") {
 export default function NewSessionPage() {
   const router = useRouter();
   const t = useT();
+  const { resolvedTheme } = useTheme();
   const tRef = useRef<((k: TranslationKey, vars?: Record<string, string | number>) => string) | null>(null);
   tRef.current = t;
 
@@ -540,7 +542,7 @@ export default function NewSessionPage() {
       <Panel>
         <h2>{t("new.videosCard")}</h2>
         {sessionNotice && <p className="muted" role="status">{sessionNotice}</p>}
-        <Dashboard uppy={uppy} hideUploadButton proudlyDisplayPoweredByUppy={false} height={300} width="100%" />
+        <Dashboard uppy={uppy} hideUploadButton proudlyDisplayPoweredByUppy={false} height={300} width="100%" theme={resolvedTheme} />
         {files.length > 0 && (
           <Table>
             <TableHeader>

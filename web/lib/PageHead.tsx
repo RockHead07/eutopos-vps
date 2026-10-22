@@ -72,7 +72,7 @@ function ServiceChips() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="chip cursor-pointer select-none border-0 transition-colors bg-amber-500/10 text-amber-700 hover:bg-amber-500/15"
+          className="chip cursor-pointer select-none border-0 transition-colors bg-amber-500/10 text-amber-700 hover:bg-amber-500/15 dark:bg-[var(--busy-bg)] dark:text-[var(--busy-fg)] dark:hover:opacity-90"
           title={t("head.storageLowTitle", {
             where,
             free: minFreeGb?.toFixed(1) ?? "",
@@ -80,7 +80,7 @@ function ServiceChips() {
           })}
           aria-label={t("head.storageLowWarning")}
         >
-          <span className="dot bg-amber-600" aria-hidden="true" />
+          <span className="dot bg-amber-600 dark:bg-[var(--busy-fg)]" aria-hidden="true" />
           <span>{t("head.storageLow", { free: minFreeGb?.toFixed(0) ?? "" })}</span>
         </button>
       )}

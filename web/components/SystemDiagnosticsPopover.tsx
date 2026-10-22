@@ -141,9 +141,9 @@ function Verdict({
     <p
       className={cn(
         "rounded-md p-2 text-[11px] font-medium",
-        free.level === "ok" && "bg-forest/10 text-forest",
-        free.level === "warn" && "bg-amber-500/10 text-amber-700",
-        free.level === "bad" && "bg-bad-bg/60 text-bad-fg",
+        free.level === "ok" && "bg-forest/10 text-forest dark:bg-[var(--ok-bg)] dark:text-[var(--ok-fg)]",
+        free.level === "warn" && "bg-amber-500/10 text-amber-700 dark:bg-[var(--busy-bg)] dark:text-[var(--busy-fg)]",
+        free.level === "bad" && "bg-bad-bg/60 text-bad-fg dark:bg-[var(--bad-bg)] dark:text-[var(--bad-fg)]",
       )}
     >
       {text}

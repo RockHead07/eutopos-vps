@@ -307,7 +307,7 @@ export function VersionComparisonPanel({
                   <span
                     className={cn(
                       "font-semibold",
-                      insA.parts.length === 1 ? "text-forest" : "text-amber-700"
+                      insA.parts.length === 1 ? "text-forest" : "text-amber-700 dark:text-[var(--busy-fg)]"
                     )}
                   >
                     {insA.parts.length} {insA.parts.length === 1 ? t("compare.connected") : t("compare.split")}
@@ -321,7 +321,7 @@ export function VersionComparisonPanel({
                   <span
                     className={cn(
                       "font-semibold",
-                      insB.parts.length === 1 ? "text-forest" : "text-amber-700"
+                      insB.parts.length === 1 ? "text-forest" : "text-amber-700 dark:text-[var(--busy-fg)]"
                     )}
                   >
                     {insB.parts.length} {insB.parts.length === 1 ? t("compare.connected") : t("compare.split")}

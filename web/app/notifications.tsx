@@ -111,7 +111,7 @@ export function Notifications() {
         >
           <Icon name="bell" />
           {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white tabular-nums">
+            <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white dark:text-primary-foreground tabular-nums">
               {unreadCount > 9 ? "9+" : unreadCount}
             </span>
           )}
