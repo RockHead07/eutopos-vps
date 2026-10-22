@@ -145,3 +145,11 @@ def test_shared_bit_cases(case):
 def test_plan_route_empty_grid_is_none():
     g = walkable.grid_from_rows(["###"])
     assert walkable.plan_route(g, (0.5, 0.5), (2.5, 0.5)) is None
+
+
+def test_published_payload_matches_the_shared_fixture():
+    """Bentuk yang dikirim /navgraph; eutopos-mobile mem-parse berkas yang sama."""
+    g = walkable.grid_from_rows(["..#", "..."])
+    payload = {**walkable.encode(g), "targets": [{"id": "R1", "name": "Lab", "x": 0.5, "y": 0.5}]}
+    want = json.loads((Path(__file__).parent / "fixtures" / "walkable_payload.json").read_text())
+    assert payload == want

@@ -185,6 +185,8 @@ def anchor(g: Grid, point: tuple[float, float]) -> tuple[int, float] | None:
 def encode(g: Grid) -> dict:
     bits = np.packbits(g.cells.ravel().astype(np.uint8), bitorder="little")
     return {
+        "frame": "building",  # aplikasi (WalkableGrid.Parse) mewajibkan frame dan units
+        "units": "m",
         "cell_m": g.cell_m,
         "origin": [g.origin[0], g.origin[1]],
         "width": g.width,
