@@ -27,10 +27,11 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Icon } from "@/lib/Icon";
 import Link from "@/lib/Link";
-import { api, formatDate, formatDuration, mb, ROLE, type Job } from "@/lib/api";
+import { api, formatDuration, mb, ROLE, type Job } from "@/lib/api";
 import { PageHead } from "@/lib/PageHead";
 import { Rows } from "@/lib/Rows";
 import { usePoll } from "@/lib/usePoll";
+import { useFormatDate, useT, type TranslationKey } from "@/lib/i18n";
 
 function compareWithNullLast(
   valA: string | null | undefined,
@@ -47,6 +48,8 @@ function compareWithNullLast(
 }
 
 function JobsContent() {
+  const t = useT();
+  const formatDate = useFormatDate();
   const searchParams = useSearchParams();
   const [tick, setTick] = useState(0);
   const { data: fetchedJobs, error } = usePoll(api.jobs, 5000, [tick]);
@@ -79,14 +82,17 @@ function JobsContent() {
   const [sortKey, setSortKey] = useState<string | null>("id");
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
 
-  const statusOptions = [
-    { value: "done", label: "Done" },
-    { value: "uploading", label: "Uploading" },
-    { value: "running", label: "Running" },
-    { value: "queued", label: "Queued" },
-    { value: "failed", label: "Failed" },
-    { value: "deleting", label: "Deleting" },
-  ];
+  const statusOptions = useMemo(
+    () => [
+      { value: "done", label: t("status.done") },
+      { value: "uploading", label: t("status.uploading") },
+      { value: "running", label: t("status.running") },
+      { value: "queued", label: t("status.queued") },
+      { value: "failed", label: t("status.failed") },
+      { value: "deleting", label: t("status.deleting") },
+    ],
+    [t]
+  );
 
   const areaOptions = useMemo(() => {
     if (!jobs) return [];
@@ -140,7 +146,8 @@ function JobsContent() {
       if (q) {
         const matchId = j.id.toString().includes(q);
         const matchArea = j.area_id.toLowerCase().includes(q);
-        const matchStatus = j.status.toLowerCase().includes(q);
+        const statusLabel = t(`status.${j.status}` as TranslationKey).toLowerCase();
+        const matchStatus = j.status.toLowerCase().includes(q) || statusLabel.includes(q);
         const matchBy = j.created_by.toLowerCase().includes(q);
         return matchId || matchArea || matchStatus || matchBy;
       }
@@ -168,16 +175,16 @@ function JobsContent() {
 
   return (
     <>
-      <PageHead crumbs={[{ label: "Jobs" }]} title="Map build jobs">
-        Every upload becomes a job: extract frames, build the map, inspect it. Refreshes every 5 seconds.
+      <PageHead crumbs={[{ label: t("nav.jobs") }]} title={t("jobs.pageTitle")}>
+        {t("jobs.pageDesc")}
       </PageHead>
       {error && <p className="error">{error}</p>}
       <Panel>
         {!jobs && !error && <Rows />}
         {jobs && jobs.length === 0 && (
           <div className="empty">
-            <p>No jobs yet. Record a walk-through video, then upload it.</p>
-            <Link href="/new/">Start a new map session</Link>
+            <p>{t("jobs.empty")}</p>
+            <Link href="/new/">{t("jobs.startNewSession")}</Link>
           </div>
         )}
         {jobs && jobs.length > 0 && (
@@ -185,7 +192,7 @@ function JobsContent() {
             <TableFilterBar
               search={search}
               onSearchChange={setSearch}
-              searchPlaceholder="Search jobs..."
+              searchPlaceholder={t("jobs.searchPlaceholder")}
               statusFilter={statusFilter}
               onStatusChange={setStatusFilter}
               statusOptions={statusOptions}
@@ -198,26 +205,26 @@ function JobsContent() {
             />
             {filteredAndSortedJobs.length === 0 ? (
               <div className="py-8 text-center text-xs text-muted-foreground">
-                <p>No jobs match your filter criteria.</p>
+                <p>{t("jobs.noMatch")}</p>
                 <Button variant="link" size="sm" onClick={handleReset} className="text-xs text-forest mt-1">
-                  Clear filters
+                  {t("jobs.clearFilters")}
                 </Button>
               </div>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-16 max-sm:hidden"><span className="sr-only">Preview</span></TableHead>
-                    <SortableHead column="id" label="#" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
-                    <SortableHead column="area_id" label="Area" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
-                    <SortableHead column="status" label="Status" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
-                    <TableHead className="text-left max-[959px]:hidden">Stage</TableHead>
-                    <SortableHead column="created_by" label="By" activeKey={sortKey} direction={sortDir} onSort={handleSort} className="max-[959px]:hidden" />
-                    <SortableHead column="recorded_at" label="Recorded" activeKey={sortKey} direction={sortDir} onSort={handleSort} className="max-[959px]:hidden" />
-                    <SortableHead column="created_at" label="Uploaded" activeKey={sortKey} direction={sortDir} onSort={handleSort} className="max-[959px]:hidden" />
-                    <TableHead className="text-left max-[959px]:hidden">Duration</TableHead>
-                    <TableHead className="text-left sticky right-12 bg-card border-l border-line/70 z-20 max-sm:hidden">Action</TableHead>
-                    <TableHead className="w-12 min-w-12 text-right sticky right-0 bg-card z-20"><span className="sr-only">Actions</span></TableHead>
+                    <TableHead className="w-16 max-sm:hidden"><span className="sr-only">{t("table.previewSr")}</span></TableHead>
+                    <SortableHead column="id" label={t("jobs.colId")} activeKey={sortKey} direction={sortDir} onSort={handleSort} />
+                    <SortableHead column="area_id" label={t("jobs.colArea")} activeKey={sortKey} direction={sortDir} onSort={handleSort} />
+                    <SortableHead column="status" label={t("jobs.colStatus")} activeKey={sortKey} direction={sortDir} onSort={handleSort} />
+                    <TableHead className="text-left max-[959px]:hidden">{t("jobs.colStage")}</TableHead>
+                    <SortableHead column="created_by" label={t("jobs.colBy")} activeKey={sortKey} direction={sortDir} onSort={handleSort} className="max-[959px]:hidden" />
+                    <SortableHead column="recorded_at" label={t("jobs.colRecorded")} activeKey={sortKey} direction={sortDir} onSort={handleSort} className="max-[959px]:hidden" />
+                    <SortableHead column="created_at" label={t("jobs.colUploaded")} activeKey={sortKey} direction={sortDir} onSort={handleSort} className="max-[959px]:hidden" />
+                    <TableHead className="text-left max-[959px]:hidden">{t("jobs.colDuration")}</TableHead>
+                    <TableHead className="text-left sticky right-12 bg-card border-l border-line/70 z-20 max-sm:hidden">{t("jobs.colAction")}</TableHead>
+                    <TableHead className="w-12 min-w-12 text-right sticky right-0 bg-card z-20"><span className="sr-only">{t("table.actionsSr")}</span></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -226,10 +233,10 @@ function JobsContent() {
                     const canDelete = j.status === "done" || j.status === "failed" || (j.status === "uploading" && j.stalled);
                     const isDeleteDisabled = isDeletingStatus || !canDelete;
                     const deleteDisabledReason = isDeletingStatus
-                      ? "Job is already being deleted"
+                      ? t("jobs.reasonDeleting")
                       : j.status === "uploading"
-                        ? "Upload is still receiving data"
-                        : "Only completed, failed, or stalled jobs can be deleted";
+                        ? t("jobs.reasonReceiving")
+                        : t("jobs.reasonCannotDelete");
                     const petaVideo = j.videos?.find((v) => v.role === "peta" && v.recorded_at);
                     const recordedAt = petaVideo?.recorded_at ?? null;
 
@@ -239,7 +246,7 @@ function JobsContent() {
                           <Thumbnail
                             jobId={j.id}
                             hasPreview={j.has_preview}
-                            alt={`Preview for job ${j.id}`}
+                            alt={t("jobs.previewAltJob", { id: j.id })}
                             onClick={() => setSelectedJob(j)}
                           />
                         </TableCell>
@@ -248,7 +255,7 @@ function JobsContent() {
                         <TableCell className="text-left">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <StatusBadge status={j.status} />
-                            {j.stalled && <StatusBadge status="stalled">stalled</StatusBadge>}
+                            {j.stalled && <StatusBadge status="stalled" />}
                           </div>
                         </TableCell>
                         <TableCell className="text-left text-muted-foreground max-[959px]:hidden">
@@ -259,7 +266,7 @@ function JobsContent() {
                             </span>
                           ) : j.status === "failed" && j.stage ? (
                             <span className="inline-flex items-center rounded bg-bad-bg/60 px-1.5 py-0.5 text-[11px] font-mono text-bad-fg whitespace-nowrap">
-                              failed at {j.stage}
+                              {t("jobs.failedAt", { stage: j.stage })}
                             </span>
                           ) : j.status === "done" ? (
                             <span className="text-muted-foreground">-</span>
@@ -284,7 +291,7 @@ function JobsContent() {
                           <Button asChild variant="outline" size="sm" className="rounded-full gap-1.5 font-medium text-xs whitespace-nowrap">
                             <Link href={`/job/?id=${j.id}`}>
                               <Icon name={j.status === "done" ? "view-3d" : "arrow-up-right"} />
-                              <span>{j.status === "done" ? "Inspect map" : j.status === "failed" ? "View error" : "View progress"}</span>
+                              <span>{j.status === "done" ? t("jobs.inspectMap") : j.status === "failed" ? t("jobs.viewError") : t("jobs.viewProgress")}</span>
                             </Link>
                           </Button>
                         </TableCell>
@@ -293,22 +300,22 @@ function JobsContent() {
                             <DropdownMenuTrigger asChild>
                               <Button
                                 ref={(el) => {
-                                  actionButtonRefs.current[j.id] = el;
+                                   actionButtonRefs.current[j.id] = el;
                                 }}
                                 variant="ghost"
                                 size="icon-sm"
                                 className="rounded-full cursor-pointer"
-                                aria-label={`Actions for job ${j.id}`}
+                                aria-label={t("jobs.actionsForJob", { id: j.id })}
                               >
                                 <MoreHorizontal className="size-4" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem onClick={() => setSelectedJob(j)}>
-                                Properties
+                                {t("jobs.actionProperties")}
                               </DropdownMenuItem>
                               <DropdownMenuItem asChild>
-                                <Link href={`/job/?id=${j.id}`}>Open</Link>
+                                <Link href={`/job/?id=${j.id}`}>{t("jobs.actionOpen")}</Link>
                               </DropdownMenuItem>
                               {me?.is_admin && (
                                 <>
@@ -318,7 +325,7 @@ function JobsContent() {
                                       disabled
                                       className="flex flex-col items-start gap-0.5 opacity-50 cursor-not-allowed"
                                     >
-                                      <span className="text-destructive font-medium">Delete</span>
+                                      <span className="text-destructive font-medium">{t("jobs.actionDelete")}</span>
                                       <span className="text-[11px] text-muted-foreground font-normal">
                                         {deleteDisabledReason}
                                       </span>
@@ -334,7 +341,7 @@ function JobsContent() {
                                         setJobToDelete(j);
                                       }}
                                     >
-                                      Delete
+                                      {t("jobs.actionDelete")}
                                     </DropdownMenuItem>
                                   )}
                                 </>
@@ -361,12 +368,12 @@ function JobsContent() {
               <div className="px-6 pt-6 pb-4 border-b pr-14">
                 <div className="flex items-center gap-2.5">
                   <SheetTitle className="text-base font-semibold text-foreground">
-                    Job {selectedJob.id}
+                    {t("jobs.sheetTitle", { id: selectedJob.id })}
                   </SheetTitle>
                   <StatusBadge status={selectedJob.status} />
-                  {selectedJob.stalled && <StatusBadge status="stalled">stalled</StatusBadge>}
+                  {selectedJob.stalled && <StatusBadge status="stalled" />}
                 </div>
-                <SheetDescription className="sr-only">Job {selectedJob.id} properties</SheetDescription>
+                <SheetDescription className="sr-only">{t("jobs.properties", { id: selectedJob.id })}</SheetDescription>
                 <p className="mt-1 text-xs text-muted-foreground truncate" title={selectedJob.created_by}>
                   {selectedJob.area_id} &middot; {selectedJob.created_by || "-"}
                 </p>
@@ -379,13 +386,13 @@ function JobsContent() {
                   <div className="overflow-hidden rounded-xl border border-line/70 bg-card aspect-video">
                     <img
                       src={`/api/jobs/${selectedJob.id}/preview`}
-                      alt="First frame of the map video"
+                      alt={t("jobs.previewAlt")}
                       className="w-full h-full object-cover"
                     />
                   </div>
                 ) : (
                   <div className="rounded-xl border border-line/70 bg-card aspect-video flex items-center justify-center text-xs text-muted-foreground">
-                    No preview for this job
+                    {t("jobs.noPreview")}
                   </div>
                 )}
 
@@ -396,30 +403,30 @@ function JobsContent() {
                   return (
                     <div className="rounded-xl border border-line/70 bg-card p-4">
                       <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-3">
-                        Timeline
+                        {t("jobs.timeline")}
                       </div>
                       <dl className="grid grid-cols-[116px_1fr] gap-x-4 gap-y-2.5 text-sm">
-                        <dt className="text-muted-foreground">Recorded</dt>
+                        <dt className="text-muted-foreground">{t("jobs.colRecorded")}</dt>
                         <dd className="text-foreground min-w-0 break-words tabular-nums" title={recordedAt || undefined}>
                           {formatDate(recordedAt)}
                         </dd>
 
-                        <dt className="text-muted-foreground">Uploaded</dt>
+                        <dt className="text-muted-foreground">{t("jobs.colUploaded")}</dt>
                         <dd className="text-foreground min-w-0 break-words tabular-nums" title={selectedJob.created_at || undefined}>
                           {formatDate(selectedJob.created_at)}
                         </dd>
 
-                        <dt className="text-muted-foreground">Started</dt>
+                        <dt className="text-muted-foreground">{t("jobs.started")}</dt>
                         <dd className="text-foreground min-w-0 break-words tabular-nums" title={selectedJob.started_at || undefined}>
                           {formatDate(selectedJob.started_at)}
                         </dd>
 
-                        <dt className="text-muted-foreground">Finished</dt>
+                        <dt className="text-muted-foreground">{t("jobs.finished")}</dt>
                         <dd className="text-foreground min-w-0 break-words tabular-nums" title={selectedJob.finished_at || undefined}>
                           {formatDate(selectedJob.finished_at)}
                         </dd>
 
-                        <dt className="text-muted-foreground">Duration</dt>
+                        <dt className="text-muted-foreground">{t("jobs.colDuration")}</dt>
                         <dd className="text-foreground min-w-0 break-words tabular-nums">
                           {formatDuration(selectedJob.started_at, selectedJob.finished_at, {
                             isRunning: selectedJob.status === "running",
@@ -445,21 +452,21 @@ function JobsContent() {
                   return (
                     <div className="rounded-xl border border-line/70 bg-card p-4">
                       <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-3">
-                        Map
+                        {t("jobs.map")}
                       </div>
                       <dl className="grid grid-cols-[116px_1fr] gap-x-4 gap-y-2.5 text-sm">
-                        <dt className="text-muted-foreground">Map version</dt>
+                        <dt className="text-muted-foreground">{t("jobs.mapVersion")}</dt>
                         <dd className="text-foreground min-w-0 break-words tabular-nums">
                           {selectedJob.map_version_id != null ? (
                             <Link href="/maps/" className="text-forest font-medium hover:underline">
-                              Version {selectedJob.map_version_id}
+                              {t("jobs.versionLabel", { id: selectedJob.map_version_id })}
                             </Link>
                           ) : (
                             "-"
                           )}
                         </dd>
 
-                        <dt className="text-muted-foreground">Registered frames</dt>
+                        <dt className="text-muted-foreground">{t("jobs.registeredFrames")}</dt>
                         <dd className="text-foreground min-w-0 break-words tabular-nums">
                           {regFrames != null && totalFrames != null ? (
                             <div>
@@ -475,12 +482,12 @@ function JobsContent() {
                           )}
                         </dd>
 
-                        <dt className="text-muted-foreground">Map pieces</dt>
+                        <dt className="text-muted-foreground">{t("jobs.mapPieces")}</dt>
                         <dd className="text-foreground min-w-0 break-words tabular-nums">
                           {ins?.parts ? ins.parts.length : "-"}
                         </dd>
 
-                        <dt className="text-muted-foreground">Test photos accepted</dt>
+                        <dt className="text-muted-foreground">{t("jobs.testPhotosAccepted")}</dt>
                         <dd className="text-foreground min-w-0 break-words tabular-nums">
                           {hasTestVideo ? (
                             <div>
@@ -492,7 +499,7 @@ function JobsContent() {
                               )}
                             </div>
                           ) : (
-                            <span className="text-muted-foreground">No test video in this job</span>
+                            <span className="text-muted-foreground">{t("jobs.noTestVideo")}</span>
                           )}
                         </dd>
                       </dl>
@@ -503,7 +510,7 @@ function JobsContent() {
                 {/* Videos Card */}
                 <div className="rounded-xl border border-line/70 bg-card p-4">
                   <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-3">
-                    Videos
+                    {t("jobs.videos")}
                   </div>
                   {selectedJob.videos && selectedJob.videos.length > 0 ? (
                     <div className="space-y-2">
@@ -547,7 +554,7 @@ function JobsContent() {
               {/* Footer */}
               <div className="border-t px-6 py-4 flex flex-wrap gap-2 mt-auto">
                 <Button asChild variant="outline" className="rounded-full">
-                  <Link href={`/job/?id=${selectedJob.id}`}>Open job</Link>
+                  <Link href={`/job/?id=${selectedJob.id}`}>{t("jobs.openJob")}</Link>
                 </Button>
                 {me?.is_admin && (
                   <Button
@@ -565,7 +572,7 @@ function JobsContent() {
                       setTimeout(() => setJobToDelete(j), 100);
                     }}
                   >
-                    Delete
+                    {t("jobs.actionDelete")}
                   </Button>
                 )}
               </div>

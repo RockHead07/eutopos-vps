@@ -3,15 +3,17 @@ import Link from "@/lib/Link";
 import { usePathname } from "next/navigation";
 import { Icon } from "@/lib/Icon";
 import { LINKS } from "@/lib/links";
+import { useT } from "@/lib/i18n";
 
 export function Nav() {
   const path = usePathname();
+  const t = useT();
   return (
-    <nav className="pills" aria-label="Main">
+    <nav className="pills" aria-label={t("nav.main")}>
       {LINKS.map((l) => (
         <Link key={l.href} href={l.href} className="pill" aria-current={l.match(path) ? "page" : undefined}>
           <Icon name={l.icon} />
-          {l.label}
+          {t(l.labelKey)}
         </Link>
       ))}
     </nav>
@@ -20,8 +22,9 @@ export function Nav() {
 
 export function MobileNav() {
   const path = usePathname();
+  const t = useT();
   return (
-    <nav className="mobile-nav" aria-label="Main">
+    <nav className="mobile-nav" aria-label={t("nav.main")}>
       {LINKS.map((l) => (
         <Link
           key={l.href}
@@ -30,7 +33,7 @@ export function MobileNav() {
           aria-current={l.match(path) ? "page" : undefined}
         >
           <Icon name={l.icon} />
-          <span>{l.label}</span>
+          <span>{t(l.labelKey)}</span>
         </Link>
       ))}
     </nav>

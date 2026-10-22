@@ -11,10 +11,11 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Icon } from "@/lib/Icon";
 import Link from "@/lib/Link";
-import { api, formatDate, formatDuration, formatRelativeTime, mb, ROLE } from "@/lib/api";
+import { api, formatDuration, formatRelativeTime, mb, ROLE } from "@/lib/api";
 import { PageHead } from "@/lib/PageHead";
 import { Rows } from "@/lib/Rows";
 import { usePoll } from "@/lib/usePoll";
+import { useFormatDate, useT } from "@/lib/i18n";
 
 function Stat({ label, value, of, note }: { label: string; value?: number; of?: number; note?: string }) {
   const pct = value !== undefined && of ? Math.round((value / of) * 100) : null;
@@ -36,6 +37,8 @@ function Stat({ label, value, of, note }: { label: string; value?: number; of?: 
 }
 
 function JobDetail() {
+  const t = useT();
+  const formatDate = useFormatDate();
   const router = useRouter();
   const id = Number(useSearchParams().get("id"));
   const { data: job, error } = usePoll(() => api.job(id), 5000, [id]);
@@ -70,20 +73,20 @@ function JobDetail() {
   }
 
   async function publish(versionId: number) {
-    if (!window.confirm("Publish this map? /localize will use this version.")) return;
+    if (!window.confirm(t("job.publishConfirm"))) return;
     try {
       const r = await api.publish(versionId);
       setMessage(
         r.reload === "started"
-          ? `Version ${r.version.version} is loading and goes live once it loads. Follow it in Map versions.`
-          : `Version ${r.version.version} is published, but this service serves another area.`,
+          ? t("job.publishLoadingNotice", { version: r.version.version })
+          : t("job.publishOtherAreaNotice", { version: r.version.version }),
       );
     } catch (e) {
       setMessage((e as Error).message);
     }
   }
 
-  if (!id) return <p className="error">Missing id parameter.</p>;
+  if (!id) return <p className="error">{t("job.missingId")}</p>;
   if (!job) return error ? <p className="error">{error}</p> : <Loading />;
 
   const run = job.summary?.run;
@@ -98,18 +101,18 @@ function JobDetail() {
     <>
       {error && <p className="error">{error}</p>}
       <PageHead
-        crumbs={[{ label: "Jobs", href: "/jobs/" }, { label: `Job ${job.id}` }]}
-        title={`Job ${job.id} · ${job.area_id}`}
+        crumbs={[{ label: t("nav.jobs"), href: "/jobs/" }, { label: t("job.crumbJob", { id: job.id }) }]}
+        title={t("job.titleJob", { id: job.id, area: job.area_id })}
       >
         <div className="flex flex-wrap items-center gap-2 mt-1 text-xs">
           <StatusBadge status={job.status} />
-          {job.stalled && <StatusBadge status="stalled">stalled</StatusBadge>}
+          {job.stalled && <StatusBadge status="stalled" />}
           {job.stage && job.status !== "done" && (
             <span className="text-muted-foreground">
-              stage <strong className="text-foreground">{job.stage}</strong>
+              {t("job.stage", { stage: job.stage })}
             </span>
           )}
-          <span className="text-muted-foreground">· created by {job.created_by}</span>
+          <span className="text-muted-foreground">· {t("job.createdBy", { name: job.created_by })}</span>
         </div>
       </PageHead>
 
@@ -118,11 +121,11 @@ function JobDetail() {
         <Panel className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-[var(--bad-fg)]/30 bg-[var(--bad-bg)]">
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center gap-2">
-              <StatusBadge status="stalled">stalled</StatusBadge>
-              <span className="font-semibold text-[var(--bad-fg)] text-sm">Upload stalled</span>
+              <StatusBadge status="stalled" />
+              <span className="font-semibold text-[var(--bad-fg)] text-sm">{t("job.uploadStalled")}</span>
             </div>
             <p className="text-xs text-muted-foreground">
-              No upload progress received for at least 10 minutes.
+              {t("job.uploadStalledDesc")}
             </p>
           </div>
           {me?.is_admin && (
@@ -132,7 +135,7 @@ function JobDetail() {
               className="rounded-full cursor-pointer shrink-0"
               onClick={() => setDeleteDialogOpen(true)}
             >
-              Delete stalled job
+              {t("job.deleteStalled")}
             </Button>
           )}
         </Panel>
@@ -141,30 +144,30 @@ function JobDetail() {
       {/* Execution Status Card */}
       <Panel className="flex flex-col gap-3">
         <div className="flex items-center justify-between border-b border-line pb-2">
-          <h2 className="text-sm font-semibold text-foreground">Execution Status</h2>
-          <span className="text-xs text-muted-foreground font-mono">Job ID #{job.id}</span>
+          <h2 className="text-sm font-semibold text-foreground">{t("job.executionStatus")}</h2>
+          <span className="text-xs text-muted-foreground font-mono">{t("job.jobId", { id: job.id })}</span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
           <div className="flex flex-col gap-0.5">
-            <span className="text-muted-foreground">Uploaded / Created</span>
+            <span className="text-muted-foreground">{t("job.uploadedCreated")}</span>
             <span className="font-medium text-foreground whitespace-nowrap">
               {formatDate(job.created_at)}
             </span>
           </div>
           <div className="flex flex-col gap-0.5">
-            <span className="text-muted-foreground">Execution Started</span>
+            <span className="text-muted-foreground">{t("job.executionStarted")}</span>
             <span className="font-medium text-foreground whitespace-nowrap">
-              {job.started_at ? formatDate(job.started_at) : "Pending start"}
+              {job.started_at ? formatDate(job.started_at) : t("jobs.pendingStart")}
             </span>
           </div>
           <div className="flex flex-col gap-0.5">
-            <span className="text-muted-foreground">Execution Finished</span>
+            <span className="text-muted-foreground">{t("job.executionFinished")}</span>
             <span className="font-medium text-foreground whitespace-nowrap">
-              {job.finished_at ? formatDate(job.finished_at) : isRunning ? "In progress..." : "-"}
+              {job.finished_at ? formatDate(job.finished_at) : isRunning ? t("job.inProgress") : "-"}
             </span>
           </div>
           <div className="flex flex-col gap-0.5">
-            <span className="text-muted-foreground">Processing Duration</span>
+            <span className="text-muted-foreground">{t("job.processingDuration")}</span>
             <span className="font-medium text-foreground font-mono">
               {durationStr}
               {isRunning && (
@@ -191,24 +194,24 @@ function JobDetail() {
       {run && ins && (
         <section className="stats">
           <Stat
-            label="Registered frames"
+            label={t("jobs.registeredFrames")}
             value={run.map_registered}
             of={run.map_images}
-            note="Coverage: frames connected into 3D SfM model"
+            note={t("job.statCoverageNote")}
           />
           <Stat
-            label="Map pieces"
+            label={t("jobs.mapPieces")}
             value={ins.parts?.length ?? 0}
-            note={(ins.parts?.length ?? 0) === 1 ? "One connected map" : "Split map: re-record the gaps"}
+            note={(ins.parts?.length ?? 0) === 1 ? t("job.oneConnectedMap") : t("job.splitMapNote")}
           />
           <Stat
-            label="Test photos accepted"
+            label={t("jobs.testPhotosAccepted")}
             value={ins.accepted}
             of={ins.queries || undefined}
             note={
               ins.queries
-                ? `At least ${ins.min_inliers} inliers each. Acceptance rate; does not prove metric accuracy.`
-                : "No test video in this job"
+                ? t("job.testPhotosNote", { min: ins.min_inliers ?? 0 })
+                : t("jobs.noTestVideo")
             }
           />
         </section>
@@ -216,22 +219,22 @@ function JobDetail() {
 
       {/* Videos List */}
       <Panel>
-        <h2>Videos</h2>
+        <h2>{t("job.videos")}</h2>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Size</TableHead>
-              <TableHead>Recorded</TableHead>
-              <TableHead>Upload</TableHead>
+              <TableHead>{t("job.thName")}</TableHead>
+              <TableHead>{t("job.thRole")}</TableHead>
+              <TableHead>{t("job.thSize")}</TableHead>
+              <TableHead>{t("jobs.colRecorded")}</TableHead>
+              <TableHead>{t("job.thUpload")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {job.videos.map((v) => {
               let uploadContent: React.ReactNode;
               if (v.uploaded) {
-                uploadContent = "uploaded";
+                uploadContent = t("job.uploaded");
               } else if (v.received != null && v.activity_at) {
                 const pct = v.size ? Math.round((v.received / v.size) * 100) : null;
                 uploadContent = (
@@ -241,12 +244,12 @@ function JobDetail() {
                       {pct !== null ? ` (${pct}%)` : ""}
                     </span>
                     <span className="text-[11px] text-muted-foreground whitespace-nowrap">
-                      last data {formatRelativeTime(v.activity_at, now)} ago
+                      {t("job.lastDataAgo", { time: formatRelativeTime(v.activity_at, now) })}
                     </span>
                   </div>
                 );
               } else {
-                uploadContent = "no progress data";
+                uploadContent = t("job.noProgressData");
               }
 
               return (
@@ -271,15 +274,15 @@ function JobDetail() {
       {job.map_version_id && (
         <Panel>
           <div className="actions">
-            <h2><Icon name="view-3d" /> 3D view</h2>
-            <span className="muted">Map and cameras in blue, accepted test photos in green, rejected in orange.</span>
+            <h2><Icon name="view-3d" /> {t("job.view3D")}</h2>
+            <span className="muted">{t("job.view3DDesc")}</span>
           </div>
-          <iframe src={`/api/versions/${job.map_version_id}/report`} title="3D map view" />
+          <iframe src={`/api/versions/${job.map_version_id}/report`} title={t("job.iframe3DTitle")} />
           <div className="actions">
             <Button className="rounded-full cursor-pointer" onClick={() => publish(job.map_version_id!)}>
-              <Icon name="publish" />Publish this version
+              <Icon name="publish" />{t("job.publishVersion")}
             </Button>
-            <Link href="/maps/">Map versions</Link>
+            <Link href="/maps/">{t("nav.mapVersions")}</Link>
           </div>
           {message && <p className="notice">{message}</p>}
         </Panel>

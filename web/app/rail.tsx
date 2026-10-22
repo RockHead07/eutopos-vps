@@ -3,6 +3,7 @@ import Link from "@/lib/Link";
 import { usePathname } from "next/navigation";
 import { Icon } from "@/lib/Icon";
 import { LINKS } from "@/lib/links";
+import { useT } from "@/lib/i18n";
 
 /**
  * Dock ikon di kiri, hanya tampil di layar lebar (globals.css). Pil di atas tetap navigasi utama:
@@ -10,6 +11,7 @@ import { LINKS } from "@/lib/links";
  */
 export function Rail() {
   const path = usePathname();
+  const t = useT();
   return (
     <nav className="rail" aria-hidden="true">
       {LINKS.map((l) => (
@@ -18,7 +20,7 @@ export function Rail() {
           href={l.href}
           tabIndex={-1}
           className="rail-link"
-          data-tip={l.label}
+          data-tip={t(l.labelKey)}
           aria-current={l.match(path) ? "page" : undefined}
         >
           <Icon name={l.icon} />

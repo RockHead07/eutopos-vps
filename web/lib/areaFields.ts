@@ -1,5 +1,6 @@
 /** Aturan nama area untuk halaman New map session. Fungsi murni supaya bisa diuji tanpa browser. */
 import { AREA_ID_RE } from "./api";
+import type { TranslationKey } from "./i18n";
 
 export const AREA_ID_MAX = 40;
 export const AREA_NAME_MAX = 100;
@@ -10,7 +11,13 @@ export const AREA_NAME_HINT = "Shown in the dashboard, up to 100 characters.";
 
 export type AreaValidation =
   | { ok: true; value: string }
-  | { ok: false; message: string; suggestion?: string };
+  | {
+      ok: false;
+      message: string;
+      messageKey?: TranslationKey;
+      messageVars?: Record<string, string | number>;
+      suggestion?: string;
+    };
 
 export function normalizeAreaId(raw: string): string {
   return raw.trim().toLowerCase();
@@ -35,38 +42,65 @@ function quoteList(chars: string[]): string {
   return `${quoted.slice(0, -1).join(", ")} or ${quoted[quoted.length - 1]}`;
 }
 
-function invalidAreaId(value: string, message: string): AreaValidation {
+function invalidAreaId(
+  value: string,
+  message: string,
+  messageKey?: TranslationKey,
+  messageVars?: Record<string, string | number>,
+): AreaValidation {
   const suggestion = slugifyAreaId(value);
   if (suggestion && suggestion !== value && AREA_ID_RE.test(suggestion)) {
-    return { ok: false, message, suggestion };
+    return { ok: false, message, messageKey, messageVars, suggestion };
   }
-  return { ok: false, message };
+  return { ok: false, message, messageKey, messageVars };
 }
 
 export function validateAreaId(raw: string): AreaValidation {
   const value = normalizeAreaId(raw);
-  if (!value) return { ok: false, message: "Area ID is required." };
+  if (!value) {
+    return {
+      ok: false,
+      message: "Area ID is required.",
+      messageKey: "val.areaIdRequired",
+    };
+  }
   if (value.length > AREA_ID_MAX) {
     return invalidAreaId(
       value,
       `Area ID is too long (${value.length} of ${AREA_ID_MAX} characters).`,
+      "val.areaIdTooLong",
+      { length: value.length, max: AREA_ID_MAX },
     );
   }
   if (/\s/.test(value)) {
-    return invalidAreaId(value, "Area ID cannot contain spaces.");
+    return invalidAreaId(
+      value,
+      "Area ID cannot contain spaces.",
+      "val.areaIdNoSpaces",
+    );
   }
 
   const outside = [...new Set(value.replace(/[a-z0-9-]/g, ""))];
   if (outside.length > 0) {
-    return invalidAreaId(value, `Area ID cannot contain ${quoteList(outside)}.`);
+    return invalidAreaId(
+      value,
+      `Area ID cannot contain ${quoteList(outside)}.`,
+      "val.areaIdInvalidChars",
+      { chars: quoteList(outside) },
+    );
   }
   if (value.startsWith("-")) {
-    return invalidAreaId(value, "Area ID must start with a letter or digit.");
+    return invalidAreaId(
+      value,
+      "Area ID must start with a letter or digit.",
+      "val.areaIdStartLetterDigit",
+    );
   }
   if (!AREA_ID_RE.test(value)) {
     return invalidAreaId(
       value,
       "Area ID must start with a lowercase letter or digit and contain only lowercase letters, digits and hyphens.",
+      "val.areaIdFormat",
     );
   }
   return { ok: true, value };
@@ -74,11 +108,19 @@ export function validateAreaId(raw: string): AreaValidation {
 
 export function validateAreaName(raw: string): AreaValidation {
   const value = normalizeAreaName(raw);
-  if (!value) return { ok: false, message: "Area name is required." };
+  if (!value) {
+    return {
+      ok: false,
+      message: "Area name is required.",
+      messageKey: "val.areaNameRequired",
+    };
+  }
   if (value.length > AREA_NAME_MAX) {
     return {
       ok: false,
       message: `Area name is too long (${value.length} of ${AREA_NAME_MAX} characters).`,
+      messageKey: "val.areaNameTooLong",
+      messageVars: { length: value.length, max: AREA_NAME_MAX },
     };
   }
   return { ok: true, value };

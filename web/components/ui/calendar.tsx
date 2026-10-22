@@ -40,9 +40,9 @@ function Calendar({
       locale={locale}
       formatters={{
         formatWeekdayName: (date) =>
-          date.toLocaleDateString("en-US", { weekday: "narrow" }),
+          date.toLocaleDateString(locale?.code === "id" ? "id-ID" : "en-US", { weekday: "narrow" }),
         formatCaption: (date) =>
-          date.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+          date.toLocaleDateString(locale?.code === "id" ? "id-ID" : "en-US", { month: "long", year: "numeric" }),
         formatMonthDropdown: (date) =>
           date.toLocaleString(locale?.code, { month: "short" }),
         ...formatters,

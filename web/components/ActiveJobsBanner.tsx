@@ -1,11 +1,15 @@
+"use client";
+
 import { Fragment } from "react";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/lib/Icon";
 import Link from "@/lib/Link";
 import { describeActive, summarizeActiveJobs } from "@/lib/activeJobs";
 import type { Job } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 
 export function ActiveJobsBanner({ jobs }: { jobs: Job[] }) {
+  const t = useT();
   const summary = summarizeActiveJobs(jobs);
   if (
     summary.building.length === 0 &&
@@ -15,17 +19,17 @@ export function ActiveJobsBanner({ jobs }: { jobs: Job[] }) {
     return null;
   }
 
-  const { primary, secondary } = describeActive(summary);
+  const { primary, secondary } = describeActive(summary, t);
   const runningCount = summary.building.length + summary.uploading.length;
   const singleJob =
     runningCount === 1 && summary.stalled.length === 0
       ? summary.building[0] ?? summary.uploading[0]
       : null;
   const action = singleJob
-    ? { href: `/job/?id=${singleJob.id}`, label: `Open job #${singleJob.id}` }
+    ? { href: `/job/?id=${singleJob.id}`, label: t("banner.openJob", { id: singleJob.id }) }
     : summary.stalled.length > 0 && runningCount === 0
-      ? { href: "/jobs/?q=uploading", label: "Review uploads" }
-      : { href: "/jobs/", label: "View jobs" };
+      ? { href: "/jobs/?q=uploading", label: t("banner.reviewUploads") }
+      : { href: "/jobs/", label: t("banner.viewJobs") };
   const hasRunning = runningCount > 0;
   const iconName = summary.building.length > 0 ? "stack" : "upload";
 
@@ -54,7 +58,9 @@ export function ActiveJobsBanner({ jobs }: { jobs: Job[] }) {
                   {index > 0 ? " · " : null}
                   <span
                     className={
-                      part.includes("stopped receiving data") ? "text-destructive" : undefined
+                      summary.stalled.length > 0 && index === secondary.split(" · ").length - 1
+                        ? "text-destructive"
+                        : undefined
                     }
                   >
                     {part}

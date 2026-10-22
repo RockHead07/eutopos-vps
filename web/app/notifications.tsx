@@ -11,21 +11,33 @@ import {
 import { Icon } from "@/lib/Icon";
 import Link from "@/lib/Link";
 import { api, type Job } from "@/lib/api";
+import { useLocale, useT } from "@/lib/i18n";
 import { usePoll } from "@/lib/usePoll";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const SEEN_KEY = "eutopos.notifications.seenAt";
 
-const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+const rtfMap = new Map<string, Intl.RelativeTimeFormat>();
 
-function formatRelative(iso: string): string {
+function getRtf(locale: string) {
+  const loc = locale === "id" ? "id-ID" : "en-US";
+  let rtf = rtfMap.get(loc);
+  if (!rtf) {
+    rtf = new Intl.RelativeTimeFormat(loc, { numeric: "auto" });
+    rtfMap.set(loc, rtf);
+  }
+  return rtf;
+}
+
+function formatRelative(iso: string, locale: string, justNowText: string): string {
   try {
     const time = new Date(iso).getTime();
     if (isNaN(time)) return "-";
     const diffSec = Math.round((time - Date.now()) / 1000);
     const absSec = Math.abs(diffSec);
-    if (absSec < 60) return "just now";
+    if (absSec < 60) return justNowText;
+    const rtf = getRtf(locale);
     const diffMin = Math.round(diffSec / 60);
     if (Math.abs(diffMin) < 60) return rtf.format(diffMin, "minute");
     const diffHours = Math.round(diffMin / 60);
@@ -42,6 +54,8 @@ function formatRelative(iso: string): string {
 export function Notifications() {
   const { data: jobs } = usePoll(api.jobs, 10000);
   const [seenAt, setSeenAt] = useState<string | null>(null);
+  const { locale } = useLocale();
+  const t = useT();
 
   useEffect(() => {
     try {
@@ -92,8 +106,8 @@ export function Notifications() {
         <Button
           variant="outline"
           size="icon-sm"
-          className="relative size-8 rounded-full bg-card hover:bg-mist text-ink border-line shrink-0"
-          aria-label="Notifications"
+          className="relative size-8 rounded-full bg-card hover:bg-mist text-ink border-line shrink-0 cursor-pointer"
+          aria-label={t("notifications.title")}
         >
           <Icon name="bell" />
           {unreadCount > 0 && (
@@ -108,12 +122,12 @@ export function Notifications() {
         className="w-80 p-0 rounded-xl border border-line/70 bg-card shadow-md"
       >
         <div className="px-4 py-3 border-b border-line/60">
-          <span className="font-semibold text-sm text-foreground">Notifications</span>
+          <span className="font-semibold text-sm text-foreground">{t("notifications.title")}</span>
         </div>
         <div className="max-h-80 overflow-y-auto p-1">
           {items.length === 0 ? (
             <div className="py-6 text-center text-xs text-muted-foreground">
-              No recent activity
+              {t("notifications.empty")}
             </div>
           ) : (
             items.map((j) => (
@@ -130,10 +144,14 @@ export function Notifications() {
                   />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium text-foreground truncate">
-                      Job {j.id} ({j.area_id}) {j.status === "done" ? "finished" : "failed"}
+                      {j.status === "done"
+                        ? t("notifications.jobFinished", { id: j.id, area: j.area_id })
+                        : t("notifications.jobFailed", { id: j.id, area: j.area_id })}
                     </p>
                     <p className="text-[11px] text-muted-foreground mt-0.5">
-                      {j.finished_at ? formatRelative(j.finished_at) : "-"}
+                      {j.finished_at
+                        ? formatRelative(j.finished_at, locale, t("notifications.justNow"))
+                        : "-"}
                     </p>
                   </div>
                 </Link>

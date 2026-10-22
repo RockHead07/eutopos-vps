@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useLocale, useT } from "@/lib/i18n";
 import Link from "@/lib/Link";
 import { cn } from "@/lib/utils";
 
@@ -41,6 +42,9 @@ export function VersionComparisonPanel({
   onClose,
   className,
 }: VersionComparisonPanelProps) {
+  const { locale } = useLocale();
+  const t = useT();
+
   // Find areas that have at least 2 versions
   const areaCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -103,40 +107,33 @@ export function VersionComparisonPanel({
       : null;
 
   const acceptPctA =
-    insA?.accepted != null && insA?.queries
+    insA?.queries && insA.queries > 0 && insA.accepted != null
       ? Math.round((insA.accepted / insA.queries) * 100)
       : null;
   const acceptPctB =
-    insB?.accepted != null && insB?.queries
+    insB?.queries && insB.queries > 0 && insB.accepted != null
       ? Math.round((insB.accepted / insB.queries) * 100)
       : null;
 
-  if (areaVersions.length < 2) {
-    return (
-      <div className={cn("rounded-lg border border-line bg-card p-4 text-xs", className)}>
-        <div className="flex items-center justify-between border-b border-line pb-2 mb-2">
-          <span className="font-semibold text-foreground">Version Comparison</span>
-          {onClose && (
-            <Button variant="ghost" size="sm" onClick={onClose} className="h-6 px-2 text-xs">
-              Close
-            </Button>
-          )}
-        </div>
-        <p className="text-muted-foreground">
-          At least two map versions for the same area are required to perform a comparison. Current area has {areaVersions.length} version.
-        </p>
-      </div>
-    );
+  if (versions.length < 2) {
+    return null;
   }
 
   return (
-    <div className={cn("flex flex-col gap-3 rounded-lg border border-line bg-card p-4 text-xs", className)}>
-      {/* Header and area selector */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-line pb-3">
+    <div
+      role="region"
+      aria-label={t("compare.title")}
+      className={cn(
+        "rounded-xl border border-line bg-card p-4 shadow-sm flex flex-col gap-4",
+        className
+      )}
+    >
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
         <div className="flex items-center gap-2">
-          <span className="font-semibold text-foreground text-sm">Compare Map Versions</span>
-          <span className="rounded bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-            Same Area Benchmark
+          <span className="font-semibold text-foreground text-sm">{t("compare.title")}</span>
+          <span className="rounded-full bg-forest/15 px-2 py-0.5 text-[10px] font-medium text-forest">
+            {currentArea}
           </span>
         </div>
 
@@ -151,7 +148,7 @@ export function VersionComparisonPanel({
               setVersionBId(vers[1]?.id ?? vers[0]?.id ?? null);
             }}
           >
-            <SelectTrigger className="h-7 w-36 text-xs">
+            <SelectTrigger className="h-7 w-36 text-xs" aria-label={t("compare.selectAreaAria")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -170,7 +167,7 @@ export function VersionComparisonPanel({
               onClick={onClose}
               className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
             >
-              Close
+              {t("compare.close")}
             </Button>
           )}
         </div>
@@ -181,7 +178,7 @@ export function VersionComparisonPanel({
         {/* Version A Selector */}
         <div className="flex flex-col gap-1.5 rounded-md bg-canvas/60 p-3 border border-line/60">
           <div className="flex items-center justify-between">
-            <span className="font-medium text-muted-foreground text-[11px]">Version A (Left)</span>
+            <span className="font-medium text-muted-foreground text-[11px]">{t("compare.versionALeft")}</span>
             {vA && <VersionBadge status={vA.status} />}
           </div>
           <Select
@@ -200,7 +197,7 @@ export function VersionComparisonPanel({
             </SelectContent>
           </Select>
           <div className="flex items-center justify-between text-[11px] text-muted-foreground mt-1">
-            <span>Created {vA ? formatDate(vA.created_at) : "-"}</span>
+            <span>{t("compare.created", { date: vA ? formatDate(vA.created_at, locale) : "-" })}</span>
             {vA?.job_id && (
               <Link href={`/job/?id=${vA.job_id}`} className="text-forest hover:underline">
                 Job #{vA.job_id}
@@ -212,7 +209,7 @@ export function VersionComparisonPanel({
         {/* Version B Selector */}
         <div className="flex flex-col gap-1.5 rounded-md bg-canvas/60 p-3 border border-line/60">
           <div className="flex items-center justify-between">
-            <span className="font-medium text-muted-foreground text-[11px]">Version B (Right)</span>
+            <span className="font-medium text-muted-foreground text-[11px]">{t("compare.versionBRight")}</span>
             {vB && <VersionBadge status={vB.status} />}
           </div>
           <Select
@@ -231,7 +228,7 @@ export function VersionComparisonPanel({
             </SelectContent>
           </Select>
           <div className="flex items-center justify-between text-[11px] text-muted-foreground mt-1">
-            <span>Created {vB ? formatDate(vB.created_at) : "-"}</span>
+            <span>{t("compare.created", { date: vB ? formatDate(vB.created_at, locale) : "-" })}</span>
             {vB?.job_id && (
               <Link href={`/job/?id=${vB.job_id}`} className="text-forest hover:underline">
                 Job #{vB.job_id}
@@ -246,19 +243,19 @@ export function VersionComparisonPanel({
         <table className="w-full text-left text-xs">
           <thead className="bg-canvas/80 border-b border-line text-muted-foreground font-medium">
             <tr>
-              <th className="p-2.5">Reconstruction Metric</th>
+              <th className="p-2.5">{t("compare.reconstructionMetric")}</th>
               <th className="p-2.5 w-1/3">
-                v{vA?.version ?? "A"} {vA?.status === "published" && "(Active)"}
+                v{vA?.version ?? "A"} {vA?.status === "published" && t("compare.active")}
               </th>
               <th className="p-2.5 w-1/3">
-                v{vB?.version ?? "B"} {vB?.status === "published" && "(Active)"}
+                v{vB?.version ?? "B"} {vB?.status === "published" && t("compare.active")}
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
             {/* Status */}
             <tr>
-              <td className="p-2.5 font-medium text-foreground">Publication Status</td>
+              <td className="p-2.5 font-medium text-foreground">{t("compare.publicationStatus")}</td>
               <td className="p-2.5 capitalize">{vA?.status ?? "-"}</td>
               <td className="p-2.5 capitalize">{vB?.status ?? "-"}</td>
             </tr>
@@ -266,8 +263,8 @@ export function VersionComparisonPanel({
             {/* Registered frames */}
             <tr>
               <td className="p-2.5">
-                <div className="font-medium text-foreground">Registered Frames</div>
-                <div className="text-[11px] text-muted-foreground">Reconstruction frame coverage</div>
+                <div className="font-medium text-foreground">{t("compare.registeredFrames")}</div>
+                <div className="text-[11px] text-muted-foreground">{t("compare.frameCoverage")}</div>
               </td>
               <td className="p-2.5 font-mono">
                 {runA ? (
@@ -302,8 +299,8 @@ export function VersionComparisonPanel({
             {/* Map pieces */}
             <tr>
               <td className="p-2.5">
-                <div className="font-medium text-foreground">Map Pieces</div>
-                <div className="text-[11px] text-muted-foreground">Connected SfM components</div>
+                <div className="font-medium text-foreground">{t("compare.mapPieces")}</div>
+                <div className="text-[11px] text-muted-foreground">{t("compare.connectedSfm")}</div>
               </td>
               <td className="p-2.5 font-mono">
                 {insA?.parts ? (
@@ -313,7 +310,7 @@ export function VersionComparisonPanel({
                       insA.parts.length === 1 ? "text-forest" : "text-amber-700"
                     )}
                   >
-                    {insA.parts.length} {insA.parts.length === 1 ? "(Connected)" : "(Split)"}
+                    {insA.parts.length} {insA.parts.length === 1 ? t("compare.connected") : t("compare.split")}
                   </span>
                 ) : (
                   <span className="text-muted-foreground">-</span>
@@ -327,7 +324,7 @@ export function VersionComparisonPanel({
                       insB.parts.length === 1 ? "text-forest" : "text-amber-700"
                     )}
                   >
-                    {insB.parts.length} {insB.parts.length === 1 ? "(Connected)" : "(Split)"}
+                    {insB.parts.length} {insB.parts.length === 1 ? t("compare.connected") : t("compare.split")}
                   </span>
                 ) : (
                   <span className="text-muted-foreground">-</span>
@@ -338,9 +335,9 @@ export function VersionComparisonPanel({
             {/* Test photos accepted */}
             <tr>
               <td className="p-2.5">
-                <div className="font-medium text-foreground">Test Queries Accepted</div>
+                <div className="font-medium text-foreground">{t("compare.testQueriesAccepted")}</div>
                 <div className="text-[11px] text-muted-foreground">
-                  Inlier threshold &ge; {insA?.min_inliers ?? insB?.min_inliers ?? 50}
+                  {t("compare.inlierThreshold", { min: insA?.min_inliers ?? insB?.min_inliers ?? 50 })}
                 </div>
               </td>
               <td className="p-2.5 font-mono">
@@ -354,7 +351,7 @@ export function VersionComparisonPanel({
                     )}
                   </div>
                 ) : (
-                  <span className="text-muted-foreground">No test video</span>
+                  <span className="text-muted-foreground">{t("compare.noTestVideo")}</span>
                 )}
               </td>
               <td className="p-2.5 font-mono">
@@ -368,7 +365,7 @@ export function VersionComparisonPanel({
                     )}
                   </div>
                 ) : (
-                  <span className="text-muted-foreground">No test video</span>
+                  <span className="text-muted-foreground">{t("compare.noTestVideo")}</span>
                 )}
               </td>
             </tr>
@@ -376,8 +373,8 @@ export function VersionComparisonPanel({
             {/* Map build time */}
             <tr>
               <td className="p-2.5">
-                <div className="font-medium text-foreground">Build Duration</div>
-                <div className="text-[11px] text-muted-foreground">Feature extraction to SfM</div>
+                <div className="font-medium text-foreground">{t("compare.buildDuration")}</div>
+                <div className="text-[11px] text-muted-foreground">{t("compare.featureExtractionToSfm")}</div>
               </td>
               <td className="p-2.5 font-mono text-muted-foreground">{fmtSec(buildSecA)}</td>
               <td className="p-2.5 font-mono text-muted-foreground">{fmtSec(buildSecB)}</td>
@@ -385,7 +382,7 @@ export function VersionComparisonPanel({
 
             {/* 3D Inspection Report Links */}
             <tr>
-              <td className="p-2.5 font-medium text-foreground">3D Inspection Report</td>
+              <td className="p-2.5 font-medium text-foreground">{t("compare.report3D")}</td>
               <td className="p-2.5">
                 {vA?.has_report ? (
                   <a
@@ -394,7 +391,7 @@ export function VersionComparisonPanel({
                     rel="noreferrer"
                     className="inline-flex items-center gap-1 text-forest hover:underline font-medium"
                   >
-                    Open 3D Report ↗
+                    {t("compare.openReport")}
                   </a>
                 ) : (
                   <span className="text-muted-foreground">-</span>
@@ -408,7 +405,7 @@ export function VersionComparisonPanel({
                     rel="noreferrer"
                     className="inline-flex items-center gap-1 text-forest hover:underline font-medium"
                   >
-                    Open 3D Report ↗
+                    {t("compare.openReport")}
                   </a>
                 ) : (
                   <span className="text-muted-foreground">-</span>
@@ -417,11 +414,6 @@ export function VersionComparisonPanel({
             </tr>
           </tbody>
         </table>
-      </div>
-
-      {/* Semantic notice */}
-      <div className="rounded bg-canvas/70 p-2 text-[11px] text-muted-foreground border border-line/60 leading-relaxed">
-        <strong>Terminology note:</strong> Registered frames and test query acceptance rates describe SfM feature matching and continuity. They do not constitute ground-truth physical metric localization accuracy in meters. Physical metric coordinates require measured ground-truth reference points (align.json).
       </div>
     </div>
   );

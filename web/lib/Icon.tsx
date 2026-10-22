@@ -15,9 +15,9 @@ const VERSION_ICON: Record<string, string> = {
 /** Status versi peta: ikon dan teks, tidak hanya warna. */
 export function VersionBadge({ status }: { status: string }) {
   return (
-    <StatusBadge status={status}>
-      {VERSION_ICON[status] && <Icon name={VERSION_ICON[status]} />}
-      {status}
-    </StatusBadge>
+    <StatusBadge
+      status={status}
+      icon={VERSION_ICON[status] ? <Icon name={VERSION_ICON[status]} /> : undefined}
+    />
   );
 }

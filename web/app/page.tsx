@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Icon, VersionBadge } from "@/lib/Icon";
+import { useLocale, useT } from "@/lib/i18n";
 import Link from "@/lib/Link";
 import { PageHead } from "@/lib/PageHead";
 import { Rows } from "@/lib/Rows";
@@ -51,107 +52,85 @@ function toLocalDateString(iso: string | null | undefined): string | null {
   return `${year}-${month}-${day}`;
 }
 
-function matchDate(itemDateIso: string | null | undefined, from: string, to: string): boolean {
-  if (!from && !to) return true;
-  const localDate = toLocalDateString(itemDateIso);
-  if (!localDate) return false;
-  if (from && localDate < from) return false;
-  if (to && localDate > to) return false;
-  return true;
-}
-
 export default function OverviewPage() {
   const router = useRouter();
-  const jobs = usePoll(api.jobs, 5000);
-  const versions = usePoll(api.versions, 10000);
+  const { locale } = useLocale();
+  const t = useT();
   const service = useSharedPoll(api.service, 5000);
   const health = useSharedPoll(api.health, 10000);
-  const { data: me, error: meError } = usePoll(api.me, 60000);
-  const error = jobs.error ?? versions.error ?? service.error;
+  const jobs = usePoll(api.jobs, 5000);
+  const versions = usePoll(api.versions, 5000);
+  const me = usePoll(api.me, 60000);
 
-  const [mounted, setMounted] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
-  const currentBucketRef = useRef<string | null>(null);
+  // Search state
   const [searchQuery, setSearchQuery] = useState("");
-  const [areaFilter, setAreaFilter] = useState("all");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
 
+  // Filter state
+  const [areaFilter, setAreaFilter] = useState<string>("all");
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
+
+  const isFilterActive = areaFilter !== "all" || Boolean(fromDate) || Boolean(toDate);
+
+  // Greetings template - calculated once on mount to avoid hydration mismatch
+  const [greetingTemplate, setGreetingTemplate] = useState<string>("");
   useEffect(() => {
-    setMounted(true);
-
-    const pick = (bucket: HourBucket, weekday: number) => {
-      let lastIndex: number | null = null;
-      try {
-        const stored = sessionStorage.getItem("eutopos.greeting.last");
-        if (stored !== null) lastIndex = parseInt(stored, 10);
-      } catch {
-        // sessionStorage not available
-      }
-
-      const extras = GREETINGS.WEEKDAY[weekday];
-      const hasExtras = Boolean(extras && extras.length > 0);
-      const pickExtra = hasExtras && Math.random() < 0.25;
-
-      let chosenTemplate: string;
-      let chosenIndex: number;
-
-      if (pickExtra && extras) {
-        let idx = Math.floor(Math.random() * extras.length);
-        if (lastIndex !== null && !isNaN(lastIndex) && idx === lastIndex && extras.length > 1) {
-          idx = (idx + 1) % extras.length;
-        }
-        chosenIndex = idx;
-        chosenTemplate = extras[idx];
-      } else {
-        const pool = GREETINGS[bucket];
-        let idx = Math.floor(Math.random() * pool.length);
-        if (lastIndex !== null && !isNaN(lastIndex) && idx === lastIndex && pool.length > 1) {
-          idx = (idx + 1) % pool.length;
-        }
-        chosenIndex = idx;
-        chosenTemplate = pool[idx];
-      }
-
-      try {
-        sessionStorage.setItem("eutopos.greeting.last", String(chosenIndex));
-      } catch {
-        // ignore
-      }
-
-      currentBucketRef.current = bucket;
-      setSelectedTemplate(chosenTemplate);
-    };
-
-    const now = new Date();
-    const initialBucket = getHourBucket(now.getHours());
-    pick(initialBucket, now.getDay());
-
-    const interval = setInterval(() => {
-      const currentNow = new Date();
-      const b = getHourBucket(currentNow.getHours());
-      if (b !== currentBucketRef.current) {
-        pick(b, currentNow.getDay());
-      }
-    }, 60000);
-
-    return () => clearInterval(interval);
+    const bucket: HourBucket = getHourBucket(new Date().getHours());
+    const list = GREETINGS[bucket];
+    const randomIndex = Math.floor(Math.random() * list.length);
+    setGreetingTemplate(list[randomIndex]);
   }, []);
 
-  const name = extractNameFromEmail(me?.email);
-  const title =
-    !mounted || meError || !selectedTemplate
-      ? "Overview"
-      : formatGreeting(selectedTemplate, name);
+  const handleSearchSubmit = () => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) return;
+    router.push(`/jobs/?q=${encodeURIComponent(trimmed)}`);
+  };
 
-  const allJobs = jobs.data ?? [];
-  const allVersions = versions.data ?? [];
+  const allJobs = useMemo(() => jobs.data ?? [], [jobs.data]);
+  const allVersions = useMemo(() => versions.data ?? [], [versions.data]);
 
+  // Unique areas from jobs and versions
   const areaOptions = useMemo(() => {
-    return Array.from(new Set(allJobs.map((j) => j.area_id))).sort();
-  }, [allJobs]);
+    const areas = new Set<string>();
+    allJobs.forEach((j) => {
+      if (j.area_id) areas.add(j.area_id);
+    });
+    allVersions.forEach((v) => {
+      if (v.area_id) areas.add(v.area_id);
+    });
+    return Array.from(areas).sort();
+  }, [allJobs, allVersions]);
 
-  const isFilterActive = areaFilter !== "all" || Boolean(fromDate || toDate);
+  // Filtered jobs
+  const filteredJobs = useMemo(() => {
+    return allJobs.filter((job) => {
+      if (areaFilter !== "all" && job.area_id !== areaFilter) {
+        return false;
+      }
+      const jobDate = toLocalDateString(job.created_at);
+      if (jobDate) {
+        if (fromDate && jobDate < fromDate) return false;
+        if (toDate && jobDate > toDate) return false;
+      }
+      return true;
+    });
+  }, [allJobs, areaFilter, fromDate, toDate]);
+
+  // Filtered versions (for recent versions list)
+  const filteredVersions = useMemo(() => {
+    return allVersions.filter((v) => {
+      if (areaFilter !== "all" && v.area_id !== areaFilter) {
+        return false;
+      }
+      const vDate = toLocalDateString(v.created_at);
+      if (vDate) {
+        if (fromDate && vDate < fromDate) return false;
+        if (toDate && vDate > toDate) return false;
+      }
+      return true;
+    });
+  }, [allVersions, areaFilter, fromDate, toDate]);
 
   const handleResetFilters = () => {
     setAreaFilter("all");
@@ -159,72 +138,72 @@ export default function OverviewPage() {
     setToDate("");
   };
 
-  const handleSearchSubmit = () => {
-    const q = searchQuery.trim();
-    if (q) {
-      router.push(`/jobs/?q=${encodeURIComponent(q)}`);
-    } else {
-      router.push("/jobs/");
+  const title = useMemo(() => {
+    if (isFilterActive) {
+      return `${t("overview.pageTitle")} · ${filteredJobs.length} ${filteredJobs.length === 1 ? t("overview.showingJob") : t("overview.showingJobs", { count: filteredJobs.length })}`;
     }
-  };
+    const name = extractNameFromEmail(me.data?.email);
+    if (!name) return t("overview.systemOverview");
+    return formatGreeting(greetingTemplate, name);
+  }, [isFilterActive, filteredJobs.length, me.data?.email, greetingTemplate, t]);
 
-  const filteredJobs = useMemo(() => {
-    return allJobs.filter((j) => {
-      if (areaFilter !== "all" && j.area_id !== areaFilter) return false;
-      if (fromDate || toDate) {
-        if (!matchDate(j.created_at, fromDate, toDate)) return false;
-      }
-      return true;
-    });
-  }, [allJobs, areaFilter, fromDate, toDate]);
-
-  const filteredVersions = useMemo(() => {
-    return allVersions.filter((v) => {
-      if (areaFilter !== "all" && v.area_id !== areaFilter) return false;
-      if (fromDate || toDate) {
-        if (!matchDate(v.created_at, fromDate, toDate)) return false;
-      }
-      return true;
-    });
-  }, [allVersions, areaFilter, fromDate, toDate]);
-
-  // Pekerjaan selesai yang punya foto uji, urut lama ke baru (id naik).
-  const scored = filteredJobs
-    .filter((j) => j.status === "done" && (j.summary?.inspect?.queries ?? 0) > 0)
-    .sort((a, b) => a.id - b.id);
-  const minInliers = [...new Set(scored.map((j) => j.summary?.inspect?.min_inliers))];
-  const latest = filteredJobs.filter((j) => j.status === "done").sort((a, b) => b.id - a.id)[0];
-  const failedJobs = filteredJobs.filter((j) => j.status === "failed");
-  const latestFailed = failedJobs.sort((a, b) => b.id - a.id)[0];
-  const counts = [
-    { status: "done", label: "Done", n: filteredJobs.filter((j) => j.status === "done").length },
-    {
-      status: "running",
-      label: "In progress",
-      n: filteredJobs.filter((j) => BUSY.includes(j.status)).length,
-    },
-    { status: "failed", label: "Failed", n: filteredJobs.filter((j) => j.status === "failed").length },
-  ];
   const s = service.data;
-  // Maksimal 8 job selesai terakhir yang punya waktu tercatat, urut lama ke baru
+  const error = service.error || jobs.error || versions.error;
+
+  const finished = filteredJobs.filter((j) => j.status === "done");
+  const latest = finished[0];
+
+  // Latest failed job
+  const latestFailed = useMemo(() => {
+    return filteredJobs.find((j) => j.status === "failed");
+  }, [filteredJobs]);
+
+  const scored = filteredJobs
+    .filter((j) => j.status === "done" && j.summary?.inspect?.queries)
+    .slice(0, 12)
+    .reverse();
+
+  const minInliers = Array.from(
+    new Set(
+      scored
+        .map((j) => j.summary?.inspect?.min_inliers)
+        .filter((v): v is number => typeof v === "number"),
+    ),
+  );
+
   const builds: SparkPoint[] = filteredJobs
-    .filter((j) => j.status === "done" && buildSeconds(j) !== null)
-    .sort((a, b) => a.id - b.id)
-    .slice(-8)
-    .map((j) => ({
-      id: j.id,
-      value: buildSeconds(j)!,
-      tip: `Job ${j.id} (${j.area_id}): ${fmtDuration(buildSeconds(j)!)}, ${
-        j.summary?.run?.map_registered ?? "?"
-      } of ${j.summary?.run?.map_images ?? "?"} frames registered`,
-    }));
+    .filter((j) => j.status === "done")
+    .map((j) => ({ id: j.id, value: buildSeconds(j) }))
+    .filter((p): p is SparkPoint => p.value !== null)
+    .slice(0, 15)
+    .reverse();
+
   const lastBuild = builds[builds.length - 1];
 
+  const counts = [
+    {
+      status: "done",
+      label: t("overview.statusDone"),
+      n: filteredJobs.filter((j) => j.status === "done").length,
+    },
+    {
+      status: "running",
+      label: t("overview.statusInProgress"),
+      n: filteredJobs.filter((j) => BUSY.includes(j.status)).length,
+    },
+    {
+      status: "failed",
+      label: t("overview.statusFailed"),
+      n: filteredJobs.filter((j) => j.status === "failed").length,
+    },
+  ];
+
   const headerControls = (
-    <div className="flex flex-col gap-2 w-full lg:w-auto">
-      <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-2 w-full lg:w-auto lg:justify-end">
-        {/* Search */}
-        <div className="w-full lg:flex-1 lg:min-w-[360px] lg:max-w-xl">
+    <div className="flex flex-col gap-2.5 w-full">
+      {/* Search and Filters flex row */}
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-2.5 w-full">
+        {/* Search bar */}
+        <div className="w-full lg:w-72">
           <SearchBar
             value={searchQuery}
             onChange={setSearchQuery}
@@ -239,11 +218,11 @@ export default function OverviewPage() {
           {/* Area */}
           <div className="flex-1 min-w-0 lg:w-36 lg:flex-none">
             <Select value={areaFilter} onValueChange={setAreaFilter}>
-              <SelectTrigger className="w-full text-xs" aria-label="Filter by area">
-                <SelectValue placeholder="All areas" />
+              <SelectTrigger className="w-full text-xs cursor-pointer" aria-label={t("overview.filterAreaAria")}>
+                <SelectValue placeholder={t("overview.allAreas")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All areas</SelectItem>
+                <SelectItem value="all">{t("overview.allAreas")}</SelectItem>
                 {areaOptions.map((a) => (
                   <SelectItem key={a} value={a}>
                     {a}
@@ -272,7 +251,9 @@ export default function OverviewPage() {
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>
-              Showing {filteredJobs.length} {filteredJobs.length === 1 ? "job" : "jobs"}
+              {filteredJobs.length === 1
+                ? t("overview.showingJob")
+                : t("overview.showingJobs", { count: filteredJobs.length })}
             </span>
             <Button
               type="button"
@@ -281,7 +262,7 @@ export default function OverviewPage() {
               onClick={handleResetFilters}
               className="h-7 px-2 text-xs text-forest hover:text-forest-hover font-medium cursor-pointer"
             >
-              Reset
+              {t("overview.clearFilters")}
             </Button>
           </div>
         </div>
@@ -291,37 +272,37 @@ export default function OverviewPage() {
 
   return (
     <>
-      <PageHead crumbs={[{ label: "Overview" }]} title={title} controls={headerControls}>
-        Map builds, map quality, and the map /localize is serving.
+      <PageHead crumbs={[{ label: t("nav.overview") }]} title={title} controls={headerControls}>
+        {t("overview.subtitle")}
       </PageHead>
       {error && <p className="error">{error}</p>}
       <ActiveJobsBanner jobs={allJobs} />
       <div className="overview">
         {/* Active map is NEVER filtered */}
         <Panel className="area-active">
-          <span className="stat-label">Active map</span>
+          <span className="stat-label">{t("overview.activeMap")}</span>
           {s ? (
             <>
               <span className="stat-value">
-                {s.area_id ?? "none"}
+                {s.area_id ?? t("overview.none")}
                 {s.map_version !== null && <small> v{s.map_version}</small>}
               </span>
               <div className="flex flex-wrap items-center gap-2">
                 {s.reloading ? (
-                  <StatusBadge status="running">loading a new version</StatusBadge>
+                  <StatusBadge status="running">{t("overview.loadingNewVersion")}</StatusBadge>
                 ) : (
-                  <StatusBadge status="done">ready</StatusBadge>
+                  <StatusBadge status="done">{t("overview.ready")}</StatusBadge>
                 )}
                 {health.data?.aligned ? (
                   <span className="rounded bg-forest/15 px-2 py-0.5 text-[11px] font-semibold text-forest">
-                    Metric aligned
+                    {t("overview.metricAligned")}
                   </span>
                 ) : health.data ? (
                   <span
                     className="rounded bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
-                    title="Model SfM coordinates only (pending align.json reference points)"
+                    title={t("head.modelTitle")}
                   >
-                    Model coordinates
+                    {t("overview.modelCoordinates")}
                   </span>
                 ) : null}
               </div>
@@ -334,11 +315,11 @@ export default function OverviewPage() {
               <Icon name="error-map" /> {s.reload_error}
             </p>
           )}
-          <h2>Recent versions</h2>
+          <h2>{t("overview.recentVersions")}</h2>
           {!versions.data && <Rows n={3} />}
           {versions.data && filteredVersions.length === 0 && (
             <p className="muted">
-              {isFilterActive ? "No versions in this range" : "No map versions yet."}
+              {isFilterActive ? t("overview.noVersionsRange") : t("overview.noVersionsYet")}
             </p>
           )}
           <ul className="list">
@@ -357,12 +338,12 @@ export default function OverviewPage() {
                         </strong>
                         {isCurrentlyServing && (
                           <span className="text-[10px] font-semibold text-forest bg-forest/15 px-1.5 py-0.5 rounded">
-                            Serving
+                            {t("overview.servingBadge")}
                           </span>
                         )}
                       </div>
                       <span className="muted flex items-center gap-2 text-xs">
-                        {v.job_id ? <Link href={`/job/?id=${v.job_id}`}>job {v.job_id}</Link> : "from CLI"}
+                        {v.job_id ? <Link href={`/job/?id=${v.job_id}`}>job {v.job_id}</Link> : t("overview.fromCli")}
                         {v.has_report && (
                           <a
                             href={`/api/versions/${v.id}/report`}
@@ -370,7 +351,7 @@ export default function OverviewPage() {
                             rel="noreferrer"
                             className="text-forest hover:underline text-[11px]"
                           >
-                            3D report ↗
+                            {t("overview.report3DLink")}
                           </a>
                         )}
                       </span>
@@ -381,41 +362,45 @@ export default function OverviewPage() {
               })}
           </ul>
           <Link href="/maps/">
-            All map versions <Icon name="arrow-up-right" />
+            {t("overview.allMapVersions")} <Icon name="arrow-up-right" />
           </Link>
         </Panel>
 
         <Panel className="area-accept">
           <div>
-            <h2>Test photos accepted</h2>
+            <h2>{t("overview.testPhotosAccepted")}</h2>
             <p className="muted">
-              Share of each job&apos;s test photos localized with at least{" "}
-              {minInliers.length === 1 && minInliers[0] != null ? minInliers[0] : "the configured number of"} inliers.
+              {t("overview.testPhotosShare", {
+                min:
+                  minInliers.length === 1 && minInliers[0] != null
+                    ? minInliers[0]
+                    : t("overview.theConfiguredNumber"),
+              })}
             </p>
           </div>
           {!jobs.data && <div className="skeleton block" />}
-          {jobs.data && filteredJobs.length === 0 && <p className="muted">No jobs in this range</p>}
+          {jobs.data && filteredJobs.length === 0 && <p className="muted">{t("overview.noJobsRange")}</p>}
           {jobs.data && filteredJobs.length > 0 && scored.length === 0 && (
             <p className="muted">
-              No finished job with a test video yet. Add a test video to a map session to see this.
+              {t("overview.noTestVideoYet")}
             </p>
           )}
-          {scored.length > 0 && <AcceptChart jobs={scored} />}
+          {scored.length > 0 && <AcceptChart jobs={scored} t={t} />}
           <div className="flex items-center justify-between mt-2 pt-2 border-t border-line/50 text-[11px] text-muted-foreground">
-            <span>Inlier threshold &ge; 50 (acceptance rate; not metric accuracy)</span>
+            <span>{t("overview.inlierThreshold")}</span>
             <Link href="/jobs/">
-              View as table <Icon name="arrow-up-right" />
+              {t("overview.viewAsTable")} <Icon name="arrow-up-right" />
             </Link>
           </div>
         </Panel>
 
         <Panel className="area-jobs">
-          <span className="stat-label">Jobs</span>
+          <span className="stat-label">{t("overview.jobsCard")}</span>
           <span className="stat-value">
             {jobs.data ? filteredJobs.length : <span className="skeleton row" />}
           </span>
           {jobs.data && filteredJobs.length === 0 ? (
-            <p className="muted py-4 text-xs">No jobs in this range</p>
+            <p className="muted py-4 text-xs">{t("overview.noJobsRange")}</p>
           ) : (
             <ul className="status-bars">
               {counts.map((c) => (
@@ -436,11 +421,11 @@ export default function OverviewPage() {
           {latestFailed && (
             <div className="mt-3 pt-2.5 border-t border-line/60 flex items-center justify-between text-xs">
               <div className="flex items-center gap-1.5 text-bad-fg">
-                <span className="font-semibold">Recent failure:</span>
+                <span className="font-semibold">{t("overview.recentFailure")}</span>
                 <span>Job #{latestFailed.id} {latestFailed.stage ? `(${latestFailed.stage})` : ""}</span>
               </div>
               <Link href={`/job/?id=${latestFailed.id}`} className="text-bad-fg hover:underline font-medium">
-                View diagnosis ↗
+                {t("overview.viewDiagnosis")}
               </Link>
             </div>
           )}
@@ -448,13 +433,13 @@ export default function OverviewPage() {
 
         <Panel className="area-build">
           <div>
-            <h2>Map build time</h2>
-            <p className="muted">From feature extraction to reconstruction, per finished job (GPU).</p>
+            <h2>{t("overview.buildTimeTitle")}</h2>
+            <p className="muted">{t("overview.buildTimeDesc")}</p>
           </div>
           {!jobs.data && <div className="skeleton block" />}
-          {jobs.data && filteredJobs.length === 0 && <p className="muted">No jobs in this range</p>}
+          {jobs.data && filteredJobs.length === 0 && <p className="muted">{t("overview.noJobsRange")}</p>}
           {jobs.data && filteredJobs.length > 0 && !lastBuild && (
-            <p className="muted">No finished job has a recorded build time yet.</p>
+            <p className="muted">{t("overview.noBuildTimeYet")}</p>
           )}
           {lastBuild && (
             <>
@@ -466,13 +451,13 @@ export default function OverviewPage() {
 
         <Panel className="area-latest">
           <div className="actions">
-            <h2>Latest map</h2>
+            <h2>{t("overview.latestMap")}</h2>
             {latest && <Link href={`/job/?id=${latest.id}`}>Job {latest.id} · {latest.area_id}</Link>}
           </div>
           {!jobs.data && <div className="skeleton block" />}
-          {jobs.data && filteredJobs.length === 0 && <p className="muted">No jobs in this range</p>}
-          {jobs.data && filteredJobs.length > 0 && !latest && <p className="muted">No finished job yet.</p>}
-          {latest && <LatestStats job={latest} />}
+          {jobs.data && filteredJobs.length === 0 && <p className="muted">{t("overview.noJobsRange")}</p>}
+          {jobs.data && filteredJobs.length > 0 && !latest && <p className="muted">{t("overview.noFinishedJob")}</p>}
+          {latest && <LatestStats job={latest} locale={locale} t={t} />}
         </Panel>
       </div>
     </>
@@ -480,14 +465,26 @@ export default function OverviewPage() {
 }
 
 /** Satu seri: persen foto uji diterima per pekerjaan. Batang terbaru disorot dan diberi nilai. */
-function AcceptChart({ jobs }: { jobs: Job[] }) {
+function AcceptChart({
+  jobs,
+  t,
+}: {
+  jobs: Job[];
+  t: (key: any, vars?: any) => string;
+}) {
   const last = jobs[jobs.length - 1].id;
   return (
-    <div className="bars" role="img" aria-label="Test photos accepted per job">
+    <div className="bars" role="img" aria-label={t("overview.chartAria")}>
       {jobs.map((j) => {
         const ins = j.summary!.inspect!;
         const pct = Math.round(((ins.accepted ?? 0) / (ins.queries ?? 1)) * 100);
-        const tip = `Job ${j.id} (${j.area_id}): ${ins.accepted} of ${ins.queries} accepted, ${pct}%`;
+        const tip = t("overview.chartTip", {
+          id: j.id,
+          area: j.area_id,
+          accepted: ins.accepted,
+          queries: ins.queries,
+          pct,
+        });
         return (
           <Link
             key={j.id}
@@ -506,21 +503,29 @@ function AcceptChart({ jobs }: { jobs: Job[] }) {
   );
 }
 
-function LatestStats({ job }: { job: Job }) {
+function LatestStats({
+  job,
+  locale,
+  t,
+}: {
+  job: Job;
+  locale: string;
+  t: (key: any, vars?: any) => string;
+}) {
   const petaVideo = job.videos?.find((v) => v.role === "peta");
-  const recordedDate = petaVideo?.recorded_at ? formatDate(petaVideo.recorded_at) : "unknown";
+  const recordedDate = petaVideo?.recorded_at ? formatDate(petaVideo.recorded_at, locale) : "unknown";
 
   const run = job.summary?.run;
   const ins = job.summary?.inspect;
   const noTest = !ins?.queries; // 0 diterima dari 0 foto uji bukan hasil, hanya tidak ada video uji
   const items = [
-    { label: "Registered frames", value: run?.map_registered, of: run?.map_images },
-    { label: "Map pieces", value: ins?.parts?.length },
+    { label: t("overview.registeredFrames"), value: run?.map_registered, of: run?.map_images },
+    { label: t("overview.mapPieces"), value: ins?.parts?.length },
     {
-      label: "Test photos accepted",
+      label: t("overview.testPhotosAccepted"),
       value: noTest ? undefined : ins?.accepted,
       of: ins?.queries || undefined,
-      note: noTest ? "No test video in this job" : undefined,
+      note: noTest ? t("jobs.noTestVideo") : undefined,
     },
   ];
   return (
@@ -528,10 +533,10 @@ function LatestStats({ job }: { job: Job }) {
       <Thumbnail
         jobId={job.id}
         hasPreview={job.has_preview}
-        alt={`Preview for job ${job.id}`}
+        alt={t("overview.previewJobAlt", { id: job.id })}
         aspect="card"
       />
-      <p className="text-xs text-muted-foreground">Recorded {recordedDate}</p>
+      <p className="text-xs text-muted-foreground">{t("overview.recorded", { date: recordedDate })}</p>
       <div className="stats-inline">
         {items.map((it) => (
           <div key={it.label}>
