@@ -1,0 +1,34 @@
+{
+  "cases": [
+    {"name": "open", "cell_m": 1.0, "origin": [0, 0], "rows": ["...", "...", "..."],
+     "from": [0.5, 0.5], "to": [2.5, 2.5],
+     "expect": {"points": [[0.5, 0.5], [2.5, 2.5]], "length_m": 2.8284271}},
+    {"name": "detour", "cell_m": 1.0, "origin": [0, 0], "rows": [".#.", ".#.", "..."],
+     "from": [0.5, 2.5], "to": [2.5, 2.5],
+     "expect": {"points": [[0.5, 2.5], [0.5, 0.5], [2.5, 0.5], [2.5, 2.5]], "length_m": 6.0}},
+    {"name": "snap", "cell_m": 1.0, "origin": [0, 0], "rows": ["#.."],
+     "from": [0.5, 0.5], "to": [2.5, 0.5],
+     "expect": {"points": [[0.5, 0.5], [1.5, 0.5], [2.5, 0.5]], "length_m": 2.0}},
+    {"name": "walled", "cell_m": 1.0, "origin": [0, 0], "rows": [".#."],
+     "from": [0.5, 0.5], "to": [2.5, 0.5], "expect": {"unreachable": true}},
+    {"name": "no-corner-cut", "cell_m": 1.0, "origin": [0, 0], "rows": [".#", "#."],
+     "from": [0.5, 1.5], "to": [1.5, 0.5], "expect": {"unreachable": true}},
+    {"name": "scaled", "cell_m": 0.5, "origin": [10, 20], "rows": ["...", "...", "..."],
+     "from": [10.25, 20.25], "to": [11.25, 21.25],
+     "expect": {"points": [[10.25, 20.25], [11.25, 21.25]], "length_m": 1.4142136}},
+    {"name": "same-cell", "cell_m": 1.0, "origin": [0, 0], "rows": ["..."],
+     "from": [0.5, 0.5], "to": [0.9, 0.5],
+     "expect": {"points": [[0.5, 0.5], [0.9, 0.5]], "length_m": 0.4}},
+    {"name": "outside", "cell_m": 1.0, "origin": [0, 0], "rows": ["..."],
+     "from": [-5.5, 0.5], "to": [2.5, 0.5],
+     "expect": {"points": [[-5.5, 0.5], [0.5, 0.5], [2.5, 0.5]], "length_m": 8.0}},
+    {"name": "pillar", "cell_m": 1.0, "origin": [0, 0], "rows": ["...", ".#.", "..."],
+     "from": [0.5, 0.5], "to": [2.5, 2.5],
+     "expect": {"points": [[0.5, 0.5], [2.5, 0.5], [2.5, 2.5]], "length_m": 4.0}}
+  ],
+  "bits": [
+    {"rows": [".#######"], "cell_m": 1.0, "origin": [0, 0], "b64": "AQ=="},
+    {"rows": ["#######."], "cell_m": 1.0, "origin": [0, 0], "b64": "gA=="},
+    {"rows": ["#.", ".#"], "cell_m": 1.0, "origin": [0, 0], "b64": "CQ=="}
+  ]
+}

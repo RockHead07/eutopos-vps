@@ -5,6 +5,7 @@ endpoint di bawah /api (Cloudflare Access + JWT); menulis dan menerbitkan hanya 
 diturunkan dari jalur kamera versi peta yang dilayani; ruangan, editan, dan graf terbit di database.
 """
 
+import hashlib
 import json
 import math
 from datetime import datetime
@@ -16,8 +17,8 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field, StringConstraints
 from sqlmodel import select
 
-from server import auth, floorplan, navgraph, routegraph, uploads
-from server.db import PublishedGraph, Room, RouteEdit, active_version
+from server import auth, floorplan, navgraph, routegraph, uploads, walkable
+from server.db import PublishedGraph, Room, RouteEdit, WalkableStroke, active_version
 from server.floorplan import to_building
 
 router = APIRouter()
@@ -43,6 +44,16 @@ class EditIn(BaseModel):
     kind: Literal["add_edge", "remove_edge", "move_node"]
     a: XY
     b: XY
+
+
+class StrokeIn(BaseModel):
+    # Radius dan koordinat diperiksa di add_stroke: FastAPI tidak bisa menyajikan galat validasi
+    # yang memuat NaN (jadi 500), jadi NaN tidak boleh sampai ke validasi pydantic.
+    mode: Literal["paint", "erase"]
+    radius: float
+    points: list[Annotated[list[float], Field(min_length=2, max_length=2)]] = Field(
+        min_length=1, max_length=2000
+    )
 
 
 class RouteIn(BaseModel):
@@ -77,9 +88,9 @@ def _write(request: Request, user: str) -> None:
         raise HTTPException(403, "only admins can change rooms and routes")
 
 
-def base_graph(area_id: str, loc) -> routegraph.Graph:
-    """Graf dasar dari pusat kamera (urut nama frame), di-cache per area dan align.json."""
-    key = (area_id, json.dumps(loc.align, sort_keys=True), len(loc.model.images))
+def _sequences(area_id: str, loc) -> list[list[tuple[float, float]]]:
+    """Urutan pusat kamera (urut nama frame) di G, dipotong bila loncat; di-cache."""
+    key = ("seq", area_id, json.dumps(loc.align, sort_keys=True), len(loc.model.images))
     if key not in _cache:
         imgs = sorted(loc.model.images.values(), key=lambda im: im.name)
         seqs = []
@@ -87,7 +98,15 @@ def base_graph(area_id: str, loc) -> routegraph.Graph:
             centers = np.array([im.projection_center() for im in imgs])
             g = to_building(centers, loc.align["meter_from_model"])
             seqs = routegraph.split_sequences([(float(x), float(y)) for x, y, _ in g])
-        _cache[key] = routegraph.build_base_graph(seqs)
+        _cache[key] = seqs
+    return _cache[key]
+
+
+def base_graph(area_id: str, loc) -> routegraph.Graph:
+    """Graf dasar dari urutan kamera, di-cache per area dan align.json."""
+    key = ("graph", area_id, json.dumps(loc.align, sort_keys=True), len(loc.model.images))
+    if key not in _cache:
+        _cache[key] = routegraph.build_base_graph(_sequences(area_id, loc))
     return _cache[key]
 
 
@@ -198,33 +217,122 @@ def delete_edit(area_id: str, edit_id: int, user: uploads.User, s: uploads.DB) -
     return Response(status_code=204)
 
 
+def _strokes(s, area_id: str) -> list[WalkableStroke]:
+    q = select(WalkableStroke).where(WalkableStroke.area_id == area_id)
+    return list(s.exec(q.order_by(WalkableStroke.id)).all())
+
+
+def _grid(s, area_id: str, loc) -> walkable.Grid:
+    """Grid rencana (seed jalur scan + goresan kuas, dierosi); di-cache per area, align, goresan."""
+    m = _scene(area_id, loc)["meta"]
+    rows = [{"mode": r.mode, "radius": r.radius, "points": r.points} for r in _strokes(s, area_id)]
+    # Isi goresan ikut kunci: id bisa dipakai ulang setelah hapus (sqlite), id saja tidak cukup.
+    digest = hashlib.sha1(json.dumps(rows).encode()).hexdigest()
+    key = ("grid", area_id, json.dumps(loc.align, sort_keys=True), len(loc.model.images), digest)
+    if key not in _cache:
+        res = m["res_m"]
+        bounds = (
+            m["origin_x"],
+            m["origin_y"],
+            m["origin_x"] + m["width"] * res,
+            m["origin_y"] + m["height"] * res,
+        )
+        try:
+            _cache[key] = walkable.planning_grid(bounds, _sequences(area_id, loc), rows)
+        except ValueError as e:
+            raise HTTPException(409, "area too large for a walkable grid") from e
+    return _cache[key]
+
+
+@router.get("/api/areas/{area_id}/walkable")
+def get_walkable(area_id: str, request: Request, user: uploads.User, s: uploads.DB) -> dict:
+    grid = _grid(s, area_id, _aligned(request, area_id))
+    return {
+        **walkable.encode(grid),
+        "walkable_cells": int(grid.cells.sum()),
+        "strokes": [
+            {"id": r.id, "mode": r.mode, "radius": r.radius, "points_count": len(r.points)}
+            for r in _strokes(s, area_id)
+        ],
+        "warnings": walkable.room_warnings(grid, _rooms(s, area_id)),
+    }
+
+
+@router.post("/api/areas/{area_id}/strokes", status_code=201)
+def add_stroke(area_id: str, body: StrokeIn, request: Request, user: uploads.User, s: uploads.DB):
+    _write(request, user)
+    _area(request, area_id)
+    if not 0.1 <= body.radius <= 3:  # NaN juga gagal di sini
+        raise HTTPException(422, "radius must be between 0.1 and 3")
+    if not all(math.isfinite(c) for p in body.points for c in p):
+        raise HTTPException(422, "coordinates must be finite numbers")
+    row = WalkableStroke(
+        area_id=area_id, mode=body.mode, radius=body.radius, points=body.points, created_by=user
+    )
+    s.add(row)
+    s.commit()
+    return {"id": row.id, "mode": row.mode, "radius": row.radius, "points_count": len(row.points)}
+
+
+@router.delete("/api/areas/{area_id}/strokes/{stroke_id}", status_code=204)
+def delete_stroke(area_id: str, stroke_id: int, user: uploads.User, s: uploads.DB) -> Response:
+    if not auth.is_admin(user):
+        raise HTTPException(403, "only admins can change the walkable area")
+    row = s.get(WalkableStroke, stroke_id)
+    if row is None or row.area_id != area_id:
+        raise HTTPException(404, "stroke not found")
+    s.delete(row)
+    s.commit()
+    return Response(status_code=204)
+
+
+@router.delete("/api/areas/{area_id}/strokes", status_code=204)
+def reset_strokes(area_id: str, user: uploads.User, s: uploads.DB) -> Response:
+    if not auth.is_admin(user):
+        raise HTTPException(403, "only admins can change the walkable area")
+    for row in _strokes(s, area_id):
+        s.delete(row)
+    s.commit()
+    return Response(status_code=204)
+
+
 @router.post("/api/areas/{area_id}/route")
 def test_route(area_id: str, body: RouteIn, request: Request, user: uploads.User, s: uploads.DB):
     loc = _aligned(request, area_id)
-    _room(s, area_id, body.room_id)
-    _, nav, _, _ = _draft(s, area_id, loc)
-    r = routegraph.plan_route(nav, tuple(body.start), f"R{body.room_id}")
-    return {"status": "unreachable"} if r is None else {"status": "ok", **r}
+    room = _room(s, area_id, body.room_id)
+    route = walkable.plan_route(_grid(s, area_id, loc), tuple(body.start), (room.x, room.y))
+    return {"status": "unreachable"} if route is None else {"status": "ok", **route}
 
 
 @router.post("/api/areas/{area_id}/publish-graph")
 def publish_graph(area_id: str, request: Request, user: uploads.User, s: uploads.DB) -> dict:
     _write(request, user)
     loc = _aligned(request, area_id)
-    base, nav, warnings, _ = _draft(s, area_id, loc)
+    base, nav, _, _ = _draft(s, area_id, loc)  # graf lama tetap diterbitkan untuk APK lama
     if not base["edges"]:
         raise HTTPException(409, "no route graph to publish: the scan path is empty")
     try:
         navgraph.validate(nav)
     except ValueError as e:
         raise HTTPException(409, f"route graph is invalid: {e}") from e
+    rooms = _rooms(s, area_id)
+    if not rooms:
+        raise HTTPException(409, "add a room first")
+    grid = _grid(s, area_id, loc)
+    if not grid.cells.any():
+        raise HTTPException(409, "no walkable area to publish")
+    targets = [{"id": f"R{r['id']}", "name": r["name"], "x": r["x"], "y": r["y"]} for r in rooms]
     row = s.get(PublishedGraph, area_id) or PublishedGraph(
         area_id=area_id, graph={}, published_by=""
     )
-    row.graph, row.published_by, row.published_at = nav, user, datetime.now(row.published_at.tzinfo)
+    row.graph, row.walkable = nav, {**walkable.encode(grid), "targets": targets}
+    row.published_by, row.published_at = user, datetime.now(row.published_at.tzinfo)
     s.add(row)
     s.commit()
-    return {"published_at": row.published_at.isoformat(), "warnings": warnings}
+    return {
+        "published_at": row.published_at.isoformat(),
+        "warnings": walkable.room_warnings(grid, rooms),
+    }
 
 
 def _scene(area_id: str, loc):

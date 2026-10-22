@@ -14,6 +14,8 @@ import {
   type AreaGraph,
   type PlanMeta,
   type RouteResult,
+  type StrokeMode,
+  type WalkableData,
   type XY,
 } from "@/lib/api";
 import { PageHead } from "@/lib/PageHead";
@@ -21,8 +23,8 @@ import { usePoll } from "@/lib/usePoll";
 
 const MODES: { id: MapMode; label: string; hint: string }[] = [
   { id: "view", label: "View", hint: "Click anywhere on the scan path to see the real photo taken there." },
+  { id: "walkable", label: "Walkable", hint: "Paint where people may walk and erase desks and walls. Routes are drawn straight across the green area." },
   { id: "rooms", label: "Rooms", hint: "Click on the map to add a room. Drag a room to move it." },
-  { id: "routes", label: "Routes", hint: "Click a route segment to remove it. Click two points to add one. Drag a junction to move it." },
   { id: "test", label: "Test route", hint: "Click a start point, pick a room, then test and simulate the route." },
 ];
 const ARRIVE_M = 1.0; // sama dengan aplikasi ponsel (NavGraph.Arrived)
@@ -38,11 +40,14 @@ function AreaPage() {
   const admin = !!me?.is_admin;
   const [plan, setPlan] = useState<PlanMeta | null>(null);
   const [graph, setGraph] = useState<AreaGraph | null>(null);
+  const [walkable, setWalkable] = useState<WalkableData | null>(null);
+  const [brush, setBrush] = useState<{ mode: StrokeMode; radius: number }>({ mode: "paint", radius: 0.4 });
+  const [published, setPublished] = useState<{ at: string; warnings: string[] } | null>(null);
+  const [resetting, setResetting] = useState(false);
   const [mode, setMode] = useState<MapMode>("view");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [photo, setPhoto] = useState<{ url: string; heading: string | null } | null>(null);
-  const [pending, setPending] = useState<XY | null>(null);
   const [start, setStart] = useState<XY | null>(null);
   const [roomId, setRoomId] = useState<number | null>(null);
   const [route, setRoute] = useState<RouteResult | null>(null);
@@ -55,7 +60,9 @@ function AreaPage() {
 
   const reload = useCallback(async () => {
     try {
-      setGraph(await areaApi.graph(id));
+      const [g, w] = await Promise.all([areaApi.graph(id), areaApi.walkable(id)]);
+      setGraph(g);
+      setWalkable(w);
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -108,11 +115,6 @@ function AreaPage() {
       setRenaming(null);
       setName("");
     }
-    if (mode === "routes") {
-      if (!pending) return setPending(p);
-      act(() => areaApi.addEdit(id, { kind: "add_edge", a: pending, b: p }), "Route segment added");
-      setPending(null);
-    }
   }
 
   async function testRoute() {
@@ -154,9 +156,31 @@ function AreaPage() {
     anim.current = requestAnimationFrame(step);
   }
 
-  function publish() {
+  async function publish() {
     setConfirming(false);
-    act(() => areaApi.publish(id), "Published. The app uses the new routes on its next start or Localize.");
+    try {
+      const r = await areaApi.publish(id);
+      setPublished({ at: r.published_at, warnings: r.warnings });
+      setMessage(null);
+      await reload();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  function stroke(mode: StrokeMode, radius: number, points: XY[]) {
+    setPublished(null);
+    act(() => areaApi.addStroke(id, { mode, radius, points }));
+  }
+
+  function undoStroke() {
+    const last = walkable?.strokes[walkable.strokes.length - 1];
+    if (last) act(() => areaApi.deleteStroke(id, last.id), "Last stroke undone");
+  }
+
+  function resetStrokes() {
+    setResetting(false);
+    act(() => areaApi.resetStrokes(id), "Walkable area reset to the scan path");
   }
 
   if (!id) return <p className="error">No area selected.</p>;
@@ -166,20 +190,34 @@ function AreaPage() {
     <>
       <PageHead crumbs={[{ label: "Maps", href: "/maps/" }, { label: id }]} title={`Rooms and routes · ${id}`}>
         <p className="text-xs text-muted-foreground mt-1">
-          Routes come from the scan path. Scale not calibrated: distances follow the current alignment.
+          Routes are planned on the walkable area, which starts from the scan path. Scale not calibrated: distances follow the current alignment.
           {graph?.published_at && <> Last published {formatDate(graph.published_at)}.</>}
         </p>
       </PageHead>
       {error && <p className="error">{error}</p>}
       {message && <p className="text-sm">{message}</p>}
+      {published && (
+        <Panel className="border border-border">
+          <span className="text-sm font-semibold">Published at {formatDate(published.at)}.</span>
+          <span className="text-sm">
+            The app loads it on the next Localize (builds older than 21 Oct evening need an app restart).
+          </span>
+          {published.warnings.map((w) => (
+            <span key={w} className="text-xs text-[var(--bad-fg)]">{w}</span>
+          ))}
+          <div>
+            <Button size="sm" variant="outline" onClick={() => setPublished(null)}>Dismiss</Button>
+          </div>
+        </Panel>
+      )}
       <div className="flex flex-wrap gap-2">
         {MODES.map((m) => (
-          <Button key={m.id} variant={mode === m.id ? "default" : "outline"} onClick={() => { setMode(m.id); setPending(null); }}>
+          <Button key={m.id} variant={mode === m.id ? "default" : "outline"} onClick={() => setMode(m.id)}>
             {m.label}
           </Button>
         ))}
         {admin && (
-          <Button className="ml-auto" onClick={() => setConfirming(true)} disabled={!graph}>
+          <Button className="ml-auto" onClick={() => setConfirming(true)} disabled={!graph || !walkable}>
             Publish to app
           </Button>
         )}
@@ -187,9 +225,9 @@ function AreaPage() {
       {confirming && graph && (
         <Panel className="border border-border">
           <span className="text-sm font-semibold">
-            Publish {graph.rooms.length} room(s) and the route graph to the app?
+            Publish {graph.rooms.length} room(s) and the walkable area to the app?
           </span>
-          {graph.warnings.map((w) => (
+          {walkable?.warnings.map((w) => (
             <span key={w} className="text-xs text-[var(--bad-fg)]">{w}</span>
           ))}
           <div className="flex gap-2">
@@ -200,8 +238,7 @@ function AreaPage() {
       )}
       <p className="text-xs text-muted-foreground">
         {MODES.find((m) => m.id === mode)?.hint}
-        {!admin && (mode === "rooms" || mode === "routes") && " Only admins can make changes."}
-        {pending && " First point set, click the second point."}
+        {!admin && (mode === "rooms" || mode === "walkable") && " Only admins can make changes."}
       </p>
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <Panel>
@@ -209,16 +246,17 @@ function AreaPage() {
             <AreaMap
               plan={plan}
               imageUrl={planImageUrl(id)}
-              graph={graph}
+              rooms={graph.rooms}
+              walkable={walkable}
               mode={mode}
               editable={admin}
+              brush={brush}
               onPick={onPick}
               onMoveRoom={(rid, p) => act(() => areaApi.editRoom(id, rid, { x: p[0], y: p[1] }), "Room moved")}
-              onMoveNode={(from, to) => act(() => areaApi.addEdit(id, { kind: "move_node", a: from, b: to }), "Junction moved")}
-              onEdgeClick={(a, b) => act(() => areaApi.addEdit(id, { kind: "remove_edge", a, b }), "Route segment removed")}
+              onStroke={stroke}
               route={mode === "test" && route?.status === "ok" ? route.points : undefined}
               start={mode === "test" ? start : null}
-              pending={mode === "rooms" ? newRoom : pending}
+              pending={mode === "rooms" ? newRoom : null}
               marker={mode === "test" ? marker : null}
               arrivalTarget={mode === "test" && room ? [room.x, room.y] : null}
             />
@@ -240,6 +278,58 @@ function AreaPage() {
               )}
             </Panel>
           )}
+          {mode === "walkable" && (
+            <Panel>
+              <span className="stat-label">Walkable area</span>
+              {admin ? (
+                <>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant={brush.mode === "paint" ? "default" : "outline"} onClick={() => setBrush({ ...brush, mode: "paint" })}>
+                      Paint
+                    </Button>
+                    <Button size="sm" variant={brush.mode === "erase" ? "default" : "outline"} onClick={() => setBrush({ ...brush, mode: "erase" })}>
+                      Erase
+                    </Button>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm">
+                    Brush radius {brush.radius.toFixed(2)}
+                    <input
+                      type="range"
+                      min={0.3}
+                      max={1.5}
+                      step={0.05}
+                      value={brush.radius}
+                      aria-label="Brush radius"
+                      onChange={(e) => setBrush({ ...brush, radius: Number(e.target.value) })}
+                    />
+                  </label>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={undoStroke} disabled={!walkable?.strokes.length}>Undo</Button>
+                    <Button size="sm" variant="outline" onClick={() => setResetting(true)} disabled={!walkable?.strokes.length}>
+                      Reset to scan path
+                    </Button>
+                  </div>
+                  {resetting && (
+                    <div className="flex flex-col gap-2 text-sm">
+                      <span>Remove all {walkable?.strokes.length} stroke(s) and go back to the scan path?</span>
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={resetStrokes}>Confirm reset</Button>
+                        <Button size="sm" variant="outline" onClick={() => setResetting(false)}>Cancel</Button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <span className="muted text-sm">Only admins can change the walkable area.</span>
+              )}
+              <span className="muted text-xs">
+                {walkable?.strokes.length ?? 0} stroke(s), {walkable?.walkable_cells ?? 0} walkable cells. Green is what routes can use.
+              </span>
+              {walkable?.warnings.map((w) => (
+                <span key={w} className="text-xs text-[var(--bad-fg)]">{w}</span>
+              ))}
+            </Panel>
+          )}
           {mode === "test" && (
             <Panel>
               <span className="stat-label">Test route</span>
@@ -256,7 +346,9 @@ function AreaPage() {
               </div>
               {route?.status === "unreachable" && <span className="error">This room cannot be reached from the start point.</span>}
               {route?.status === "ok" && (
-                <span className="text-sm">Route length {route.length_m.toFixed(1)} (scale not calibrated), {route.nodes.length} stops.</span>
+                <span className="text-sm">
+                  Route length {route.length_m.toFixed(1)} (scale not calibrated), {Math.max(route.points.length - 2, 0)} turn(s).
+                </span>
               )}
             </Panel>
           )}
@@ -320,21 +412,6 @@ function AreaPage() {
                   </span>
                 )}
               </div>
-            ))}
-          </Panel>
-          <Panel>
-            <span className="stat-label">Route edits ({graph?.edits.length ?? 0})</span>
-            {graph?.edits.map((e) => (
-              <div key={e.id} className="flex items-center justify-between gap-2 text-sm">
-                <span className={graph.unmatched_edits.includes(e.id) ? "text-[var(--bad-fg)]" : undefined}>
-                  {e.kind.replace("_", " ")}
-                  {graph.unmatched_edits.includes(e.id) && " (no longer matches)"}
-                </span>
-                {admin && <Button size="sm" variant="outline" onClick={() => act(() => areaApi.deleteEdit(id, e.id), "Edit removed")}>Undo</Button>}
-              </div>
-            ))}
-            {graph?.warnings.map((w) => (
-              <span key={w} className="text-xs text-[var(--bad-fg)]">{w}</span>
             ))}
           </Panel>
         </div>

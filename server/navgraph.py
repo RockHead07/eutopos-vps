@@ -157,7 +157,8 @@ def _engine(url: str):
 
 
 def _published(area_id: str) -> dict | None:
-    """Graf terbit dari dashboard (tabel published_graph), bila layanan memakai database."""
+    """Terbitan dari dashboard (tabel published_graph): `graph`, `walkable` (opsional), `revision`.
+    None bila layanan tanpa database atau belum ada terbitan."""
     url = os.environ.get("DATABASE_URL")
     if not url:
         return None
@@ -170,9 +171,10 @@ def _published(area_id: str) -> dict | None:
     if row is None:
         return None
     try:
-        return validate(row.graph)
+        graph = validate(row.graph)
     except ValueError as e:
         raise HTTPException(500, f"published route graph invalid: {e}") from e
+    return {"graph": graph, "walkable": row.walkable, "revision": row.published_at.isoformat()}
 
 
 @router.get("/navgraph")
@@ -183,11 +185,15 @@ def get_navgraph(request: Request) -> dict:
     if area_id is None:
         raise HTTPException(503, "no active map")
     if published := _published(area_id):
-        return {
+        out = {
             "area_id": area_id,
             "map_version": getattr(st, "map_version", None),
-            "graph": published,
+            "graph": published["graph"],
+            "revision": published["revision"],
         }
+        if published["walkable"]:
+            out["walkable"] = published["walkable"]
+        return out
     path = graph_path(maps_root(), area_id)
     if not path.exists():
         raise HTTPException(404, f"no navgraph for area {area_id}")
