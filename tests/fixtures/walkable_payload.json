@@ -1,0 +1,1 @@
+{"frame": "building", "units": "m", "cell_m": 1.0, "origin": [0.0, 0.0], "width": 3, "height": 2, "bits": "Hw==", "targets": [{"id": "R1", "name": "Lab", "x": 0.5, "y": 0.5}]}

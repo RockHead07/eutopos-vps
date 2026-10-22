@@ -309,6 +309,9 @@ def test_publish_sends_walkable_and_revision(client):
     nav = client.get("/navgraph").json()
     assert nav["graph"]["targets"][0]["name"] == "Lab"  # graf lama tetap dikirim
     w = nav["walkable"]
+    # kontrak dengan aplikasi: parser C# mewajibkan semua kunci ini
+    assert {"frame", "units", "cell_m", "origin", "width", "height", "bits", "targets"} <= set(w)
+    assert (w["frame"], w["units"]) == ("building", "m")
     assert w["targets"] == [{"id": "R1", "name": "Lab", "x": 3.0, "y": 0.1}]
     assert nav["revision"] == pub.json()["published_at"]
     assert walkable.decode(w).cells.tolist() == grid_of(client).cells.tolist()
