@@ -99,6 +99,22 @@ class RouteEdit(SQLModel, table=True):
     )
 
 
+class WalkableStroke(SQLModel, table=True):
+    """Goresan kuas area walkable (paint atau erase), dalam koordinat G; urut `id`."""
+
+    __tablename__ = "walkable_stroke"
+
+    id: int | None = Field(default=None, primary_key=True)
+    area_id: str = Field(foreign_key="area.id", index=True)
+    mode: str  # paint atau erase
+    radius: float
+    points: list = Field(sa_type=JSON)
+    created_by: str
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC), sa_type=DateTime(timezone=True)
+    )
+
+
 class PublishedGraph(SQLModel, table=True):
     """navgraph.json terbit per area; /navgraph membacanya lebih dulu daripada berkas di /maps."""
 
@@ -106,6 +122,7 @@ class PublishedGraph(SQLModel, table=True):
 
     area_id: str = Field(foreign_key="area.id", primary_key=True)
     graph: dict = Field(sa_type=JSON)
+    walkable: dict | None = Field(default=None, sa_type=JSON)  # grid siap pakai + targets
     published_by: str
     published_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC), sa_type=DateTime(timezone=True)

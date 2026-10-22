@@ -190,9 +190,11 @@ def test_navgraph_prefers_the_published_graph(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", url)
     r = client_for(tmp_path, monkeypatch).get("/navgraph")
     assert r.status_code == 200 and r.json()["graph"] == published
+    assert r.json()["revision"] and "walkable" not in r.json()
 
 
 def test_navgraph_falls_back_to_the_file_without_database(tmp_path, monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     write_graph(tmp_path, "floor10", GOOD)
-    assert client_for(tmp_path, monkeypatch).get("/navgraph").json()["graph"] == GOOD
+    body = client_for(tmp_path, monkeypatch).get("/navgraph").json()
+    assert body["graph"] == GOOD and "revision" not in body and "walkable" not in body

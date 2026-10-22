@@ -278,8 +278,19 @@ export type PlanMeta = {
   height: number;
   trajectory: XY[];
 };
+export type StrokeMode = "paint" | "erase";
+export type WalkableData = {
+  cell_m: number;
+  origin: XY;
+  width: number;
+  height: number;
+  bits: string; // base64, row-major, LSB first, row 0 = lowest y
+  walkable_cells: number;
+  strokes: { id: number; mode: StrokeMode; radius: number; points_count: number }[];
+  warnings: string[];
+};
 export type RouteResult =
-  | { status: "ok"; points: XY[]; nodes: string[]; length_m: number }
+  | { status: "ok"; points: XY[]; length_m: number }
   | { status: "unreachable" };
 
 const area = (id: string) => `/api/areas/${encodeURIComponent(id)}`;
@@ -297,6 +308,12 @@ export const areaApi = {
   addEdit: (id: string, edit: Omit<RouteEdit, "id">) =>
     call<RouteEdit>(`${area(id)}/edits`, { method: "POST", body: JSON.stringify(edit) }),
   deleteEdit: (id: string, editId: number) => call<void>(`${area(id)}/edits/${editId}`, { method: "DELETE" }),
+  walkable: (id: string) => call<WalkableData>(`${area(id)}/walkable`),
+  addStroke: (id: string, stroke: { mode: StrokeMode; radius: number; points: XY[] }) =>
+    call<{ id: number }>(`${area(id)}/strokes`, { method: "POST", body: JSON.stringify(stroke) }),
+  deleteStroke: (id: string, strokeId: number) =>
+    call<void>(`${area(id)}/strokes/${strokeId}`, { method: "DELETE" }),
+  resetStrokes: (id: string) => call<void>(`${area(id)}/strokes`, { method: "DELETE" }),
   route: (id: string, from: XY, roomId: number) =>
     call<RouteResult>(`${area(id)}/route`, { method: "POST", body: JSON.stringify({ from, room_id: roomId }) }),
   publish: (id: string) =>

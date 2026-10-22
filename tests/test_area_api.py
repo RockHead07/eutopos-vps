@@ -1,5 +1,6 @@
 """API halaman area: graf rute, ruangan, editan, uji rute, terbitkan (spek 2026-10-21)."""
 
+import math
 import threading
 from types import SimpleNamespace
 
@@ -9,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlmodel import Session, SQLModel, create_engine
 
-from server import area_api, auth, navgraph, uploads
+from server import area_api, auth, navgraph, uploads, walkable
 from server.db import Area, MapVersion
 
 IDENTITY = {
@@ -139,11 +140,11 @@ def test_edits_are_stored_and_bad_kinds_rejected(client):
     assert client.delete(f"/api/areas/floor10/edits/{eid}").status_code == 204
 
 
-def test_route_uses_the_draft_graph(client):
+def test_route_uses_the_walkable_grid(client):
     rid = add_room(client).json()["id"]
     r = client.post("/api/areas/floor10/route", json={"from": [0.5, 0.5], "room_id": rid}).json()
-    assert r["points"][0] == [0.5, 0.5]
-    assert r["nodes"][-1] == f"R{rid}"
+    assert r["status"] == "ok" and "nodes" not in r
+    assert r["points"][0] == [0.5, 0.5] and r["points"][-1] == [3.0, 0.3]
     assert r["length_m"] > 0
 
 
@@ -202,3 +203,118 @@ def test_photo_without_thumbs_is_404(client):
 def test_cloud_glb_is_served(client):
     r = client.get("/api/areas/floor10/cloud.glb")
     assert r.status_code == 200 and r.content[:4] == b"glTF"
+
+
+def at(g, x, y):
+    ox, oy = g.origin
+    return bool(g.cells[math.floor((y - oy) / g.cell_m), math.floor((x - ox) / g.cell_m)])
+
+
+def grid_of(client):
+    return walkable.decode(client.get("/api/areas/floor10/walkable").json())
+
+
+def stroke(client, mode="paint", radius=0.5, points=((3, 3),)):
+    body = {"mode": mode, "radius": radius, "points": [list(p) for p in points]}
+    return client.post("/api/areas/floor10/strokes", json=body)
+
+
+def test_walkable_is_seeded_from_the_scan_path(client):
+    r = client.get("/api/areas/floor10/walkable")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["cell_m"] == 0.1 and d["walkable_cells"] > 0 and d["strokes"] == []
+    g = walkable.decode(d)
+    assert at(g, 3.0, 0.0) and not at(g, 3.0, 3.0)
+
+
+def test_stroke_paint_erase_undo_reset(client):
+    sid = stroke(client).json()["id"]
+    assert at(grid_of(client), 3.0, 3.0)
+    assert client.delete(f"/api/areas/floor10/strokes/{sid}").status_code == 204
+    assert not at(grid_of(client), 3.0, 3.0)
+    assert stroke(client, "erase", 0.5, [(3, 0)]).status_code == 201
+    assert not at(grid_of(client), 3.0, 0.0)
+    assert client.delete("/api/areas/floor10/strokes").status_code == 204
+    assert at(grid_of(client), 3.0, 0.0)
+
+
+def test_strokes_are_listed_in_id_order(client):
+    a = stroke(client).json()["id"]
+    b = stroke(client, points=[(5, 3)]).json()["id"]
+    listed = client.get("/api/areas/floor10/walkable").json()["strokes"]
+    assert [x["id"] for x in listed] == [a, b]
+    assert listed[0] == {"id": a, "mode": "paint", "radius": 0.5, "points_count": 1}
+    client.delete(f"/api/areas/floor10/strokes/{b}")
+    assert [x["id"] for x in client.get("/api/areas/floor10/walkable").json()["strokes"]] == [a]
+
+
+def test_stroke_validation(client):
+    url = "/api/areas/floor10/strokes"
+    bad = [
+        {"mode": "paint", "radius": 0.05, "points": [[1, 1]]},
+        {"mode": "paint", "radius": 4, "points": [[1, 1]]},
+        {"mode": "paint", "radius": 1, "points": []},
+        {"mode": "paint", "radius": 1, "points": [[0, 0]] * 2001},
+        {"mode": "smudge", "radius": 1, "points": [[1, 1]]},
+    ]
+    assert [client.post(url, json=b).status_code for b in bad] == [422] * len(bad)
+    nan = client.post(
+        url,
+        content=b'{"mode":"paint","radius":1,"points":[[NaN,0]]}',
+        headers={"Content-Type": "application/json"},
+    )
+    assert nan.status_code == 422
+    assert client.get("/api/areas/floor10/walkable").json()["strokes"] == []
+
+
+def test_stroke_writes_need_admin(client, monkeypatch):
+    as_guest(client, monkeypatch)
+    assert stroke(client).status_code == 403
+    assert client.delete("/api/areas/floor10/strokes").status_code == 403
+    form = client.post("/api/areas/floor10/strokes", data={"mode": "paint", "radius": "1"})
+    assert form.status_code in (415, 422)
+    assert client.get("/api/areas/floor10/walkable").json()["strokes"] == []
+
+
+def test_route_is_straight_when_the_line_is_clear(client):
+    rid = add_room(client, "Lab", 3.0, 0.1).json()["id"]
+    r = client.post("/api/areas/floor10/route", json={"from": [0.5, 0.0], "room_id": rid}).json()
+    assert r["status"] == "ok" and r["points"] == [[0.5, 0.0], [3.0, 0.1]]
+    assert abs(r["length_m"] - math.hypot(2.5, 0.1)) < 1e-6
+
+
+def test_route_unreachable_after_cutting_the_corridor(client):
+    rid = add_room(client, "Far", 6.0, 3.0).json()["id"]
+    assert stroke(client, "erase", 1.0, [(3, 0)]).status_code == 201
+    r = client.post("/api/areas/floor10/route", json={"from": [0.5, 0.0], "room_id": rid})
+    assert r.json() == {"status": "unreachable"}
+
+
+def test_publish_requires_walkable_area_and_a_room(client):
+    url = "/api/areas/floor10/publish-graph"
+    r = client.post(url, json={})
+    assert r.status_code == 409 and "room" in r.json()["detail"]
+    add_room(client)
+    assert stroke(client, "erase", 3.0, [(0, 0), (3, 0), (6, 0), (6, 2), (6, 4)]).status_code == 201
+    r = client.post(url, json={})
+    assert r.status_code == 409 and "no walkable area" in r.json()["detail"]
+    assert client.get("/navgraph").status_code == 404
+
+
+def test_publish_sends_walkable_and_revision(client):
+    add_room(client, "Lab", 3.0, 0.1)
+    pub = client.post("/api/areas/floor10/publish-graph", json={})
+    assert pub.status_code == 200
+    nav = client.get("/navgraph").json()
+    assert nav["graph"]["targets"][0]["name"] == "Lab"  # graf lama tetap dikirim
+    w = nav["walkable"]
+    assert w["targets"] == [{"id": "R1", "name": "Lab", "x": 3.0, "y": 0.1}]
+    assert nav["revision"] == pub.json()["published_at"]
+    assert walkable.decode(w).cells.tolist() == grid_of(client).cells.tolist()
+
+
+def test_walkable_too_large_is_refused(client, monkeypatch):
+    monkeypatch.setattr(walkable, "MAX_CELLS", 10)
+    r = client.get("/api/areas/floor10/walkable")
+    assert r.status_code == 409 and "too large" in r.json()["detail"]
