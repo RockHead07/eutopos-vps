@@ -118,25 +118,37 @@
 ```python
 # A*: heap berisi (f, h, idx). g disimpan di dict/array int. Pop yang sudah closed atau g-nya basi dilewati.
 # Peluruskan: dari sel i, tes sel terjauh j (mulai dari akhir jalur) yang lolos los(i, j); ambil j; ulangi.
-def _los(cells, a, b):  # Bresenham bilangan bulat (semua oktan); True bila semua sel yang dikunjungi walkable
+def _los(
+    cells, a, b
+):  # Bresenham bilangan bulat (semua oktan); True bila semua sel yang dikunjungi walkable
     (x0, y0), (x1, y1) = a, b
     dx, dy = abs(x1 - x0), -abs(y1 - y0)
     sx, sy = (1 if x0 < x1 else -1), (1 if y0 < y1 else -1)
     err = dx + dy
     while True:
-        if not cells[y0, x0]: return False
-        if (x0, y0) == (x1, y1): return True
+        if not cells[y0, x0]:
+            return False
+        if (x0, y0) == (x1, y1):
+            return True
         e2 = 2 * err
-        if e2 >= dy: err += dy; x0 += sx
-        if e2 <= dx: err += dx; y0 += sy
+        if e2 >= dy:
+            err += dy
+            x0 += sx
+        if e2 <= dx:
+            err += dx
+            y0 += sy
+
 
 # titik rute: R = sel hasil peluruskan (R[0] sel awal, R[-1] sel tujuan, mungkin sama).
 mid = list(R)
 if len(mid) == 1:
-    if start_ok and goal_ok: mid = []
+    if start_ok and goal_ok:
+        mid = []
 else:
-    if goal_ok: mid.pop()
-    if start_ok: mid.pop(0)
+    if goal_ok:
+        mid.pop()
+    if start_ok:
+        mid.pop(0)
 # start_ok / goal_ok = sel sendiri walkable. points = [start] + pusat(mid) + [goal]
 ```
   Panjang = jumlah jarak Euclid antar `points`. Perbarui spesifikasi 5A (langkah 1 dan 4) sesuai ruling.
