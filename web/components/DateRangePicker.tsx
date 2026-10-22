@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DateRange } from "react-day-picker";
+import { id as idLocale, enUS as enUSLocale } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -10,6 +11,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Icon } from "@/lib/Icon";
+import { useLocale, useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 export interface DateRangeValue {
@@ -35,23 +37,24 @@ function toLocalYMD(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-function formatRangeLabel(from?: string, to?: string): string {
-  if (!from && !to) return "All time";
+function formatRangeLabel(from: string | undefined, to: string | undefined, locale: string, allTimeText: string): string {
+  if (!from && !to) return allTimeText;
+  const loc = locale === "id" ? "id-ID" : "en-US";
   if (from && (!to || from === to)) {
     const d = parseLocalYMD(from);
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    return d.toLocaleDateString(loc, { month: "short", day: "numeric", year: "numeric" });
   }
   if (!from && to) {
     const d = parseLocalYMD(to);
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    return d.toLocaleDateString(loc, { month: "short", day: "numeric", year: "numeric" });
   }
   if (from && to) {
     const dFrom = parseLocalYMD(from);
     const dTo = parseLocalYMD(to);
     const yFrom = dFrom.getFullYear();
     const yTo = dTo.getFullYear();
-    const mFrom = dFrom.toLocaleDateString("en-US", { month: "short" });
-    const mTo = dTo.toLocaleDateString("en-US", { month: "short" });
+    const mFrom = dFrom.toLocaleDateString(loc, { month: "short" });
+    const mTo = dTo.toLocaleDateString(loc, { month: "short" });
     const dayFrom = dFrom.getDate();
     const dayTo = dTo.getDate();
     if (yFrom === yTo) {
@@ -62,13 +65,14 @@ function formatRangeLabel(from?: string, to?: string): string {
     }
     return `${mFrom} ${dayFrom}, ${yFrom} – ${mTo} ${dayTo}, ${yTo}`;
   }
-  return "All time";
+  return allTimeText;
 }
 
 export function DateRangePicker({ value, onChange, className }: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
   const today = useMemo(() => new Date(), []);
-  const todayStr = useMemo(() => toLocalYMD(today), [today]);
+  const { locale } = useLocale();
+  const t = useT();
 
   // Internal DateRange object for DayPicker
   const [selectedRange, setSelectedRange] = useState<DateRange | undefined>(() => {
@@ -98,105 +102,93 @@ export function DateRangePicker({ value, onChange, className }: DateRangePickerP
   const getDayFromPoint = (x: number, y: number): string | null => {
     const el = document.elementFromPoint(x, y);
     if (!el) return null;
-    const dayEl = el.closest("[data-day]");
-    if (!dayEl) return null;
-    if (
-      dayEl.getAttribute("data-disabled") === "true" ||
-      dayEl.getAttribute("aria-disabled") === "true"
-    ) {
-      return null;
+    const btn = el.closest<HTMLButtonElement>("button[data-day]");
+    if (btn && btn.dataset.day && !btn.disabled) {
+      return btn.dataset.day;
     }
-    const dayStr = dayEl.getAttribute("data-day");
-    if (!dayStr || dayStr > todayStr) return null;
-    return dayStr;
+    return null;
   };
 
-  const endDrag = useCallback(() => {
-    if (!isDraggingRef.current) return;
-    if (hasDraggedRef.current) {
-      dragEndedAtRef.current = performance.now();
-    }
-    isDraggingRef.current = false;
-    anchorDayRef.current = null;
-    hasDraggedRef.current = false;
-    window.removeEventListener("pointerup", endDrag);
-    window.removeEventListener("pointercancel", endDrag);
-  }, []);
-
-  useEffect(() => {
-    if (!open) {
-      endDrag();
-    }
-    return () => {
-      window.removeEventListener("pointerup", endDrag);
-      window.removeEventListener("pointercancel", endDrag);
-    };
-  }, [open, endDrag]);
+  const updateRangeFromAnchorAndCurrent = useCallback(
+    (currentDay: string) => {
+      const anchor = anchorDayRef.current;
+      if (!anchor) return;
+      const d1 = parseLocalYMD(anchor);
+      const d2 = parseLocalYMD(currentDay);
+      const from = d1 <= d2 ? d1 : d2;
+      const to = d1 <= d2 ? d2 : d1;
+      const newRange = { from, to };
+      setSelectedRange(newRange);
+      onChange({ from: toLocalYMD(from), to: toLocalYMD(to) });
+    },
+    [onChange]
+  );
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    dragEndedAtRef.current = 0;
     if (e.button !== 0) return;
     const day = getDayFromPoint(e.clientX, e.clientY);
-    if (!day) return;
-
-    anchorDayRef.current = day;
-    isDraggingRef.current = true;
-    hasDraggedRef.current = false;
-
-    window.addEventListener("pointerup", endDrag);
-    window.addEventListener("pointercancel", endDrag);
+    if (day) {
+      isDraggingRef.current = true;
+      anchorDayRef.current = day;
+      hasDraggedRef.current = false;
+      try {
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      } catch {}
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!isDraggingRef.current || !anchorDayRef.current) return;
-
-    if (e.pointerType === "mouse" && e.buttons === 0) {
-      endDrag();
-      return;
-    }
-
-    const currentDay = getDayFromPoint(e.clientX, e.clientY);
-    if (!currentDay) return;
-
-    if (currentDay !== anchorDayRef.current) {
+    const day = getDayFromPoint(e.clientX, e.clientY);
+    if (day && day !== anchorDayRef.current) {
       hasDraggedRef.current = true;
-      const anchor = anchorDayRef.current;
-      const startStr = currentDay < anchor ? currentDay : anchor;
-      const endStr = currentDay > anchor ? currentDay : anchor;
-
-      const fromDate = parseLocalYMD(startStr);
-      const toDate = parseLocalYMD(endStr);
-      setSelectedRange({ from: fromDate, to: toDate });
-      onChange({ from: startStr, to: endStr });
+      updateRangeFromAnchorAndCurrent(day);
     }
   };
 
-  const handlePointerUp = () => {
-    endDrag();
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false;
+      try {
+        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {}
+      if (hasDraggedRef.current) {
+        dragEndedAtRef.current = Date.now();
+      }
+      anchorDayRef.current = null;
+      hasDraggedRef.current = false;
+    }
   };
 
   const handlePointerCancel = () => {
-    endDrag();
+    isDraggingRef.current = false;
+    anchorDayRef.current = null;
+    hasDraggedRef.current = false;
   };
 
   const handleClickCapture = (e: React.MouseEvent) => {
-    if (dragEndedAtRef.current > 0) {
-      const elapsed = performance.now() - dragEndedAtRef.current;
-      dragEndedAtRef.current = 0;
-      if (elapsed < 300) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
+    if (Date.now() - dragEndedAtRef.current < 200) {
+      e.preventDefault();
+      e.stopPropagation();
     }
   };
 
   const handleDayPickerSelect = (range: DateRange | undefined) => {
-    setSelectedRange(range);
-    if (!range?.from) {
+    if (Date.now() - dragEndedAtRef.current < 200) return;
+    if (!range) {
+      setSelectedRange(undefined);
       onChange({ from: undefined, to: undefined });
-    } else {
+      return;
+    }
+
+    if (range.from && !range.to) {
       const fromStr = toLocalYMD(range.from);
-      const toStr = range.to ? toLocalYMD(range.to) : fromStr;
+      setSelectedRange({ from: range.from, to: range.from });
+      onChange({ from: fromStr, to: fromStr });
+    } else if (range.from && range.to) {
+      const fromStr = toLocalYMD(range.from);
+      const toStr = toLocalYMD(range.to);
+      setSelectedRange(range);
       onChange({ from: fromStr, to: toStr });
     }
   };
@@ -206,7 +198,7 @@ export function DateRangePicker({ value, onChange, className }: DateRangePickerP
     onChange({ from: undefined, to: undefined });
   };
 
-  const label = formatRangeLabel(value.from, value.to);
+  const label = formatRangeLabel(value.from, value.to, locale, t("date.allTime"));
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -218,7 +210,7 @@ export function DateRangePicker({ value, onChange, className }: DateRangePickerP
             className
           )}
           title={label}
-          aria-label="Select date range"
+          aria-label={t("date.selectRangeAria")}
         >
           <span className="truncate">{label}</span>
           <Icon name="calendar" />
@@ -238,6 +230,7 @@ export function DateRangePicker({ value, onChange, className }: DateRangePickerP
         >
           <Calendar
             mode="range"
+            locale={locale === "id" ? idLocale : enUSLocale}
             selected={selectedRange}
             onSelect={handleDayPickerSelect}
             disabled={{ after: today }}
@@ -254,7 +247,7 @@ export function DateRangePicker({ value, onChange, className }: DateRangePickerP
             onClick={handleClear}
             className="text-xs text-muted-foreground hover:text-foreground h-8 px-2.5 cursor-pointer"
           >
-            Clear
+            {t("date.clear")}
           </Button>
           <Button
             type="button"
@@ -262,7 +255,7 @@ export function DateRangePicker({ value, onChange, className }: DateRangePickerP
             onClick={() => setOpen(false)}
             className="text-xs bg-forest hover:bg-forest-hover text-white h-8 px-3.5 rounded-lg cursor-pointer font-medium"
           >
-            Done
+            {t("date.done")}
           </Button>
         </div>
       </PopoverContent>

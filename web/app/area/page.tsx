@@ -18,15 +18,10 @@ import {
   type WalkableData,
   type XY,
 } from "@/lib/api";
+import { useLocale, useT } from "@/lib/i18n";
 import { PageHead } from "@/lib/PageHead";
 import { usePoll } from "@/lib/usePoll";
 
-const MODES: { id: MapMode; label: string; hint: string }[] = [
-  { id: "view", label: "View", hint: "Click anywhere on the scan path to see the real photo taken there." },
-  { id: "walkable", label: "Walkable", hint: "Paint where people may walk and erase desks and walls. Routes are drawn straight across the green area." },
-  { id: "rooms", label: "Rooms", hint: "Click on the map to add a room. Drag a room to move it." },
-  { id: "test", label: "Test route", hint: "Click a start point, pick a room, then test and simulate the route." },
-];
 const ARRIVE_M = 1.0; // sama dengan aplikasi ponsel (NavGraph.Arrived)
 const WALK_MPS = 1.0;
 
@@ -38,6 +33,16 @@ function AreaPage() {
   const id = useSearchParams().get("id") ?? "";
   const { data: me } = usePoll(api.me, 60000);
   const admin = !!me?.is_admin;
+  const { locale } = useLocale();
+  const t = useT();
+
+  const modes: { id: MapMode; label: string; hint: string }[] = [
+    { id: "view", label: t("area.modeView"), hint: t("area.modeViewHint") },
+    { id: "walkable", label: t("area.modeWalkable"), hint: t("area.modeWalkableHint") },
+    { id: "rooms", label: t("area.modeRooms"), hint: t("area.modeRoomsHint") },
+    { id: "test", label: t("area.modeTest"), hint: t("area.modeTestHint") },
+  ];
+
   const [plan, setPlan] = useState<PlanMeta | null>(null);
   const [graph, setGraph] = useState<AreaGraph | null>(null);
   const [walkable, setWalkable] = useState<WalkableData | null>(null);
@@ -93,7 +98,7 @@ function AreaPage() {
     const r = await fetch(photoUrl(id, p));
     if (!r.ok) {
       setPhoto(null);
-      setError("No scan photo for this map yet. Ask an admin to prepare the scan photos.");
+      setError(t("area.noScanPhotoYet"));
       return;
     }
     if (photo) URL.revokeObjectURL(photo.url);
@@ -147,7 +152,7 @@ function AreaPage() {
       }
       setMarker(p);
       if (dist(p, target) < ARRIVE_M) {
-        setMessage("Arrived: the marker is within 1.0 of the room, so the app would show the arrival banner.");
+        setMessage(t("area.toastArrived"));
         return;
       }
       anim.current = requestAnimationFrame(step);
@@ -175,70 +180,75 @@ function AreaPage() {
 
   function undoStroke() {
     const last = walkable?.strokes[walkable.strokes.length - 1];
-    if (last) act(() => areaApi.deleteStroke(id, last.id), "Last stroke undone");
+    if (last) act(() => areaApi.deleteStroke(id, last.id), t("area.toastStrokeUndone"));
   }
 
   function resetStrokes() {
     setResetting(false);
-    act(() => areaApi.resetStrokes(id), "Walkable area reset to the scan path");
+    act(() => areaApi.resetStrokes(id), t("area.toastWalkableReset"));
   }
 
-  if (!id) return <p className="error">No area selected.</p>;
+  if (!id) return <p className="error">{t("area.noAreaSelected")}</p>;
   const room = graph?.rooms.find((r) => r.id === roomId);
 
   return (
     <>
-      <PageHead crumbs={[{ label: "Maps", href: "/maps/" }, { label: id }]} title={`Rooms and routes · ${id}`}>
+      <PageHead
+        crumbs={[{ label: t("nav.mapVersions"), href: "/maps/" }, { label: id }]}
+        title={t("area.pageTitle", { id })}
+      >
         <p className="text-xs text-muted-foreground mt-1">
-          Routes are planned on the walkable area, which starts from the scan path. Scale not calibrated: distances follow the current alignment.
-          {graph?.published_at && <> Last published {formatDate(graph.published_at)}.</>}
+          {t("area.pageDesc")}
+          {graph?.published_at && (
+            <> {t("area.lastPublished", { date: formatDate(graph.published_at, locale) })}</>
+          )}
         </p>
       </PageHead>
       {error && <p className="error">{error}</p>}
       {message && <p className="text-sm">{message}</p>}
       {published && (
         <Panel className="border border-border">
-          <span className="text-sm font-semibold">Published at {formatDate(published.at)}.</span>
+          <span className="text-sm font-semibold">{t("area.publishedAt", { date: formatDate(published.at, locale) })}</span>
           <span className="text-sm">
-            The app loads it on the next Localize (builds older than 21 Oct evening need an app restart).
+            {t("area.publishedNote")}
           </span>
           {published.warnings.map((w) => (
             <span key={w} className="text-xs text-[var(--bad-fg)]">{w}</span>
           ))}
           <div>
-            <Button size="sm" variant="outline" onClick={() => setPublished(null)}>Dismiss</Button>
+            <Button size="sm" variant="outline" onClick={() => setPublished(null)}>{t("area.dismiss")}</Button>
           </div>
         </Panel>
       )}
       <div className="flex flex-wrap gap-2">
-        {MODES.map((m) => (
+        {modes.map((m) => (
           <Button key={m.id} variant={mode === m.id ? "default" : "outline"} onClick={() => setMode(m.id)}>
             {m.label}
           </Button>
         ))}
         {admin && (
           <Button className="ml-auto" onClick={() => setConfirming(true)} disabled={!graph || !walkable}>
-            Publish to app
+            {t("area.publishToApp")}
           </Button>
         )}
       </div>
       {confirming && graph && (
         <Panel className="border border-border">
           <span className="text-sm font-semibold">
-            Publish {graph.rooms.length} room(s) and the walkable area to the app?
+            {t("area.confirmPublishTitle", { count: graph.rooms.length })}
           </span>
           {walkable?.warnings.map((w) => (
             <span key={w} className="text-xs text-[var(--bad-fg)]">{w}</span>
           ))}
           <div className="flex gap-2">
-            <Button onClick={publish}>Confirm publish</Button>
-            <Button variant="outline" onClick={() => setConfirming(false)}>Cancel</Button>
+            <Button onClick={publish}>{t("area.confirmPublish")}</Button>
+            <Button variant="outline" onClick={() => setConfirming(false)}>{t("area.cancel")}</Button>
           </div>
         </Panel>
       )}
       <p className="text-xs text-muted-foreground">
-        {MODES.find((m) => m.id === mode)?.hint}
-        {!admin && (mode === "rooms" || mode === "walkable") && " Only admins can make changes."}
+        {modes.find((m) => m.id === mode)?.hint}
+        {!admin && (mode === "rooms" || mode === "walkable") && ` ${t("area.adminOnly")}`}
       </p>
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <Panel>
@@ -252,7 +262,7 @@ function AreaPage() {
               editable={admin}
               brush={brush}
               onPick={onPick}
-              onMoveRoom={(rid, p) => act(() => areaApi.editRoom(id, rid, { x: p[0], y: p[1] }), "Room moved")}
+              onMoveRoom={(rid, p) => act(() => areaApi.editRoom(id, rid, { x: p[0], y: p[1] }), t("area.toastRoomMoved"))}
               onStroke={stroke}
               route={mode === "test" && route?.status === "ok" ? route.points : undefined}
               start={mode === "test" ? start : null}
@@ -261,69 +271,73 @@ function AreaPage() {
               arrivalTarget={mode === "test" && room ? [room.x, room.y] : null}
             />
           ) : (
-            <p className="muted">Loading the floor plan...</p>
+            <p className="muted">{t("area.loadingPlan")}</p>
           )}
         </Panel>
         <div className="flex flex-col gap-4">
           {mode === "view" && (
             <Panel>
-              <span className="stat-label">Scan photo</span>
+              <span className="stat-label">{t("area.scanPhoto")}</span>
               {photo ? (
                 <>
-                  <img src={photo.url} alt="Scan photo nearest to the clicked point" className="w-full rounded-lg" />
-                  {photo.heading && <span className="muted text-xs">Camera facing {photo.heading}° in the map frame</span>}
+                  <img src={photo.url} alt={t("area.scanPhotoAlt")} className="w-full rounded-lg" />
+                  {photo.heading && (
+                    <span className="muted text-xs">
+                      {t("area.cameraFacing", { heading: photo.heading })}
+                    </span>
+                  )}
                 </>
               ) : (
-                <span className="muted text-sm">Click the map to see the nearest photo.</span>
+                <span className="muted text-sm">{t("area.clickMapSeePhoto")}</span>
               )}
             </Panel>
           )}
           {mode === "walkable" && (
             <Panel>
-              <span className="stat-label">Walkable area</span>
+              <span className="stat-label">{t("area.walkableCard")}</span>
               {admin ? (
                 <>
                   <div className="flex gap-2">
                     <Button size="sm" variant={brush.mode === "paint" ? "default" : "outline"} onClick={() => setBrush({ ...brush, mode: "paint" })}>
-                      Paint
+                      {t("area.paint")}
                     </Button>
                     <Button size="sm" variant={brush.mode === "erase" ? "default" : "outline"} onClick={() => setBrush({ ...brush, mode: "erase" })}>
-                      Erase
+                      {t("area.erase")}
                     </Button>
                   </div>
                   <label className="flex items-center gap-2 text-sm">
-                    Brush radius {brush.radius.toFixed(2)}
+                    {t("area.brushRadius", { radius: brush.radius.toFixed(2) })}
                     <input
                       type="range"
                       min={0.3}
                       max={1.5}
                       step={0.05}
                       value={brush.radius}
-                      aria-label="Brush radius"
+                      aria-label={t("area.brushRadiusAria")}
                       onChange={(e) => setBrush({ ...brush, radius: Number(e.target.value) })}
                     />
                   </label>
                   <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={undoStroke} disabled={!walkable?.strokes.length}>Undo</Button>
+                    <Button size="sm" variant="outline" onClick={undoStroke} disabled={!walkable?.strokes.length}>{t("area.undo")}</Button>
                     <Button size="sm" variant="outline" onClick={() => setResetting(true)} disabled={!walkable?.strokes.length}>
-                      Reset to scan path
+                      {t("area.resetToScanPath")}
                     </Button>
                   </div>
                   {resetting && (
                     <div className="flex flex-col gap-2 text-sm">
-                      <span>Remove all {walkable?.strokes.length} stroke(s) and go back to the scan path?</span>
+                      <span>{t("area.resetConfirm", { count: walkable?.strokes.length ?? 0 })}</span>
                       <div className="flex gap-2">
-                        <Button size="sm" onClick={resetStrokes}>Confirm reset</Button>
-                        <Button size="sm" variant="outline" onClick={() => setResetting(false)}>Cancel</Button>
+                        <Button size="sm" onClick={resetStrokes}>{t("area.confirmReset")}</Button>
+                        <Button size="sm" variant="outline" onClick={() => setResetting(false)}>{t("area.cancel")}</Button>
                       </div>
                     </div>
                   )}
                 </>
               ) : (
-                <span className="muted text-sm">Only admins can change the walkable area.</span>
+                <span className="muted text-sm">{t("area.adminOnlyWalkable")}</span>
               )}
               <span className="muted text-xs">
-                {walkable?.strokes.length ?? 0} stroke(s), {walkable?.walkable_cells ?? 0} walkable cells. Green is what routes can use.
+                {t("area.walkableStats", { strokes: walkable?.strokes.length ?? 0, cells: walkable?.walkable_cells ?? 0 })}
               </span>
               {walkable?.warnings.map((w) => (
                 <span key={w} className="text-xs text-[var(--bad-fg)]">{w}</span>
@@ -332,55 +346,57 @@ function AreaPage() {
           )}
           {mode === "test" && (
             <Panel>
-              <span className="stat-label">Test route</span>
-              <span className="text-sm">{start ? `Start ${start[0]}, ${start[1]}` : "Click the map to set a start point."}</span>
+              <span className="stat-label">{t("area.testRouteCard")}</span>
+              <span className="text-sm">
+                {start ? t("area.startPoint", { x: start[0], y: start[1] }) : t("area.clickMapSetStart")}
+              </span>
               <select className="mock-input rounded-md border border-border p-2 text-sm" value={roomId ?? ""} onChange={(e) => setRoomId(e.target.value ? Number(e.target.value) : null)}>
-                <option value="">Pick a room</option>
+                <option value="">{t("area.pickRoom")}</option>
                 {graph?.rooms.map((r) => (
                   <option key={r.id} value={r.id}>{r.name}</option>
                 ))}
               </select>
               <div className="flex gap-2">
-                <Button onClick={testRoute} disabled={!start || roomId === null}>Test route</Button>
-                <Button variant="outline" onClick={simulate} disabled={route?.status !== "ok"}>Simulate</Button>
+                <Button onClick={testRoute} disabled={!start || roomId === null}>{t("area.testRouteBtn")}</Button>
+                <Button variant="outline" onClick={simulate} disabled={route?.status !== "ok"}>{t("area.simulateBtn")}</Button>
               </div>
-              {route?.status === "unreachable" && <span className="error">This room cannot be reached from the start point.</span>}
+              {route?.status === "unreachable" && <span className="error">{t("area.unreachable")}</span>}
               {route?.status === "ok" && (
                 <span className="text-sm">
-                  Route length {route.length_m.toFixed(1)} (scale not calibrated), {Math.max(route.points.length - 2, 0)} turn(s).
+                  {t("area.routeLength", { length: route.length_m.toFixed(1), turns: Math.max(route.points.length - 2, 0) })}
                 </span>
               )}
             </Panel>
           )}
           {mode === "rooms" && newRoom && admin && (
             <Panel>
-              <span className="stat-label">New room</span>
+              <span className="stat-label">{t("area.newRoomCard")}</span>
               <form
                 className="flex gap-2"
                 onSubmit={(e) => {
                   e.preventDefault();
                   const n = name.trim();
                   if (!n) return;
-                  act(() => areaApi.addRoom(id, { name: n, x: newRoom[0], y: newRoom[1] }), `Room ${n} added`);
+                  act(() => areaApi.addRoom(id, { name: n, x: newRoom[0], y: newRoom[1] }), t("area.toastRoomAdded", { name: n }));
                   setNewRoom(null);
                 }}
               >
                 <input
                   autoFocus
-                  aria-label="Room name"
-                  placeholder="Room name"
+                  aria-label={t("area.roomNameAria")}
+                  placeholder={t("area.roomNamePlaceholder")}
                   className="min-w-0 flex-1 rounded-md border border-border px-2 py-1 text-sm"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                 />
-                <Button type="submit" size="sm">Add</Button>
-                <Button type="button" size="sm" variant="outline" onClick={() => setNewRoom(null)}>Cancel</Button>
+                <Button type="submit" size="sm">{t("area.add")}</Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => setNewRoom(null)}>{t("area.cancel")}</Button>
               </form>
             </Panel>
           )}
           <Panel>
-            <span className="stat-label">Rooms ({graph?.rooms.length ?? 0})</span>
-            {graph?.rooms.length === 0 && <span className="muted text-sm">No rooms yet.</span>}
+            <span className="stat-label">{t("area.roomsCard", { count: graph?.rooms.length ?? 0 })}</span>
+            {graph?.rooms.length === 0 && <span className="muted text-sm">{t("area.noRoomsYet")}</span>}
             {graph?.rooms.map((r) => (
               <div key={r.id} className="flex items-center justify-between gap-2 text-sm">
                 {renaming === r.id ? (
@@ -389,26 +405,26 @@ function AreaPage() {
                     onSubmit={(e) => {
                       e.preventDefault();
                       const n = name.trim();
-                      if (n) act(() => areaApi.editRoom(id, r.id, { name: n }), "Room renamed");
+                      if (n) act(() => areaApi.editRoom(id, r.id, { name: n }), t("area.toastRoomRenamed"));
                       setRenaming(null);
                     }}
                   >
                     <input
                       autoFocus
-                      aria-label="New room name"
+                      aria-label={t("area.newRoomNameAria")}
                       className="min-w-0 flex-1 rounded-md border border-border px-2 py-1 text-sm"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                     />
-                    <Button type="submit" size="sm">Save</Button>
+                    <Button type="submit" size="sm">{t("area.save")}</Button>
                   </form>
                 ) : (
                   <span>{r.name}</span>
                 )}
                 {admin && renaming !== r.id && (
                   <span className="flex gap-1">
-                    <Button size="sm" variant="outline" onClick={() => { setRenaming(r.id); setName(r.name); }}>Rename</Button>
-                    <Button size="sm" variant="outline" onClick={() => act(() => areaApi.deleteRoom(id, r.id), "Room deleted")}>Delete</Button>
+                    <Button size="sm" variant="outline" onClick={() => { setRenaming(r.id); setName(r.name); }}>{t("area.rename")}</Button>
+                    <Button size="sm" variant="outline" onClick={() => act(() => areaApi.deleteRoom(id, r.id), t("area.toastRoomDeleted"))}>{t("area.delete")}</Button>
                   </span>
                 )}
               </div>
@@ -420,10 +436,15 @@ function AreaPage() {
   );
 }
 
+function AreaFallback() {
+  const t = useT();
+  return <p className="muted">{t("generic.loading")}</p>;
+}
+
 export default function AreaRoute() {
   // useSearchParams wajib di dalam Suspense pada static export (tanpa ini next build gagal).
   return (
-    <Suspense fallback={<p className="muted">Loading...</p>}>
+    <Suspense fallback={<AreaFallback />}>
       <AreaPage />
     </Suspense>
   );

@@ -10,6 +10,8 @@ import {
   type HealthStatus,
 } from "@/lib/api";
 import { Gauge } from "@/components/Gauge";
+import { useLocale, useT } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/i18n";
 import { effectiveFree, freeLevel } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 
@@ -104,36 +106,37 @@ function formatUptime(seconds: number): string {
 function Verdict({
   free,
   hostKnown,
+  t,
 }: {
   free: ReturnType<typeof effectiveFree>;
   hostKnown: boolean;
+  t: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }) {
   if (!free) {
     return (
       <p className="rounded-md bg-canvas/60 p-2 text-[11px] text-muted-foreground">
-        Disk space is unavailable, so readiness to build maps is unknown.
+        {t("diag.diskUnavailable")}
       </p>
     );
   }
-  const where = free.source === "host" ? "on the Windows drive" : "on the server disk";
+  const where = free.source === "host" ? t("diag.onWindowsDrive") : t("diag.onServerDisk");
   const gb = Math.round(free.gb);
   if (free.level === "ok" && !hostKnown) {
     // Sehat menurut disk yang dilihat container, tapi disk itu bisa virtual: jangan menyatakan siap.
     return (
       <p className="rounded-md bg-canvas/60 p-2 text-[11px] text-muted-foreground">
-        Server disk shows {gb} GB free. The physical drive is not reported, so readiness to build
-        maps is not confirmed.
+        {t("diag.unconfirmedServerDisk", { gb })}
       </p>
     );
   }
   const text =
     free.level === "ok"
-      ? `Ready to build maps: ${gb} GB free ${where}.`
+      ? t("diag.readyToBuild", { gb, where })
       : free.level === "warn"
-        ? `Disk is getting low: ${gb} GB free ${where}.`
+        ? t("diag.diskLow", { gb, where })
         : free.source === "volume"
-          ? `Map builds are refused: ${gb} GB free ${where}, the worker needs 20 GB.`
-          : `Windows drive has ${gb} GB free; keep it above 30 GB before building.`;
+          ? t("diag.buildsRefused", { gb, where })
+          : t("diag.windowsKeepAbove", { gb });
   return (
     <p
       className={cn(
@@ -156,9 +159,11 @@ function formatAge(seconds: number): string {
 function DiskNotes({
   storage,
   host,
+  t,
 }: {
   storage: StorageDiagnostics | undefined;
   host: HostDisk | null;
+  t: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }) {
   const maps = storage?.maps ?? null;
   const data = storage?.data ?? null;
@@ -175,12 +180,12 @@ function DiskNotes({
   }
   const seen = maps ?? data;
   if (host && seen && seen.total_gb > host.total_gb) {
-    lines.push(`That disk is larger than drive ${host.mount}, so not all of it can be used.`);
+    lines.push(t("diag.diskLarger", { mount: host.mount }));
   }
   if (storage?.host?.stale) {
-    lines.push(`Drive reading is ${formatAge(storage.host.age_s)} old and ignored.`);
+    lines.push(t("diag.readingOld", { age: formatAge(storage.host.age_s) }));
   } else if (!storage?.host) {
-    lines.push("Physical drive not reported: if this disk is virtual, real free space may be lower.");
+    lines.push(t("diag.physicalNotReported"));
   }
   if (!lines.length) return null;
   return (
@@ -197,6 +202,8 @@ export function SystemDiagnosticsPopover({
   onClose,
 }: SystemDiagnosticsPopoverProps) {
   const { data, healthData, loading, refreshError, lastUpdated } = useDiagnostics(isOpen);
+  const { locale } = useLocale();
+  const t = useT();
 
   const storage = data?.storage;
   const free = effectiveFree(storage);
@@ -213,7 +220,7 @@ export function SystemDiagnosticsPopover({
       {/* Header Panel */}
       <div className="flex items-center justify-between border-b border-border pb-2">
         <div className="flex items-center gap-2">
-          <span className="font-semibold text-foreground text-sm">System Diagnostics</span>
+          <span className="font-semibold text-foreground text-sm">{t("diag.title")}</span>
           <span
             className={cn(
               "rounded-full px-2 py-0.5 text-[10px] font-medium tracking-wide uppercase",
@@ -222,7 +229,7 @@ export function SystemDiagnosticsPopover({
                 : "bg-muted text-muted-foreground"
             )}
           >
-            {data?.device ? `${data.device.toUpperCase()} Mode` : "Detecting"}
+            {data?.device ? `${data.device.toUpperCase()} Mode` : t("diag.detecting")}
           </span>
         </div>
         {onClose && (
@@ -231,7 +238,7 @@ export function SystemDiagnosticsPopover({
             data-slot="diagnostics-close"
             onClick={onClose}
             className="rounded p-1 text-muted-foreground hover:bg-canvas hover:text-foreground transition-colors cursor-pointer"
-            aria-label="Close diagnostics"
+            aria-label={t("diag.closeAria")}
           >
             ✕
           </button>
@@ -242,7 +249,7 @@ export function SystemDiagnosticsPopover({
       {refreshError && (
         <div className="rounded-md bg-bad-bg/60 p-2 text-[11px] text-bad-fg flex items-start gap-1.5">
           <span className="font-bold">!</span>
-          <span>Refresh failed ({refreshError}). Showing last known metrics.</span>
+          <span>{t("diag.refreshFailed", { error: refreshError })}</span>
         </div>
       )}
 
@@ -251,39 +258,45 @@ export function SystemDiagnosticsPopover({
           <div className="skeleton h-4 w-3/4 rounded" />
           <div className="skeleton h-12 w-full rounded" />
           <div className="skeleton h-12 w-full rounded" />
-          <span className="text-[11px] mt-1">Reading system sensors...</span>
+          <span className="text-[11px] mt-1">{t("diag.readingSensors")}</span>
         </div>
       ) : (
         <>
           {/* Bagian 1: kesiapan membangun peta dan pengukur */}
-          <Verdict free={free} hostKnown={host !== null} />
+          <Verdict free={free} hostKnown={host !== null} t={t} />
           <div className="grid grid-cols-3 gap-1 py-1">
             {host ? (
               <Gauge
-                label={`Drive ${host.mount}`}
+                label={t("diag.driveHost", { mount: host.mount })}
                 fill={host.percent}
                 display={String(Math.round(host.free_gb))}
-                unit="GB free"
+                unit={t("diag.gbFree")}
                 level={freeLevel(host.free_gb, "host")}
-                caption={`${host.used_gb.toFixed(0)} of ${host.total_gb.toFixed(0)} GB used`}
+                caption={t("diag.usedCaption", {
+                  used: host.used_gb.toFixed(0),
+                  total: host.total_gb.toFixed(0),
+                })}
               />
             ) : volume ? (
               <Gauge
-                label="Server disk"
+                label={t("diag.serverDisk")}
                 fill={volume.percent}
                 display={String(Math.round(volume.free_gb))}
-                unit="GB free"
+                unit={t("diag.gbFree")}
                 level={freeLevel(volume.free_gb, "volume")}
-                caption={`${volume.used_gb.toFixed(0)} of ${volume.total_gb.toFixed(0)} GB used`}
+                caption={t("diag.usedCaption", {
+                  used: volume.used_gb.toFixed(0),
+                  total: volume.total_gb.toFixed(0),
+                })}
               />
             ) : (
-              <Gauge label="Disk" fill={0} display="N/A" unit="unavailable" />
+              <Gauge label={t("diag.disk")} fill={0} display="N/A" unit={t("diag.unavailable")} />
             )}
             <Gauge
-              label="GPU memory"
+              label={t("diag.gpuMemory")}
               fill={vramPct ?? 0}
               display={vramPct !== null ? String(vramPct) : "N/A"}
-              unit={vramPct !== null ? "% used" : "unavailable"}
+              unit={vramPct !== null ? t("diag.percentUsed") : t("diag.unavailable")}
               caption={
                 gpu && gpu.vram_used_mb !== null && gpu.vram_total_mb
                   ? `${(gpu.vram_used_mb / 1024).toFixed(1)} of ${(gpu.vram_total_mb / 1024).toFixed(1)} GB`
@@ -291,31 +304,31 @@ export function SystemDiagnosticsPopover({
               }
             />
             <Gauge
-              label="GPU temp"
+              label={t("diag.gpuTemp")}
               fill={gpu?.temperature_c ?? 0}
               display={gpu?.temperature_c != null ? String(gpu.temperature_c) : "N/A"}
-              unit={gpu?.temperature_c != null ? "°C" : "unavailable"}
+              unit={gpu?.temperature_c != null ? "°C" : t("diag.unavailable")}
               level={gpu?.temperature_c != null ? (gpu.temperature_c >= 80 ? "bad" : "ok") : undefined}
             />
           </div>
           {gpu?.name && <p className="-mt-1 text-center text-[11px] text-muted-foreground">{gpu.name}</p>}
-          <DiskNotes storage={storage} host={host} />
+          <DiskNotes storage={storage} host={host} t={t} />
 
           {/* Bagian 3: System Status & Alignment */}
           <div className="flex flex-col gap-2 border-t border-border pt-2.5">
             <span className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">
-              System Status
+              {t("diag.systemStatus")}
             </span>
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div className="flex flex-col rounded-md bg-canvas/60 p-2">
-                <span className="text-[11px] text-muted-foreground">Connection</span>
+                <span className="text-[11px] text-muted-foreground">{t("diag.connection")}</span>
                 <span className="font-semibold text-forest flex items-center gap-1.5 mt-0.5">
                   <span className="h-2 w-2 rounded-full bg-forest animate-pulse" />
-                  Reachable
+                  {t("diag.reachable")}
                 </span>
               </div>
               <div className="flex flex-col rounded-md bg-canvas/60 p-2">
-                <span className="text-[11px] text-muted-foreground">Service Uptime</span>
+                <span className="text-[11px] text-muted-foreground">{t("diag.serviceUptime")}</span>
                 <span className="font-semibold text-foreground num mt-0.5">
                   {data?.uptime_s !== undefined ? formatUptime(data.uptime_s) : "N/A"}
                 </span>
@@ -324,37 +337,37 @@ export function SystemDiagnosticsPopover({
 
             {/* Metric Alignment Row */}
             <div className="flex flex-col rounded-md bg-canvas/60 p-2 text-xs">
-              <span className="text-[11px] text-muted-foreground">Active Map Coordinate Frame</span>
+              <span className="text-[11px] text-muted-foreground">{t("diag.activeMapCoordinateFrame")}</span>
               <span className="font-semibold text-foreground flex items-center gap-1.5 mt-0.5">
                 {healthData?.aligned ? (
                   <span className="text-forest flex items-center gap-1">
                     <span className="h-1.5 w-1.5 rounded-full bg-forest" />
-                    Metric aligned (pose_building in meters)
+                    {t("diag.metricAligned")}
                   </span>
                 ) : healthData ? (
                   <span className="text-muted-foreground flex items-center gap-1">
                     <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />
-                    Model coordinates only (unaligned SfM)
+                    {t("diag.modelSfM")}
                   </span>
                 ) : (
-                  "Checking..."
+                  t("head.checking")
                 )}
               </span>
               <span className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
                 {healthData?.aligned
-                  ? "Poses transformed to metric coordinates via align.json"
-                  : "Poses output in unitless SfM space pending reference points"}
+                  ? t("diag.metricPosesDesc")
+                  : t("diag.modelPosesDesc")}
               </span>
             </div>
 
             {data?.reloading && (
               <div className="rounded-md bg-busy-bg p-2 text-[11px] text-busy-fg">
-                Map reload is currently in progress...
+                {t("diag.mapReloadInProgress")}
               </div>
             )}
             {data?.reload_error && (
               <div className="rounded-md bg-bad-bg p-2 text-[11px] text-bad-fg">
-                Reload error: {data.reload_error}
+                {t("diag.reloadError", { error: data.reload_error })}
               </div>
             )}
           </div>
@@ -363,10 +376,14 @@ export function SystemDiagnosticsPopover({
           <div className="flex items-center justify-between border-t border-border/80 pt-2 text-[10px] text-muted-foreground">
             <span className="flex items-center gap-1">
               <span className="h-1.5 w-1.5 rounded-full bg-forest" />
-              Auto-refreshing (10s)
+              {t("diag.autoRefreshing")}
             </span>
             <span className="num">
-              {lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString()}` : "Updating..."}
+              {lastUpdated
+                ? t("diag.updatedAt", {
+                    time: lastUpdated.toLocaleTimeString(locale === "id" ? "id-ID" : "en-US"),
+                  })
+                : t("diag.updating")}
             </span>
           </div>
         </>

@@ -26,10 +26,11 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Icon, VersionBadge } from "@/lib/Icon";
 import Link from "@/lib/Link";
-import { api, formatDate, type Job, type Version } from "@/lib/api";
+import { api, type Job, type Version } from "@/lib/api";
 import { PageHead } from "@/lib/PageHead";
 import { Rows } from "@/lib/Rows";
 import { usePoll } from "@/lib/usePoll";
+import { type TranslationKey, useFormatDate, useT } from "@/lib/i18n";
 
 function compareWithNullLast(
   valA: string | null | undefined,
@@ -46,6 +47,8 @@ function compareWithNullLast(
 }
 
 export default function MapsPage() {
+  const t = useT();
+  const formatDate = useFormatDate();
   const [tick, setTick] = useState(0);
   const service = usePoll(api.service, 3000, [tick]);
   const reloading = service.data?.reloading ?? false;
@@ -94,7 +97,7 @@ export default function MapsPage() {
       setTick((t) => t + 1);
     } catch (e: any) {
       setIsDeleting(false);
-      setDeleteError(e.message || "Failed to delete map version");
+      setDeleteError(e.message || t("maps.failedToDelete"));
     }
   }
 
@@ -104,12 +107,15 @@ export default function MapsPage() {
   const [sortKey, setSortKey] = useState<string | null>("version");
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
 
-  const statusOptions = [
-    { value: "published", label: "Published" },
-    { value: "candidate", label: "Candidate" },
-    { value: "retired", label: "Retired" },
-    { value: "rejected", label: "Rejected" },
-  ];
+  const statusOptions = useMemo(
+    () => [
+      { value: "published", label: t("status.published") },
+      { value: "candidate", label: t("status.candidate") },
+      { value: "retired", label: t("status.retired") },
+      { value: "rejected", label: t("status.rejected") },
+    ],
+    [t]
+  );
 
   const areaOptions = useMemo(() => {
     if (!localVersions) return [];
@@ -144,7 +150,8 @@ export default function MapsPage() {
       if (q) {
         const matchVersion = v.version.toString().includes(q);
         const matchArea = v.area_id.toLowerCase().includes(q);
-        const matchStatus = v.status.toLowerCase().includes(q);
+        const statusLabel = t(`status.${v.status}` as TranslationKey).toLowerCase();
+        const matchStatus = v.status.toLowerCase().includes(q) || statusLabel.includes(q);
         const matchJob = v.job_id ? v.job_id.toString().includes(q) : false;
         const matchPublished = v.published_by ? v.published_by.toLowerCase().includes(q) : false;
         return matchVersion || matchArea || matchStatus || matchJob || matchPublished;
@@ -175,13 +182,13 @@ export default function MapsPage() {
   }, [localVersions, jobs.data, search, statusFilter, areaFilter, sortKey, sortDir]);
 
   async function publish(id: number, version: number) {
-    if (!window.confirm(`Make version ${version} active?`)) return;
+    if (!window.confirm(t("maps.publishConfirm", { version }))) return;
     setError(null);
     setMessage(null);
     try {
       const r = await api.publish(id);
       if (r.reload === "other_area") {
-        setMessage(`Version ${version} is marked active, but this service serves another area: /localize does not use it.`);
+        setMessage(t("maps.publishOtherArea", { version }));
       }
       setTick(tick + 1);
     } catch (e) {
@@ -192,19 +199,19 @@ export default function MapsPage() {
   const s = service.data;
   return (
     <>
-      <PageHead crumbs={[{ label: "Map versions" }]} title="Map versions">
-        Publishing loads the map in the background. /localize keeps the current map until the new one loads.
+      <PageHead crumbs={[{ label: t("nav.mapVersions") }]} title={t("maps.pageTitle")}>
+        {t("maps.pageDesc")}
       </PageHead>
       <section className="stats">
         <Panel>
-          <span className="stat-label">Serving area</span>
-          <span className="stat-value">{s ? (s.area_id ?? "none") : <span className="skeleton row" />}</span>
-          {s?.area_id && <Link href={`/area/?id=${encodeURIComponent(s.area_id)}`}>Edit rooms and routes</Link>}
+          <span className="stat-label">{t("maps.servingArea")}</span>
+          <span className="stat-value">{s ? (s.area_id ?? t("overview.none")) : <span className="skeleton row" />}</span>
+          {s?.area_id && <Link href={`/area/?id=${encodeURIComponent(s.area_id)}`}>{t("maps.editRoomsRoutes")}</Link>}
         </Panel>
         <Panel>
-          <span className="stat-label">Active version</span>
+          <span className="stat-label">{t("maps.activeVersion")}</span>
           <span className="stat-value">{s ? (s.map_version ?? "-") : <span className="skeleton row" />}</span>
-          {s && <span>{reloading ? <StatusBadge status="running">loading a new version</StatusBadge> : <StatusBadge status="done">ready</StatusBadge>}</span>}
+          {s && <span>{reloading ? <StatusBadge status="running">{t("maps.loadingNewVersion")}</StatusBadge> : <StatusBadge status="done">{t("maps.ready")}</StatusBadge>}</span>}
         </Panel>
       </section>
       {s?.reload_error && <p className="error"><Icon name="error-map" /> {s.reload_error}</p>}
@@ -214,7 +221,7 @@ export default function MapsPage() {
       )}
       <Panel>
         <div className="flex items-center justify-between mb-2">
-          <h2>All versions</h2>
+          <h2>{t("maps.allVersions")}</h2>
           {localVersions && localVersions.length >= 2 && (
             <Button
               type="button"
@@ -223,7 +230,7 @@ export default function MapsPage() {
               onClick={() => setShowComparison(!showComparison)}
               className="h-7 rounded-full text-xs font-medium cursor-pointer"
             >
-              {showComparison ? "Hide comparison" : "Compare versions"}
+              {showComparison ? t("maps.hideComparison") : t("maps.compareVersions")}
             </Button>
           )}
         </div>
@@ -241,14 +248,14 @@ export default function MapsPage() {
         )}
         {!localVersions && !versions.error && <Rows />}
         {localVersions && localVersions.length === 0 && (
-          <div className="empty"><p>No map versions yet. A finished job adds one.</p></div>
+          <div className="empty"><p>{t("maps.empty")}</p></div>
         )}
         {localVersions && localVersions.length > 0 && (
           <>
             <TableFilterBar
               search={search}
               onSearchChange={setSearch}
-              searchPlaceholder="Search map versions..."
+              searchPlaceholder={t("maps.searchPlaceholder")}
               statusFilter={statusFilter}
               onStatusChange={setStatusFilter}
               statusOptions={statusOptions}
@@ -261,25 +268,25 @@ export default function MapsPage() {
             />
             {filteredAndSortedVersions.length === 0 ? (
               <div className="py-8 text-center text-xs text-muted-foreground">
-                <p>No map versions match your filter criteria.</p>
+                <p>{t("maps.noMatch")}</p>
                 <Button variant="link" size="sm" onClick={handleReset} className="text-xs text-forest mt-1">
-                  Clear filters
+                  {t("maps.clearFilters")}
                 </Button>
               </div>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-16 max-sm:hidden"><span className="sr-only">Preview</span></TableHead>
-                    <SortableHead column="area_id" label="Area" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
-                    <SortableHead column="version" label="Version" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
-                    <SortableHead column="status" label="Status" activeKey={sortKey} direction={sortDir} onSort={handleSort} />
-                    <SortableHead column="job_id" label="Job" activeKey={sortKey} direction={sortDir} onSort={handleSort} className="max-[959px]:hidden" />
-                    <SortableHead column="published_by" label="Published by" activeKey={sortKey} direction={sortDir} onSort={handleSort} className="max-[959px]:hidden" />
-                    <SortableHead column="recorded_at" label="Recorded" activeKey={sortKey} direction={sortDir} onSort={handleSort} className="max-[959px]:hidden" />
-                    <SortableHead column="created_at" label="Created" activeKey={sortKey} direction={sortDir} onSort={handleSort} className="max-[959px]:hidden" />
-                    <TableHead className="text-left sticky right-12 bg-card border-l border-line/70 z-20 max-sm:hidden">Action</TableHead>
-                    <TableHead className="w-12 min-w-12 text-right sticky right-0 bg-card z-20"><span className="sr-only">Actions</span></TableHead>
+                    <TableHead className="w-16 max-sm:hidden"><span className="sr-only">{t("table.previewSr")}</span></TableHead>
+                    <SortableHead column="area_id" label={t("jobs.colArea")} activeKey={sortKey} direction={sortDir} onSort={handleSort} />
+                    <SortableHead column="version" label={t("maps.colVersion")} activeKey={sortKey} direction={sortDir} onSort={handleSort} />
+                    <SortableHead column="status" label={t("jobs.colStatus")} activeKey={sortKey} direction={sortDir} onSort={handleSort} />
+                    <SortableHead column="job_id" label={t("maps.colJob")} activeKey={sortKey} direction={sortDir} onSort={handleSort} className="max-[959px]:hidden" />
+                    <SortableHead column="published_by" label={t("maps.colPublishedBy")} activeKey={sortKey} direction={sortDir} onSort={handleSort} className="max-[959px]:hidden" />
+                    <SortableHead column="recorded_at" label={t("jobs.colRecorded")} activeKey={sortKey} direction={sortDir} onSort={handleSort} className="max-[959px]:hidden" />
+                    <SortableHead column="created_at" label={t("maps.colCreated")} activeKey={sortKey} direction={sortDir} onSort={handleSort} className="max-[959px]:hidden" />
+                    <TableHead className="text-left sticky right-12 bg-card border-l border-line/70 z-20 max-sm:hidden">{t("jobs.colAction")}</TableHead>
+                    <TableHead className="w-12 min-w-12 text-right sticky right-0 bg-card z-20"><span className="sr-only">{t("table.actionsSr")}</span></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -292,9 +299,9 @@ export default function MapsPage() {
                     const isPublished = v.status === "published";
                     const isDeleteDisabled = isPublished || isDeletingStatus;
                     const deleteDisabledReason = isPublished
-                      ? "Cannot delete published version"
+                      ? t("maps.reasonPublished")
                       : isDeletingStatus
-                      ? "Associated job is deleting"
+                      ? t("maps.reasonJobDeleting")
                       : "";
                     const petaVideo = sourceJob?.videos?.find((v) => v.role === "peta" && v.recorded_at);
                     const recordedAt = petaVideo?.recorded_at ?? null;
@@ -305,7 +312,7 @@ export default function MapsPage() {
                           <Thumbnail
                             jobId={v.job_id}
                             hasPreview={sourceJob?.has_preview}
-                            alt={`Preview for version ${v.version}`}
+                            alt={t("maps.previewAlt", { version: v.version })}
                             onClick={() => setSelectedVersion(v)}
                           />
                         </TableCell>
@@ -342,11 +349,11 @@ export default function MapsPage() {
                             >
                               {v.status === "retired" ? (
                                 <>
-                                  <Icon name="restore" /> Restore
+                                  <Icon name="restore" /> {t("maps.restore")}
                                 </>
                               ) : (
                                 <>
-                                  <Icon name="publish" /> Publish
+                                  <Icon name="publish" /> {t("maps.publish")}
                                 </>
                               )}
                             </Button>
@@ -364,19 +371,19 @@ export default function MapsPage() {
                                 variant="ghost"
                                 size="icon-sm"
                                 className="rounded-full cursor-pointer"
-                                aria-label={`Actions for version ${v.version}`}
+                                aria-label={t("maps.actionsForVersion", { version: v.version })}
                               >
                                 <MoreHorizontal className="size-4" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem onClick={() => setSelectedVersion(v)}>
-                                Properties
+                                {t("maps.propertiesMenu")}
                               </DropdownMenuItem>
                               {v.has_report && (
                                 <DropdownMenuItem asChild>
                                   <a href={`/api/versions/${v.id}/report`} target="_blank" rel="noreferrer">
-                                    Inspect 3D report
+                                    {t("maps.inspect3DReport")}
                                   </a>
                                 </DropdownMenuItem>
                               )}
@@ -387,11 +394,11 @@ export default function MapsPage() {
                                   setShowComparison(true);
                                 }}
                               >
-                                Compare version
+                                {t("maps.compareVersion")}
                               </DropdownMenuItem>
                               {v.job_id ? (
                                 <DropdownMenuItem asChild>
-                                  <Link href={`/job/?id=${v.job_id}`}>View job</Link>
+                                  <Link href={`/job/?id=${v.job_id}`}>{t("maps.viewJob")}</Link>
                                 </DropdownMenuItem>
                               ) : null}
                               {v.status !== "published" ? (
@@ -399,7 +406,7 @@ export default function MapsPage() {
                                   onClick={() => publish(v.id, v.version)}
                                   disabled={reloading}
                                 >
-                                  {v.status === "retired" ? "Restore" : "Publish"}
+                                  {v.status === "retired" ? t("maps.restore") : t("maps.publish")}
                                 </DropdownMenuItem>
                               ) : null}
                               {me?.is_admin && (
@@ -410,7 +417,7 @@ export default function MapsPage() {
                                       disabled
                                       className="flex flex-col items-start gap-0.5 opacity-50 cursor-not-allowed"
                                     >
-                                      <span className="text-destructive font-medium">Delete</span>
+                                      <span className="text-destructive font-medium">{t("maps.delete")}</span>
                                       <span className="text-[11px] text-muted-foreground font-normal">
                                         {deleteDisabledReason}
                                       </span>
@@ -426,7 +433,7 @@ export default function MapsPage() {
                                         setVersionToDelete(v);
                                       }}
                                     >
-                                      Delete
+                                      {t("maps.delete")}
                                     </DropdownMenuItem>
                                   )}
                                 </>
@@ -458,11 +465,11 @@ export default function MapsPage() {
                 <div className="px-6 pt-6 pb-4 border-b pr-14">
                   <div className="flex items-center gap-2.5">
                     <SheetTitle className="text-base font-semibold text-foreground">
-                      Version {selectedVersion.version}
+                      {t("maps.sheetTitle", { version: selectedVersion.version })}
                     </SheetTitle>
                     <VersionBadge status={selectedVersion.status} />
                   </div>
-                  <SheetDescription className="sr-only">Version {selectedVersion.version} properties</SheetDescription>
+                  <SheetDescription className="sr-only">{t("maps.properties", { version: selectedVersion.version })}</SheetDescription>
                   <p className="mt-1 text-xs text-muted-foreground truncate" title={selectedVersion.area_id}>
                     {selectedVersion.area_id}
                   </p>
@@ -475,20 +482,20 @@ export default function MapsPage() {
                     <div className="overflow-hidden rounded-xl border border-line/70 bg-card aspect-video">
                       <img
                         src={`/api/jobs/${sourceJob.id}/preview`}
-                        alt="First frame of the map video"
+                        alt={t("jobs.previewAlt")}
                         className="w-full h-full object-cover"
                       />
                     </div>
                   ) : (
                     <div className="rounded-xl border border-line/70 bg-card aspect-video flex items-center justify-center text-xs text-muted-foreground">
-                      No preview for this job
+                      {t("jobs.noPreview")}
                     </div>
                   )}
 
                   {/* Version Card */}
                   <div className="rounded-xl border border-line/70 bg-card p-4">
                     <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-3">
-                      Version
+                      {t("maps.colVersion")}
                     </div>
                     <dl className="grid grid-cols-[116px_1fr] gap-x-4 gap-y-2.5 text-sm">
                       <dt className="text-muted-foreground">ID</dt>
@@ -496,27 +503,27 @@ export default function MapsPage() {
                         {selectedVersion.id}
                       </dd>
 
-                      <dt className="text-muted-foreground">Area</dt>
+                      <dt className="text-muted-foreground">{t("jobs.colArea")}</dt>
                       <dd className="text-foreground min-w-0 break-words">
                         {selectedVersion.area_id}
                       </dd>
 
-                      <dt className="text-muted-foreground">Version</dt>
+                      <dt className="text-muted-foreground">{t("maps.colVersion")}</dt>
                       <dd className="text-foreground font-semibold min-w-0 break-words tabular-nums">
                         {selectedVersion.version}
                       </dd>
 
-                      <dt className="text-muted-foreground">Status</dt>
+                      <dt className="text-muted-foreground">{t("jobs.colStatus")}</dt>
                       <dd>
                         <VersionBadge status={selectedVersion.status} />
                       </dd>
 
-                      <dt className="text-muted-foreground">Created</dt>
+                      <dt className="text-muted-foreground">{t("maps.colCreated")}</dt>
                       <dd className="text-foreground min-w-0 break-words tabular-nums" title={selectedVersion.created_at || undefined}>
                         {formatDate(selectedVersion.created_at)}
                       </dd>
 
-                      <dt className="text-muted-foreground">Published by</dt>
+                      <dt className="text-muted-foreground">{t("maps.colPublishedBy")}</dt>
                       <dd className="text-foreground min-w-0 break-words">
                         {selectedVersion.published_by ?? "-"}
                       </dd>
@@ -526,31 +533,31 @@ export default function MapsPage() {
                   {/* Source Job Card */}
                   <div className="rounded-xl border border-line/70 bg-card p-4">
                     <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-3">
-                      Source job
+                      {t("maps.sourceJob")}
                     </div>
                     {selectedVersion.job_id != null ? (
                       <dl className="grid grid-cols-[116px_1fr] gap-x-4 gap-y-2.5 text-sm">
-                        <dt className="text-muted-foreground">Job</dt>
+                        <dt className="text-muted-foreground">{t("maps.colJob")}</dt>
                         <dd>
                           <Link
                             href={`/job/?id=${selectedVersion.job_id}`}
                             className="text-forest font-medium hover:underline"
                           >
-                            Job {selectedVersion.job_id}
+                            {t("job.crumbJob", { id: selectedVersion.job_id })}
                           </Link>
                         </dd>
 
-                        <dt className="text-muted-foreground">Recorded</dt>
+                        <dt className="text-muted-foreground">{t("jobs.colRecorded")}</dt>
                         <dd className="text-foreground min-w-0 break-words tabular-nums" title={recordedAt || undefined}>
                           {formatDate(recordedAt)}
                         </dd>
 
-                        <dt className="text-muted-foreground">Uploaded</dt>
+                        <dt className="text-muted-foreground">{t("jobs.colUploaded")}</dt>
                         <dd className="text-foreground min-w-0 break-words tabular-nums" title={sourceJob?.created_at || undefined}>
                           {formatDate(sourceJob?.created_at)}
                         </dd>
 
-                        <dt className="text-muted-foreground">Has report</dt>
+                        <dt className="text-muted-foreground">{t("maps.hasReport")}</dt>
                         <dd>
                           <span
                             className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
@@ -559,13 +566,13 @@ export default function MapsPage() {
                                 : "bg-muted text-muted-foreground"
                             }`}
                           >
-                            {selectedVersion.has_report ? "Yes" : "No"}
+                            {selectedVersion.has_report ? t("maps.yes") : t("maps.no")}
                           </span>
                         </dd>
                       </dl>
                     ) : (
                       <p className="text-xs text-muted-foreground">
-                        Created from the command line, no job
+                        {t("maps.cliSource")}
                       </p>
                     )}
                   </div>
@@ -576,7 +583,7 @@ export default function MapsPage() {
                   {selectedVersion.has_report && (
                     <Button asChild variant="outline" className="rounded-full">
                       <a href={`/api/versions/${selectedVersion.id}/report`} target="_blank" rel="noreferrer">
-                        <Icon name="view-3d" /> Inspect 3D report
+                        <Icon name="view-3d" /> {t("maps.inspect3DReport")}
                       </a>
                     </Button>
                   )}
@@ -590,11 +597,11 @@ export default function MapsPage() {
                       setSelectedVersion(null);
                     }}
                   >
-                    Compare
+                    {t("maps.compare")}
                   </Button>
                   {selectedVersion.job_id ? (
                     <Button asChild variant="outline" className="rounded-full">
-                      <Link href={`/job/?id=${selectedVersion.job_id}`}>View job</Link>
+                      <Link href={`/job/?id=${selectedVersion.job_id}`}>{t("maps.viewJob")}</Link>
                     </Button>
                   ) : null}
                   {selectedVersion.status !== "published" ? (
@@ -606,11 +613,11 @@ export default function MapsPage() {
                     >
                       {selectedVersion.status === "retired" ? (
                         <>
-                          <Icon name="restore" /> Restore
+                          <Icon name="restore" /> {t("maps.restore")}
                         </>
                       ) : (
                         <>
-                          <Icon name="publish" /> Publish
+                          <Icon name="publish" /> {t("maps.publish")}
                         </>
                       )}
                     </Button>
@@ -632,7 +639,7 @@ export default function MapsPage() {
                         setTimeout(() => setVersionToDelete(v), 100);
                       }}
                     >
-                      Delete
+                      {t("maps.delete")}
                     </Button>
                   )}
                 </div>

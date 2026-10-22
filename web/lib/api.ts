@@ -346,21 +346,31 @@ export const ROLE: Record<string, string> = { peta: "map", uji: "test" };
 
 export const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(0)} MB`;
 
-const dtf = new Intl.DateTimeFormat(undefined, {
-  year: "numeric",
-  month: "short",
-  day: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-});
+const dtfMap = new Map<string, Intl.DateTimeFormat>();
 
-export function formatDate(iso: string | null | undefined): string {
+function getDtf(locale?: string): Intl.DateTimeFormat {
+  const loc = locale === "id" ? "id-ID" : locale === "en" ? "en-US" : locale ?? "id-ID";
+  let formatter = dtfMap.get(loc);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(loc, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    dtfMap.set(loc, formatter);
+  }
+  return formatter;
+}
+
+export function formatDate(iso: string | null | undefined, locale?: string): string {
   if (!iso) return "-";
   try {
     const d = new Date(iso);
     if (isNaN(d.getTime())) return "-";
-    return dtf.format(d);
+    return getDtf(locale).format(d);
   } catch {
     return "-";
   }

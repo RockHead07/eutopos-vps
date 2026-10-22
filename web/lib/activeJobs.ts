@@ -1,5 +1,6 @@
 /** Ringkasan pekerjaan aktif untuk banner Overview. Fungsi murni supaya bisa diuji tanpa browser. */
 import type { Job } from "./api";
+import type { TranslationKey } from "./i18n";
 
 export const BUSY = ["uploading", "queued", "running"];
 
@@ -24,17 +25,18 @@ export function summarizeActiveJobs(jobs: Job[]): ActiveJobsSummary {
   };
 }
 
-function stageLabel(job: Job): string {
+type TranslateFn = (key: TranslationKey, vars?: Record<string, string | number>) => string;
+
+function stageLabel(job: Job, t?: TranslateFn): string {
   if (job.stage) return job.stage;
-  if (job.status === "queued") return "waiting to start";
+  if (job.status === "queued") return t ? t("banner.waitingToStart") : "waiting to start";
   return job.status;
 }
 
-function counted(count: number, singular: string, plural: string): string {
-  return `${count} ${count === 1 ? singular : plural}`;
-}
-
-export function describeActive(summary: ActiveJobsSummary): {
+export function describeActive(
+  summary: ActiveJobsSummary,
+  t?: TranslateFn,
+): {
   primary: string;
   secondary: string | null;
 } {
@@ -46,27 +48,47 @@ export function describeActive(summary: ActiveJobsSummary): {
 
   let primary: string;
   if (single) {
-    primary = `Building the map for ${single.area_id}`;
+    primary = t ? t("banner.buildingMap", { area: single.area_id }) : `Building the map for ${single.area_id}`;
   } else if (runningCount === 0) {
-    primary = "No job is running.";
+    primary = t ? t("banner.noJobRunning") : "No job is running.";
   } else {
     const parts: string[] = [];
     if (buildCount > 0) {
-      parts.push(`${counted(buildCount, "map build", "map builds")} running`);
+      parts.push(
+        t
+          ? buildCount === 1
+            ? t("banner.mapBuildRunning")
+            : t("banner.mapBuildsRunning", { count: buildCount })
+          : `${buildCount} ${buildCount === 1 ? "map build" : "map builds"} running`,
+      );
     }
     if (uploadCount > 0) {
-      parts.push(`${counted(uploadCount, "upload", "uploads")} in progress`);
+      parts.push(
+        t
+          ? uploadCount === 1
+            ? t("banner.uploadInProgress")
+            : t("banner.uploadsInProgress", { count: uploadCount })
+          : `${uploadCount} ${uploadCount === 1 ? "upload" : "uploads"} in progress`,
+      );
     }
     primary = parts.join(", ");
   }
 
   const secondaryParts: string[] = [];
   if (single) {
-    secondaryParts.push(`Job #${single.id}, stage: ${stageLabel(single)}`);
+    secondaryParts.push(
+      t
+        ? t("banner.jobStage", { id: single.id, stage: stageLabel(single, t) })
+        : `Job #${single.id}, stage: ${stageLabel(single)}`,
+    );
   }
   if (stalledCount > 0) {
     secondaryParts.push(
-      `${counted(stalledCount, "upload", "uploads")} stopped receiving data`,
+      t
+        ? stalledCount === 1
+          ? t("banner.uploadStoppedData")
+          : t("banner.uploadsStoppedData", { count: stalledCount })
+        : `${stalledCount} ${stalledCount === 1 ? "upload" : "uploads"} stopped receiving data`,
     );
   }
 

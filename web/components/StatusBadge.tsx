@@ -1,4 +1,7 @@
+"use client";
+import React from "react";
 import { Badge } from "@/components/ui/badge";
+import { useT, type TranslationKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 // Warna dari palet eutopos (globals.css). Status selalu ditulis sebagai teks, tidak hanya warna.
@@ -15,10 +18,32 @@ const TONE: Record<string, string> = {
 };
 const IDLE = "bg-[var(--idle-bg)] text-[var(--idle-fg)]";
 
-export function StatusBadge({ status, className, children }: { status: string; className?: string; children?: React.ReactNode }) {
+export function StatusBadge({
+  status,
+  icon,
+  className,
+  children,
+}: {
+  status: string;
+  icon?: React.ReactNode;
+  className?: string;
+  children?: React.ReactNode;
+}) {
+  const t = useT();
+  const key = `status.${status}` as TranslationKey;
+  const translated = t(key);
+  const display = translated !== key ? translated : status;
+
   return (
-    <Badge className={cn("h-auto rounded-lg px-2.5 py-0.5 text-[0.8rem] font-semibold", TONE[status] ?? IDLE, className)}>
-      {children ?? status}
+    <Badge
+      className={cn(
+        "h-auto rounded-lg px-2.5 py-0.5 text-[0.8rem] font-semibold inline-flex items-center gap-1",
+        TONE[status] ?? IDLE,
+        className
+      )}
+    >
+      {icon}
+      {children ?? display}
     </Badge>
   );
 }

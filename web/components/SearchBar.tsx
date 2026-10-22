@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/lib/Icon";
+import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 interface SearchBarProps {
@@ -27,6 +28,7 @@ export function SearchBar({
 }: SearchBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isMac, setIsMac] = useState(false);
+  const t = useT();
 
   useEffect(() => {
     setIsMac(/(Mac|iPhone|iPod|iPad)/i.test(navigator.userAgent || navigator.platform || ""));
@@ -49,8 +51,7 @@ export function SearchBar({
           activeEl instanceof HTMLInputElement ||
           activeEl instanceof HTMLTextAreaElement ||
           activeEl instanceof HTMLSelectElement ||
-          activeEl?.getAttribute("contenteditable") === "true" ||
-          (activeEl as HTMLElement)?.isContentEditable;
+          (activeEl as HTMLElement | null)?.isContentEditable;
 
         if (!isInput) {
           e.preventDefault();
@@ -60,9 +61,7 @@ export function SearchBar({
     };
 
     window.addEventListener("keydown", handleGlobalKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleGlobalKeyDown);
-    };
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, [shortcut]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -80,7 +79,7 @@ export function SearchBar({
   };
 
   const defaultPlaceholder =
-    variant === "hero" ? "Search jobs, areas or people..." : "Search...";
+    variant === "hero" ? t("search.heroPlaceholder") : t("search.compactPlaceholder");
 
   const chips = (
     <div
@@ -118,7 +117,7 @@ export function SearchBar({
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={placeholder || defaultPlaceholder}
-        aria-label="Search"
+        aria-label={t("search.aria")}
         aria-keyshortcuts="Control+/ Meta+/ /"
         autoFocus={autoFocus}
         style={{ outline: "none" }}
@@ -144,7 +143,7 @@ export function SearchBar({
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={placeholder || defaultPlaceholder}
-        aria-label="Search"
+        aria-label={t("search.aria")}
         aria-keyshortcuts="Control+/ Meta+/ /"
         autoFocus={autoFocus}
         style={{ outline: "none" }}

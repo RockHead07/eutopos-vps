@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useT } from "@/lib/i18n";
 
 export type DeleteTarget =
   | {
@@ -49,6 +50,7 @@ export function DeleteConsentDialog({
   const [consent, setConsent] = useState(false);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const t = useT();
 
   useEffect(() => {
     if (open) {
@@ -74,8 +76,8 @@ export function DeleteConsentDialog({
   const hasJob = target.type === "job" || target.has_job;
   const title =
     target.type === "job"
-      ? `Delete job ${target.id} (${target.area_id})?`
-      : `Delete map version ${target.version} (${target.area_id})?`;
+      ? t("dialog.deleteJobTitle", { id: target.id, area: target.area_id })
+      : t("dialog.deleteVersionTitle", { version: target.version, area: target.area_id });
 
   return (
     <AlertDialog open={open} onOpenChange={(next) => !isDeleting && onOpenChange(next)}>
@@ -105,36 +107,38 @@ export function DeleteConsentDialog({
             {title}
           </AlertDialogTitle>
           <AlertDialogDescription className="sr-only">
-            Confirmation required to delete {title}
+            {title}
           </AlertDialogDescription>
         </AlertDialogHeader>
 
         <div className="space-y-3 py-1 text-left">
           <div>
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              Will be removed:
+              {t("dialog.willBeRemoved")}
             </p>
             <ul className="list-disc list-inside text-sm text-foreground space-y-0.5 mt-1">
               <li>
                 {hasJob
-                  ? "The generated map files and the database rows of the job and version"
-                  : "Only its database entry"}
+                  ? t("dialog.removedJobAndVersion")
+                  : t("dialog.removedDatabaseOnly")}
               </li>
             </ul>
           </div>
 
           <div>
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              Will be kept:
+              {t("dialog.willBeKept")}
             </p>
             <ul className="list-disc list-inside text-sm text-foreground space-y-0.5 mt-1">
               <li>
-                {hasJob ? "The extracted frames on the server" : "The map files on disk"}
+                {hasJob
+                  ? t("dialog.keptFrames")
+                  : t("dialog.keptMapFiles")}
               </li>
             </ul>
           </div>
 
-          <p className="text-sm font-semibold text-destructive">This cannot be undone.</p>
+          <p className="text-sm font-semibold text-destructive">{t("dialog.cannotBeUndone")}</p>
 
           <div className="flex items-center gap-2 pt-2">
             <Checkbox
@@ -147,7 +151,7 @@ export function DeleteConsentDialog({
               htmlFor="delete-consent-checkbox"
               className="flex min-h-11 items-center text-sm font-medium leading-none cursor-pointer peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-foreground"
             >
-              I understand this cannot be undone
+              {t("dialog.consentCheckbox")}
             </label>
           </div>
 
@@ -161,7 +165,7 @@ export function DeleteConsentDialog({
             onClick={() => onOpenChange(false)}
             className="cursor-pointer"
           >
-            Cancel
+            {t("dialog.cancel")}
           </AlertDialogCancel>
           <Button
             variant="destructive"
@@ -169,7 +173,7 @@ export function DeleteConsentDialog({
             onClick={onConfirm}
             className="cursor-pointer"
           >
-            {isDeleting ? "Deleting..." : "Delete"}
+            {isDeleting ? t("dialog.deleting") : t("dialog.delete")}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

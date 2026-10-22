@@ -6,9 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, api, mb, ROLE } from "@/lib/api";
 import {
-  AREA_ID_HINT,
   AREA_ID_MAX,
-  AREA_NAME_HINT,
   AREA_NAME_MAX,
   normalizeAreaId,
   normalizeAreaName,
@@ -27,9 +25,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useT, type TranslationKey } from "@/lib/i18n";
 import { Icon } from "@/lib/Icon";
 import { PageHead } from "@/lib/PageHead";
-import { RETRY_DELAYS, shouldRetryUpload, stalledFileIds } from "@/lib/uploadRetry";
+import { RETRY_DELAYS, shouldRetryUpload } from "@/lib/uploadRetry";
 import { lastUploadProtocol, probeFile, watchUploadProtocol } from "@/lib/uploadDiag";
 import { clearSession, fileKey, loadSession, matchUrl, saveSession, type SavedSession } from "@/lib/uploadSession";
 import "@uppy/core/css/style.min.css";
@@ -38,22 +37,27 @@ import "@uppy/dashboard/css/style.min.css";
 const CHUNK = 8 * 1024 * 1024; // 8 MiB (kelipatan 256 KiB), toleran terhadap koneksi ponsel yang putus
 
 type RetryHandler = (msg: string | null) => void;
+type TranslateRef = React.RefObject<((k: TranslationKey, vars?: Record<string, string | number>) => string) | null>;
 
 // Setelah galat tanpa respons: bila berkas video tidak lagi terbaca di offset terakhir, itu penyebabnya (bukan jaringan).
-async function explainUnreadable(uppy: Uppy, say: RetryHandler) {
+async function explainUnreadable(uppy: Uppy, say: RetryHandler, tRef: TranslateRef) {
   for (const f of uppy.getFiles()) {
     if (!f.progress.uploadStarted || f.progress.uploadComplete || !(f.data instanceof Blob)) continue;
     const at = f.progress.bytesUploaded || 0;
     const bad = await probeFile(f.data, at);
     // Bila sudah ada kemajuan lagi, unggahan pulih sendiri: jangan menimpa status dengan kabar basi.
     if (bad && (uppy.getFile(f.id)?.progress.bytesUploaded || 0) === at) {
-      say(`Cannot read the video file (${bad}). Copy it to the Downloads folder, select it again and press Start upload.`);
+      say(
+        tRef.current
+          ? tRef.current("new.cannotReadFile", { bad })
+          : `Cannot read the video file (${bad}). Copy it to the Downloads folder, select it again and press Start upload.`,
+      );
       return;
     }
   }
 }
 
-function createUppy(onRetryRef: React.RefObject<RetryHandler | null>) {
+function createUppy(onRetryRef: React.RefObject<RetryHandler | null>, tRef: TranslateRef) {
   const uppy = new Uppy({
     autoProceed: false,
     restrictions: { allowedFileTypes: ["video/*"], maxNumberOfFiles: 4, maxFileSize: 2 * 1024 ** 3 },
@@ -78,11 +82,15 @@ function createUppy(onRetryRef: React.RefObject<RetryHandler | null>) {
       const proto = lastUploadProtocol();
       onRetryRef.current?.(
         typeof navigator !== "undefined" && !navigator.onLine
-          ? "Offline, waiting for connection"
-          : `Connection lost, retrying (attempt ${retryAttempt + 1}), ${cause}${proto ? `, ${proto}` : ""}`,
+          ? tRef.current?.("new.offlineWaiting") ?? "Offline, waiting for connection"
+          : tRef.current?.("new.connectionLostRetrying", {
+              attempt: retryAttempt + 1,
+              cause,
+              proto: proto ? `, ${proto}` : "",
+            }) ?? `Connection lost, retrying (attempt ${retryAttempt + 1}), ${cause}${proto ? `, ${proto}` : ""}`,
       );
       if (!err.originalResponse) {
-        explainUnreadable(uppy, (msg) => onRetryRef.current?.(msg)).catch(() => {});
+        explainUnreadable(uppy, (msg) => onRetryRef.current?.(msg), tRef).catch(() => {});
       }
       return true;
     },
@@ -115,11 +123,15 @@ function focusField(id: "area-id" | "area-name") {
 
 export default function NewSessionPage() {
   const router = useRouter();
+  const t = useT();
+  const tRef = useRef<((k: TranslationKey, vars?: Record<string, string | number>) => string) | null>(null);
+  tRef.current = t;
+
   const [retryStatus, setRetryStatus] = useState<string | null>(null);
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   const onRetryRef = useRef<RetryHandler | null>(null);
   onRetryRef.current = setRetryStatus;
-  const [uppy] = useState(() => createUppy(onRetryRef));
+  const [uppy] = useState(() => createUppy(onRetryRef, tRef));
   const [files, setFiles] = useState<Picked[]>([]);
   const [roles, setRoles] = useState<Record<string, Role>>({});
   const [areaId, setAreaId] = useState("floor10");
@@ -170,10 +182,13 @@ export default function NewSessionPage() {
               Number.isFinite(video.received),
           );
         const progress = progressKnown
-          ? `: ${mb(job.videos.reduce((sum, video) => sum + (video.received as number), 0))} of ${mb(job.videos.reduce((sum, video) => sum + (video.size as number), 0))} received`
+          ? t("new.receivedOf", {
+              received: mb(job.videos.reduce((sum, video) => sum + (video.received as number), 0)),
+              total: mb(job.videos.reduce((sum, video) => sum + (video.size as number), 0)),
+            })
           : "";
         setSessionNotice(
-          `Unfinished upload found${progress}. Select the same video file again and press Start upload to continue.`,
+          t("new.unfinishedFound", { progress }),
         );
       })
       .catch(() => {
@@ -183,7 +198,7 @@ export default function NewSessionPage() {
     return () => {
       cancelled = true;
     };
-  }, [uppy]);
+  }, [uppy, t]);
 
   // Wake lock dan beforeunload saat unggahan berjalan
   useEffect(() => {
@@ -198,105 +213,66 @@ export default function NewSessionPage() {
           });
         }
       } catch {
-        // Feature detection / permission failure: abaikan tanpa error
+        // Abaikan penolakan wake lock (misalnya baterai lemah)
       }
     };
-
     acquireLock();
 
-    const handleVisibilityChange = () => {
+    const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         acquireLock();
       }
     };
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
+      // Standar browser modern: returnValue perlu diisi agar dialog konfirmasi muncul.
+      e.returnValue = "";
     };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("beforeunload", onBeforeUnload);
 
     return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("beforeunload", onBeforeUnload);
       if (wakeLockRef.current) {
-        try {
-          wakeLockRef.current.release();
-        } catch {
-          // ignore
-        }
+        wakeLockRef.current.release().catch(() => {});
         wakeLockRef.current = null;
       }
     };
   }, [busy]);
 
+  // Pantau online/offline untuk pause/resume otomatis
   useEffect(() => {
-    if (!busy) return;
-
-    const handleOffline = () => {
-      if (offlinePaused.current) return;
-      offlinePaused.current = true;
-      uppy.pauseAll();
-      setRetryStatus("Offline, waiting for connection");
-    };
-    const handleOnline = () => {
-      if (!offlinePaused.current) return;
-      offlinePaused.current = false;
-      uppy.resumeAll();
-      setRetryStatus(null);
-    };
-
-    window.addEventListener("offline", handleOffline);
-    window.addEventListener("online", handleOnline);
-    uppy.on("is-offline", handleOffline);
-    uppy.on("back-online", handleOnline);
-    if (!navigator.onLine) handleOffline();
-
-    return () => {
-      offlinePaused.current = false;
-      window.removeEventListener("offline", handleOffline);
-      window.removeEventListener("online", handleOnline);
-      uppy.off("is-offline", handleOffline);
-      uppy.off("back-online", handleOnline);
-    };
-  }, [uppy, busy]);
-
-  // Pengawas: permintaan yang menggantung (respons hilang di jalan) tidak pernah menjadi galat, jadi tus tidak
-  // mengulangnya. Tanpa kemajuan byte selama STALL_MS, jeda lalu lanjutkan berkas itu: tus membatalkan
-  // permintaan, bertanya offset ke server (HEAD), dan meneruskan dari sana.
-  const lastProgress = useRef(new Map<string, number>());
-  useEffect(() => {
-    if (!busy) return;
-    const mark = (file?: { id: string }) => {
-      if (file) lastProgress.current.set(file.id, Date.now());
-    };
-    const markAll = (started: { id: string }[]) => started.forEach(mark);
-    uppy.on("upload-start", markAll);
-    uppy.on("upload-progress", mark);
-    const timer = setInterval(() => {
-      for (const id of stalledFileIds(uppy.getFiles(), lastProgress.current, Date.now())) {
-        lastProgress.current.set(id, Date.now()); // satu pemicu per STALL_MS
-        setRetryStatus("No data for 90 seconds, reconnecting");
-        uppy.pauseResume(id);
-        setTimeout(() => uppy.pauseResume(id), 500);
+    const onOffline = () => {
+      if (busy) {
+        offlinePaused.current = true;
+        uppy.pauseAll();
+        setRetryStatus(t("new.offlineWaiting"));
       }
-    }, 10_000);
-    return () => {
-      clearInterval(timer);
-      uppy.off("upload-start", markAll);
-      uppy.off("upload-progress", mark);
     };
-  }, [uppy, busy]);
+
+    const onOnline = () => {
+      if (offlinePaused.current) {
+        offlinePaused.current = false;
+        setRetryStatus(null);
+        uppy.resumeAll();
+      }
+    };
+
+    window.addEventListener("offline", onOffline);
+    window.addEventListener("online", onOnline);
+
+    return () => {
+      window.removeEventListener("offline", onOffline);
+      window.removeEventListener("online", onOnline);
+    };
+  }, [uppy, busy, t]);
 
   useEffect(() => {
     const clearRetry = () =>
       setRetryStatus((current) =>
-        current === "Offline, waiting for connection" &&
-        typeof navigator !== "undefined" &&
-        !navigator.onLine
-          ? current
-          : null,
+        current && (current.startsWith("Connection lost") || current.startsWith("Offline") || current.startsWith("Koneksi terputus")) ? null : current,
       );
     uppy.on("upload-progress", clearRetry);
     uppy.on("upload-success", clearRetry);
@@ -379,10 +355,18 @@ export default function NewSessionPage() {
   const nameValidation = validateAreaName(areaName);
   const idError =
     serverFieldErrors.area_id ??
-    (touched.id && !idValidation.ok ? idValidation.message : null);
+    (touched.id && !idValidation.ok
+      ? idValidation.messageKey
+        ? t(idValidation.messageKey, idValidation.messageVars)
+        : idValidation.message
+      : null);
   const nameError =
     serverFieldErrors.area_name ??
-    (touched.name && !nameValidation.ok ? nameValidation.message : null);
+    (touched.name && !nameValidation.ok
+      ? nameValidation.messageKey
+        ? t(nameValidation.messageKey, nameValidation.messageVars)
+        : nameValidation.message
+      : null);
   const idSuggestion = touched.id && !idValidation.ok ? idValidation.suggestion : undefined;
   const idLength = normalizeAreaId(areaId).length;
   const nameLength = normalizeAreaName(areaName).length;
@@ -449,8 +433,7 @@ export default function NewSessionPage() {
       const missing = job.videos.filter((v) => !v.uploaded).map((v) => v.name);
       if (missing.length) {
         throw new Error(
-          `Not uploaded yet: ${missing.join(", ")}. Add them again if removed, then press the button ` +
-            "to retry. If your login session expired, reload the page (the upload starts over).",
+          t("new.missingVideos", { missing: missing.join(", ") }),
         );
       }
       clearSession();
@@ -473,15 +456,15 @@ export default function NewSessionPage() {
 
   return (
     <>
-      <PageHead crumbs={[{ label: "New map session" }]} title="New map session">
-        Walk the area with your back to the wall, camera facing the room. Videos are uploaded in 8 MiB chunks.
+      <PageHead crumbs={[{ label: t("nav.newSession") }]} title={t("new.pageTitle")}>
+        {t("new.pageDesc")}
       </PageHead>
       <div className="split">
       <Panel>
-        <h2>Area</h2>
+        <h2>{t("new.areaCard")}</h2>
         <div className="grid gap-3.5">
           <div className="grid gap-1.5">
-            <Label htmlFor="area-id">Area ID (lowercase letters, digits, hyphens)</Label>
+            <Label htmlFor="area-id">{t("new.areaIdLabel")}</Label>
             <Input
               id="area-id"
               value={areaId}
@@ -508,7 +491,7 @@ export default function NewSessionPage() {
               {idError ? (
                 <span className="text-destructive">{idError}</span>
               ) : (
-                <span className="muted">{AREA_ID_HINT}</span>
+                <span className="muted">{t("new.areaIdHint")}</span>
               )}
               {idCounter && <span className="muted"> {idCounter}</span>}
             </p>
@@ -517,18 +500,18 @@ export default function NewSessionPage() {
                 type="button"
                 variant="link"
                 size="lg"
-                className="underline"
+                className="underline cursor-pointer"
                 onClick={() => {
                   setAreaId(idSuggestion);
                   setServerFieldErrors((current) => ({ ...current, area_id: undefined }));
                 }}
               >
-                Use "{idSuggestion}"
+                {t("new.useSuggestion", { suggestion: idSuggestion })}
               </Button>
             )}
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="area-name">Area name</Label>
+            <Label htmlFor="area-name">{t("new.areaNameLabel")}</Label>
             <Input
               id="area-name"
               value={areaName}
@@ -547,7 +530,7 @@ export default function NewSessionPage() {
               {nameError ? (
                 <span className="text-destructive">{nameError}</span>
               ) : (
-                <span className="muted">{AREA_NAME_HINT}</span>
+                <span className="muted">{t("new.areaNameHint")}</span>
               )}
               {nameCounter && <span className="muted"> {nameCounter}</span>}
             </p>
@@ -555,13 +538,17 @@ export default function NewSessionPage() {
         </div>
       </Panel>
       <Panel>
-        <h2>Videos</h2>
+        <h2>{t("new.videosCard")}</h2>
         {sessionNotice && <p className="muted" role="status">{sessionNotice}</p>}
         <Dashboard uppy={uppy} hideUploadButton proudlyDisplayPoweredByUppy={false} height={300} width="100%" />
         {files.length > 0 && (
           <Table>
             <TableHeader>
-              <TableRow><TableHead>Video</TableHead><TableHead>Size</TableHead><TableHead>Role</TableHead></TableRow>
+              <TableRow>
+                <TableHead>{t("new.videoCol")}</TableHead>
+                <TableHead>{t("new.sizeCol")}</TableHead>
+                <TableHead>{t("new.roleCol")}</TableHead>
+              </TableRow>
             </TableHeader>
             <TableBody>
               {files.map((f, i) => (
@@ -573,7 +560,7 @@ export default function NewSessionPage() {
                       value={roleOf(f, i)}
                       onValueChange={(val) => setRoles({ ...roles, [f.id]: val as Role })}
                     >
-                      <SelectTrigger className="w-28 text-xs" aria-label="Select role">
+                      <SelectTrigger className="w-28 text-xs cursor-pointer" aria-label={t("new.selectRoleAria")}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -587,11 +574,11 @@ export default function NewSessionPage() {
             </TableBody>
           </Table>
         )}
-        <p className="muted">For a production map, mark every video as map. Keep this tab open until the upload finishes.</p>
+        <p className="muted">{t("new.uploadTip")}</p>
         <div className="actions">
-          <Button className="rounded-full" onClick={start} disabled={busy || files.length === 0}>
+          <Button className="rounded-full cursor-pointer" onClick={start} disabled={busy || files.length === 0}>
             <Icon name="upload" />
-            {busy ? "Uploading..." : "Start upload"}
+            {busy ? t("new.uploading") : t("new.startUpload")}
           </Button>
         </div>
         {retryStatus && <p className="notice" role="status" aria-live="polite">{retryStatus}</p>}

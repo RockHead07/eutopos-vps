@@ -8,6 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useT } from "@/lib/i18n";
 
 interface Option {
   value: string;
@@ -32,7 +33,7 @@ interface TableFilterBarProps {
 export function TableFilterBar({
   search,
   onSearchChange,
-  searchPlaceholder = "Search...",
+  searchPlaceholder,
   statusFilter,
   onStatusChange,
   statusOptions,
@@ -44,6 +45,7 @@ export function TableFilterBar({
   onReset,
 }: TableFilterBarProps) {
   const isFiltered = Boolean(search.trim() || statusFilter !== "all" || areaFilter !== "all");
+  const t = useT();
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 pb-3.5 mb-2 border-b border-line/60">
@@ -52,7 +54,7 @@ export function TableFilterBar({
           <SearchBar
             value={search}
             onChange={onSearchChange}
-            placeholder={searchPlaceholder}
+            placeholder={searchPlaceholder || t("filter.searchPlaceholder")}
             variant="compact"
             shortcut={true}
           />
@@ -60,11 +62,11 @@ export function TableFilterBar({
         {statusOptions.length > 0 && (
           <div className="w-36">
             <Select value={statusFilter} onValueChange={onStatusChange}>
-              <SelectTrigger className="w-full text-xs" aria-label="Filter by status">
-                <SelectValue placeholder="All statuses" />
+              <SelectTrigger className="w-full text-xs" aria-label={t("filter.byStatusAria")}>
+                <SelectValue placeholder={t("filter.allStatuses")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="all">{t("filter.allStatuses")}</SelectItem>
                 {statusOptions.map((opt) => (
                   <SelectItem key={opt.value} value={opt.value}>
                     {opt.label}
@@ -77,11 +79,11 @@ export function TableFilterBar({
         {areaOptions.length > 0 && (
           <div className="w-36">
             <Select value={areaFilter} onValueChange={onAreaChange}>
-              <SelectTrigger className="w-full text-xs" aria-label="Filter by area">
-                <SelectValue placeholder="All areas" />
+              <SelectTrigger className="w-full text-xs" aria-label={t("filter.byAreaAria")}>
+                <SelectValue placeholder={t("filter.allAreas")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All areas</SelectItem>
+                <SelectItem value="all">{t("filter.allAreas")}</SelectItem>
                 {areaOptions.map((area) => (
                   <SelectItem key={area} value={area}>
                     {area}
@@ -95,7 +97,7 @@ export function TableFilterBar({
 
       <div className="flex items-center gap-2 text-xs text-muted-foreground ml-auto">
         <span>
-          Showing {filteredCount} of {totalCount}
+          {t("filter.showingCount", { filtered: filteredCount, total: totalCount })}
         </span>
         {isFiltered && (
           <Button
@@ -103,9 +105,9 @@ export function TableFilterBar({
             variant="ghost"
             size="sm"
             onClick={onReset}
-            className="h-7 px-2 text-xs text-forest hover:text-forest-hover font-medium"
+            className="h-7 px-2 text-xs text-forest hover:text-forest-hover font-medium cursor-pointer"
           >
-            Reset
+            {t("filter.reset")}
           </Button>
         )}
       </div>
