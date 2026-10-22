@@ -4,7 +4,7 @@ export type GaugeLevel = "ok" | "warn" | "bad";
 
 const ARC = {
   ok: "stroke-forest",
-  warn: "stroke-amber-600",
+  warn: "stroke-amber-600 dark:stroke-[var(--busy-fg)]",
   bad: "stroke-bad-fg",
 };
 const WORD = { ok: "OK", warn: "Low", bad: "Critical" };
@@ -77,7 +77,7 @@ export function Gauge({
           className={cn(
             "text-[10px] font-semibold uppercase tracking-wide",
             level === "ok" && "text-forest",
-            level === "warn" && "text-amber-700",
+            level === "warn" && "text-amber-700 dark:text-[var(--busy-fg)]",
             level === "bad" && "text-bad-fg",
           )}
         >

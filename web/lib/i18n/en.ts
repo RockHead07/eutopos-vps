@@ -506,6 +506,13 @@ export const en = {
   // Generic / Misc
   "generic.loading": "Loading...",
   "generic.error": "Error: {message}",
+
+  // Theme
+  "theme.title": "Theme",
+  "theme.selectTheme": "Select theme",
+  "theme.light": "Light",
+  "theme.dark": "Dark",
+  "theme.system": "System",
 } as const;
 
 export type TranslationKey = keyof typeof en;

@@ -510,4 +510,11 @@ export const id: Record<TranslationKey, string> = {
   // Generic / Misc
   "generic.loading": "Memuat...",
   "generic.error": "Galat: {message}",
+
+  // Theme
+  "theme.title": "Tema",
+  "theme.selectTheme": "Pilih tema",
+  "theme.light": "Terang",
+  "theme.dark": "Gelap",
+  "theme.system": "Sistem",
 };
