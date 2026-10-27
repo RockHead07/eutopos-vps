@@ -19,6 +19,7 @@ export type DeleteTarget =
       type: "job";
       id: number;
       area_id: string;
+      has_version: boolean;
     }
   | {
       type: "version";
@@ -74,6 +75,14 @@ export function DeleteConsentDialog({
   if (!target) return null;
 
   const hasJob = target.type === "job" || target.has_job;
+  const removedKey =
+    target.type === "job"
+      ? target.has_version
+        ? "dialog.removedJobAndVersion"
+        : "dialog.removedJobOnly"
+      : target.has_job
+        ? "dialog.removedJobAndVersion"
+        : "dialog.removedDatabaseOnly";
   const title =
     target.type === "job"
       ? t("dialog.deleteJobTitle", { id: target.id, area: target.area_id })
@@ -117,11 +126,7 @@ export function DeleteConsentDialog({
               {t("dialog.willBeRemoved")}
             </p>
             <ul className="list-disc list-inside text-sm text-foreground space-y-0.5 mt-1">
-              <li>
-                {hasJob
-                  ? t("dialog.removedJobAndVersion")
-                  : t("dialog.removedDatabaseOnly")}
-              </li>
+              <li>{t(removedKey)}</li>
             </ul>
           </div>
 

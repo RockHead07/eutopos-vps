@@ -357,6 +357,7 @@ export const id: Record<TranslationKey, string> = {
   "dialog.deleteVersionTitle": "Hapus versi peta {version} ({area})?",
   "dialog.willBeRemoved": "Akan dihapus:",
   "dialog.removedJobAndVersion": "Berkas peta yang dibuat dan baris database pekerjaan serta versi",
+  "dialog.removedJobOnly": "Berkas peta pekerjaan (kalau ada) dan entri databasenya",
   "dialog.removedDatabaseOnly": "Hanya entri databasenya",
   "dialog.willBeKept": "Akan disimpan:",
   "dialog.keptFrames": "Frame yang diekstrak di server",

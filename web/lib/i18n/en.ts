@@ -353,6 +353,7 @@ export const en = {
   "dialog.deleteVersionTitle": "Delete map version {version} ({area})?",
   "dialog.willBeRemoved": "Will be removed:",
   "dialog.removedJobAndVersion": "The generated map files and the database rows of the job and version",
+  "dialog.removedJobOnly": "The job's map files (if any) and its database entry",
   "dialog.removedDatabaseOnly": "Only its database entry",
   "dialog.willBeKept": "Will be kept:",
   "dialog.keptFrames": "The extracted frames on the server",

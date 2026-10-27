@@ -290,7 +290,12 @@ function JobDetail() {
 
       {job.status === "uploading" && job.stalled && (
         <DeleteConsentDialog
-          target={{ type: "job", id: job.id, area_id: job.area_id }}
+          target={{
+            type: "job",
+            id: job.id,
+            area_id: job.area_id,
+            has_version: job.map_version_id != null,
+          }}
           open={deleteDialogOpen}
           onOpenChange={setDeleteDialogOpen}
           onConfirm={handleDelete}

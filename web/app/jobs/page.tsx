@@ -591,6 +591,7 @@ function JobsContent() {
                 type: "job",
                 id: jobToDelete.id,
                 area_id: jobToDelete.area_id,
+                has_version: jobToDelete.map_version_id != null,
               }
             : null
         }
