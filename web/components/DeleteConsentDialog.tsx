@@ -20,6 +20,7 @@ export type DeleteTarget =
       id: number;
       area_id: string;
       has_version: boolean;
+      has_frames: boolean;
     }
   | {
       type: "version";
@@ -74,7 +75,11 @@ export function DeleteConsentDialog({
 
   if (!target) return null;
 
-  const hasJob = target.type === "job" || target.has_job;
+  const showKept = target.type === "job" ? target.has_frames : true;
+  const keptKey =
+    target.type === "version" && !target.has_job
+      ? "dialog.keptMapFiles"
+      : "dialog.keptFrames";
   const removedKey =
     target.type === "job"
       ? target.has_version
@@ -130,18 +135,16 @@ export function DeleteConsentDialog({
             </ul>
           </div>
 
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              {t("dialog.willBeKept")}
-            </p>
-            <ul className="list-disc list-inside text-sm text-foreground space-y-0.5 mt-1">
-              <li>
-                {hasJob
-                  ? t("dialog.keptFrames")
-                  : t("dialog.keptMapFiles")}
-              </li>
-            </ul>
-          </div>
+          {showKept && (
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                {t("dialog.willBeKept")}
+              </p>
+              <ul className="list-disc list-inside text-sm text-foreground space-y-0.5 mt-1">
+                <li>{t(keptKey)}</li>
+              </ul>
+            </div>
+          )}
 
           <p className="text-sm font-semibold text-destructive">{t("dialog.cannotBeUndone")}</p>
 

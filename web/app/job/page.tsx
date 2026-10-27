@@ -295,6 +295,8 @@ function JobDetail() {
             id: job.id,
             area_id: job.area_id,
             has_version: job.map_version_id != null,
+            // Unggahan yang macet belum pernah diklaim pekerja, jadi belum ada frame
+            has_frames: false,
           }}
           open={deleteDialogOpen}
           onOpenChange={setDeleteDialogOpen}
