@@ -325,13 +325,40 @@ iframe { width: 100%; height: min(70vh, 640px); border: 0; border-radius: var(--
   [data-slot="dropdown-menu-item"] { min-height: 44px; }
   th button { min-width: 44px; }
   .text-\[9px\], .text-\[10px\], .text-\[11px\], .text-\[0\.7rem\] { font-size: 0.75rem; }
-  .pipeline-time, .pipeline-live, .pipeline-failed { font-size: 0.75rem; }
+  .pipeline-time, .pipeline-live, .pipeline-failed, .pipeline-node-number { font-size: 0.75rem; }
+  main input:not([type="checkbox"]):not([type="radio"]),
+  main select {
+    min-height: 44px;
+    font-size: 1rem;
+  }
   [data-slot="popover-content"] [data-slot="diagnostics-close"] {
     min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center;
   }
 }
 
 @media (max-width: 639px) {
+  .topbar:has(.ml-auto [role="radiogroup"]) {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    gap: 0.25rem;
+  }
+  .topbar:has(.ml-auto [role="radiogroup"]) .brand {
+    font-size: 0;
+    margin-right: 0;
+    min-width: 44px;
+    height: 50px;
+    justify-content: center;
+  }
+  .topbar:has(.ml-auto [role="radiogroup"]) .brand .icon {
+    font-size: 1rem;
+  }
+  .topbar:has(.ml-auto [role="radiogroup"]) .ml-auto {
+    gap: 0.25rem;
+  }
+  .topbar:has(.ml-auto [role="radiogroup"]) [role="radiogroup"] button {
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+  }
   [data-slot="table-head"], [data-slot="table-cell"] { padding-left: 0.1rem; padding-right: 0.1rem; }
   [data-radix-popper-content-wrapper]:has(.mobile-popover) {
     inset: auto 0.5rem 0.5rem 0.5rem !important;
