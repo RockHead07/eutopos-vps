@@ -36,13 +36,13 @@ def versions(engine):
         return v1.id, v2.id
 
 
-def broken(path):
+def broken(path, **kw):
     raise RuntimeError("berkas peta rusak")
 
 
 def test_reload_swaps_localizer_then_publishes(engine, monkeypatch):
     _, v2 = versions(engine)
-    monkeypatch.setattr(active_map, "load_localizer", lambda path: f"baru:{path.name}")
+    monkeypatch.setattr(active_map, "load_localizer", lambda path, **kw: f"baru:{path.name}")
     st = state()
     st.reload_error = "galat lama"
     active_map.reload_in_background(st, engine, v2, "bob").join(5)
@@ -82,7 +82,7 @@ def test_failed_republish_of_active_version_keeps_it_published(engine, monkeypat
 
 def test_database_error_does_not_leave_reloading_stuck(engine, monkeypatch):
     _, v2 = versions(engine)
-    monkeypatch.setattr(active_map, "load_localizer", lambda path: "baru")
+    monkeypatch.setattr(active_map, "load_localizer", lambda path, **kw: "baru")
 
     def db_down(*args, **kwargs):
         raise ConnectionError("database mati")

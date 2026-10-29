@@ -78,6 +78,7 @@ class Localizer:
         k: int = 5,
         device: str = "cpu",
         min_inliers: int = 0,
+        align_source=None,  # callable -> dict | None, mis. alignment.DbAlign(...).get
     ):
         self.dev = torch.device(device)
         self.resize, self.global_resize, self.k = resize, global_resize, k
@@ -104,10 +105,14 @@ class Localizer:
         self.pnp = QueryLocalizer(self.model, {"estimation": {"ransac": {"max_error": 12}}})
         # ditulis spike/eval_meter.py lalu dipasang manage align; dibaca ulang saat berganti
         self._align = AlignFile(run_dir / "align.json")
+        self._align_source = align_source
         self.t_load_map = time.perf_counter() - t0
 
     @property
     def align(self) -> dict | None:
+        # dashboard (database) lebih dulu; kosong berarti align.json (manage align)
+        if self._align_source is not None and (dash := self._align_source()) is not None:
+            return dash
         return self._align.get()
 
     def _load(self, pkg, conf):

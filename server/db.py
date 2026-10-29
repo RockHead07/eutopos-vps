@@ -138,6 +138,81 @@ class LocalizeRequest(SQLModel, table=True):
     image_h: int | None = None
 
 
+class CalibrationSet(SQLModel, table=True):
+    """Satu sesi kalibrasi: titik acuan dan uji berkoordinat meter, milik satu versi peta."""
+
+    __tablename__ = "calibration_set"
+
+    id: int | None = Field(default=None, primary_key=True)
+    area_id: str = Field(foreign_key="area.id", index=True)
+    map_version_id: int = Field(foreign_key="map_version.id")
+    created_by: str
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC), sa_type=DateTime(timezone=True)
+    )
+    note: str | None = None
+
+
+class CalibrationPoint(SQLModel, table=True):
+    """Titik ukur di G (meter). role: reference menaksir Sim3, test hanya menilai."""
+
+    __tablename__ = "calibration_point"
+    __table_args__ = (UniqueConstraint("set_id", "point_id"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    set_id: int = Field(foreign_key="calibration_set.id", index=True)
+    point_id: str
+    x_m: float
+    y_m: float
+    role: str  # reference atau test
+
+
+class CalibrationObservation(SQLModel, table=True):
+    """Satu hasil lokalisasi di titik ukur: pusat kamera di kerangka model, bukan di G."""
+
+    __tablename__ = "calibration_observation"
+
+    id: int | None = Field(default=None, primary_key=True)
+    set_id: int = Field(foreign_key="calibration_set.id", index=True)
+    point_id: str
+    model_xyz: list = Field(sa_type=JSON)
+    inliers: int
+    heading_deg: float | None = None
+    source: str  # import (results.csv); jalur lain menyusul
+    query: str | None = None
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC), sa_type=DateTime(timezone=True)
+    )
+
+
+class Alignment(SQLModel, table=True):
+    """Riwayat penyelarasan sebuah versi peta; paling baru berstatus applied = isi align.json."""
+
+    # Dua admin yang menerapkan bersamaan: yang kedua ditolak database, bukan dua "applied".
+    __table_args__ = (
+        Index(
+            "one_applied_per_version",
+            "map_version_id",
+            unique=True,
+            postgresql_where=text("status = 'applied'"),
+            sqlite_where=text("status = 'applied'"),
+        ),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    map_version_id: int = Field(foreign_key="map_version.id", index=True)
+    set_id: int | None = Field(default=None, foreign_key="calibration_set.id")
+    params: dict = Field(sa_type=JSON)  # isi align.json
+    stats: dict = Field(sa_type=JSON)
+    status: str  # applied atau superseded
+    source: str  # fit atau revert
+    created_by: str
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC), sa_type=DateTime(timezone=True)
+    )
+    applied_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
+
+
 class PublishedGraph(SQLModel, table=True):
     """navgraph.json terbit per area; /navgraph membacanya lebih dulu daripada berkas di /maps."""
 

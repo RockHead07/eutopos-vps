@@ -12,6 +12,7 @@ from pathlib import Path
 
 from sqlmodel import Session
 
+from server.alignment import DbAlign
 from server.db import MapVersion, publish
 from server.localizer import MIN_INLIERS, Localizer
 
@@ -26,7 +27,7 @@ def serving_area() -> str:
     return os.environ.get("EUTOPOS_AREA", "demo")
 
 
-def load_localizer(map_dir: Path) -> Localizer:
+def load_localizer(map_dir: Path, align_source=None) -> Localizer:
     return Localizer(
         map_dir,
         max_kp=_env_int("EUTOPOS_MAX_KP", 1024),
@@ -35,6 +36,7 @@ def load_localizer(map_dir: Path) -> Localizer:
         k=_env_int("EUTOPOS_K", 5),
         device=os.environ.get("EUTOPOS_DEVICE", "cpu"),
         min_inliers=_env_int("EUTOPOS_MIN_INLIERS", MIN_INLIERS),
+        align_source=align_source,
     )
 
 
@@ -51,7 +53,8 @@ def reload_in_background(state, engine, version_id: int, by: str | None):
             with Session(engine) as s:
                 v = s.get(MapVersion, version_id)
                 label, path = f"version {v.version}", Path(v.path)
-            localizer = load_localizer(path)  # tanpa sesi database terbuka selama memuat
+            # tanpa sesi database terbuka selama memuat
+            localizer = load_localizer(path, align_source=DbAlign(engine, version_id).get)
             with Session(engine) as s:
                 v = publish(s, version_id, by=by)
             with state.lock:
