@@ -26,6 +26,7 @@ Dengan database: deploy/README.md.
 import logging
 import os
 import threading
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Literal
@@ -36,7 +37,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlmodel import Session
 
-from server import active_map, area_api, maps_api, navgraph, uploads
+from server import active_map, area_api, localize_log, maps_api, navgraph, uploads
 from server.db import active_version, engine_from_env
 from server.localizer import Localizer
 from server.photo import decode_upright, exif_camera, pinhole
@@ -76,6 +77,7 @@ app.include_router(uploads.router)
 app.include_router(maps_api.router)
 app.include_router(navgraph.router)
 app.include_router(area_api.router)
+app.include_router(localize_log.router)
 
 
 class Pose(BaseModel):
@@ -129,6 +131,42 @@ def localize(
 ) -> LocalizeResponse:
     """Intrinsik (fx, fy, cx, cy) opsional, untuk foto yang SUDAH tegak. Kalau tidak dikirim,
     dipakai intrinsik peta (resolusi sama) atau taksiran dari EXIF."""
+    entry: dict = {}
+    t0 = time.perf_counter()
+    try:
+        resp = _localize(request, image, fx, fy, cx, cy, entry)
+    except HTTPException as e:
+        entry.update(result="rejected", http_status=e.status_code, reason=str(e.detail))
+        raise
+    except Exception:
+        entry.update(result="error", http_status=500)
+        raise
+    else:
+        entry.update(
+            result=resp.status,
+            http_status=200,
+            inliers=resp.inliers,
+            correspondences=resp.correspondences,
+            intrinsics_source=resp.intrinsics_source,
+            t_s=resp.t_s,
+        )
+        return resp
+    finally:
+        st = request.app.state
+        entry.update(area_id=st.area_id, map_version=st.map_version)
+        entry["wall_s"] = round(time.perf_counter() - t0, 3)
+        localize_log.record(entry)
+
+
+def _localize(
+    request: Request,
+    image: UploadFile,
+    fx: float | None,
+    fy: float | None,
+    cx: float | None,
+    cy: float | None,
+    entry: dict,
+) -> LocalizeResponse:
     data = image.file.read(MAX_UPLOAD_BYTES + 1)
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(413, f"photo larger than {MAX_UPLOAD_BYTES // 2**20} MB")
@@ -139,6 +177,7 @@ def localize(
         rgb = decode_upright(data)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
+    entry["image_h"], entry["image_w"] = rgb.shape[:2]
 
     st = request.app.state
     with st.lock:
