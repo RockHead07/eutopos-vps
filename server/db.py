@@ -115,6 +115,29 @@ class WalkableStroke(SQLModel, table=True):
     )
 
 
+class LocalizeRequest(SQLModel, table=True):
+    """Satu permintaan /localize (roadmap M1-6). Tanpa gambar, tanpa pose, tanpa identitas."""
+
+    __tablename__ = "localize_request"
+
+    id: int | None = Field(default=None, primary_key=True)
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC), sa_type=DateTime(timezone=True), index=True
+    )
+    result: str  # ok, failed (200), rejected (4xx/503), error (500)
+    http_status: int
+    reason: str | None = None  # alasan penolakan
+    area_id: str | None = None
+    map_version: int | None = None
+    inliers: int | None = None
+    correspondences: int | None = None
+    intrinsics_source: str | None = None
+    t_s: dict | None = Field(default=None, sa_type=JSON)  # waktu per tahap di Localizer
+    wall_s: float | None = None  # seluruh permintaan: decode, antre kunci, lokalisasi
+    image_w: int | None = None
+    image_h: int | None = None
+
+
 class PublishedGraph(SQLModel, table=True):
     """navgraph.json terbit per area; /navgraph membacanya lebih dulu daripada berkas di /maps."""
 
