@@ -38,6 +38,7 @@ from pydantic import BaseModel
 from sqlmodel import Session
 
 from server import active_map, area_api, localize_log, maps_api, navgraph, uploads
+from server.contract import CONTRACT_VERSION
 from server.db import active_version, engine_from_env
 from server.localizer import Localizer
 from server.photo import decode_upright, exif_camera, pinhole
@@ -86,6 +87,7 @@ class Pose(BaseModel):
 
 
 class LocalizeResponse(BaseModel):
+    contract_version: int = CONTRACT_VERSION
     status: Literal["ok", "failed"]
     inliers: int
     correspondences: int

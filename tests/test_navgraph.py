@@ -9,7 +9,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from server import navgraph
+from server import contract, navgraph
 
 GOOD = {
     "frame": "building",
@@ -99,7 +99,12 @@ def test_navgraph_serves_the_active_area(tmp_path, monkeypatch):
     write_graph(tmp_path, "floor10", GOOD)
     r = client_for(tmp_path, monkeypatch).get("/navgraph")
     assert r.status_code == 200
-    assert r.json() == {"area_id": "floor10", "map_version": 3, "graph": GOOD}
+    assert r.json() == {
+        "contract_version": contract.CONTRACT_VERSION,
+        "area_id": "floor10",
+        "map_version": 3,
+        "graph": GOOD,
+    }
 
 
 def test_navgraph_missing_file_is_404(tmp_path, monkeypatch):

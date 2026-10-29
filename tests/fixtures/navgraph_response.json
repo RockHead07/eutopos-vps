@@ -1,0 +1,54 @@
+{
+  "contract_version": 1,
+  "area_id": "floor10",
+  "map_version": 4,
+  "graph": {
+    "frame": "building",
+    "units": "m",
+    "nodes": [
+      {
+        "id": "P01",
+        "x": 0.0,
+        "y": 0.4
+      },
+      {
+        "id": "P02",
+        "x": 1.5,
+        "y": 1.6
+      }
+    ],
+    "edges": [
+      [
+        "P01",
+        "P02"
+      ]
+    ],
+    "targets": [
+      {
+        "node": "P02",
+        "name": "Pintu Lab"
+      }
+    ]
+  },
+  "revision": "2026-10-22T06:33:00+00:00",
+  "walkable": {
+    "frame": "building",
+    "units": "m",
+    "cell_m": 1.0,
+    "origin": [
+      0.0,
+      0.0
+    ],
+    "width": 3,
+    "height": 2,
+    "bits": "Hw==",
+    "targets": [
+      {
+        "id": "R1",
+        "name": "Lab",
+        "x": 0.5,
+        "y": 0.5
+      }
+    ]
+  }
+}
