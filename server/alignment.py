@@ -12,7 +12,11 @@ import math
 import os
 from pathlib import Path
 
+from sqlalchemy.exc import SQLAlchemyError
+from sqlmodel import Session, select
+
 from server import navgraph
+from server.db import Alignment
 from server.navgraph import _number
 
 log = logging.getLogger("eutopos")
@@ -64,6 +68,38 @@ class AlignFile:
                 self._data = validate_align(_read(self.path))
             except ValueError as e:
                 log.warning("align.json diabaikan, penyelarasan sebelumnya tetap dipakai: %s", e)
+        return self._data
+
+
+class DbAlign:
+    """Penyelarasan yang diterapkan lewat dashboard, dibaca dari tabel alignment (satu per versi).
+
+    Database adalah pemiliknya: kontainer api memasang /maps hanya-baca, jadi dashboard tidak
+    menulis align.json. Dicek di setiap permintaan lewat satu kueri id (berindeks); isinya hanya
+    dibaca ulang saat id yang berlaku berganti, jadi penerapan baru langsung berlaku tanpa restart.
+    Database yang gagal tidak menggantikan penyelarasan terakhir yang sah. Tanpa baris applied,
+    hasilnya None dan Localizer memakai align.json (manage align).
+    """
+
+    def __init__(self, engine, version_id: int):
+        self.engine, self.version_id = engine, version_id
+        self._id = self._data = None
+
+    def get(self) -> dict | None:
+        try:
+            with Session(self.engine) as s:
+                row_id = s.exec(
+                    select(Alignment.id).where(
+                        Alignment.map_version_id == self.version_id, Alignment.status == "applied"
+                    )
+                ).first()
+                if row_id is None:
+                    self._id = self._data = None
+                elif row_id != self._id:
+                    self._data = validate_align(s.get(Alignment, row_id).params)
+                    self._id = row_id
+        except (SQLAlchemyError, ValueError, RuntimeError) as e:
+            log.warning("penyelarasan dari database diabaikan, yang terakhir tetap dipakai: %s", e)
         return self._data
 
 

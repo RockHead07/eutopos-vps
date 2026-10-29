@@ -177,3 +177,130 @@ def test_broken_align_file_keeps_serving_the_last_good_alignment(tmp_path):
     assert f.get() is not None
     p.write_text('{"meter_from_model": rusak', encoding="utf-8")
     assert f.get()["reference_points"] == 10
+
+
+def _db_with_version(tmp_path):
+    from server.db import Alignment
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'a.sqlite'}")
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as s:
+        v1 = register(s, "floor10", "Lantai 10", "/maps/v1").id
+        v2 = register(s, "floor10", "Lantai 10", "/maps/v2").id
+    return engine, v1, v2, Alignment
+
+
+def _applied(engine, Alignment, version_id, params, status="applied"):
+    with Session(engine) as s:
+        s.add(
+            Alignment(
+                map_version_id=version_id,
+                params=params,
+                stats={},
+                status=status,
+                source="fit",
+                created_by="a",
+            )
+        )
+        s.commit()
+
+
+def test_db_align_reads_the_applied_alignment_of_its_own_version(tmp_path):
+    engine, v1, v2, Alignment = _db_with_version(tmp_path)
+    src = alignment.DbAlign(engine, v1)
+    assert src.get() is None
+    _applied(engine, Alignment, v2, GOOD_ALIGN)
+    assert src.get() is None  # milik versi lain
+    _applied(engine, Alignment, v1, GOOD_ALIGN, status="superseded")
+    assert src.get() is None  # yang diganti tidak berlaku
+    _applied(engine, Alignment, v1, GOOD_ALIGN)
+    assert src.get()["reference_points"] == 10
+
+
+def test_db_align_follows_a_new_applied_row_without_restarting_the_service(tmp_path):
+    from sqlmodel import select
+
+    engine, v1, _, Alignment = _db_with_version(tmp_path)
+    _applied(engine, Alignment, v1, GOOD_ALIGN)
+    src = alignment.DbAlign(engine, v1)
+    assert src.get()["reference_points"] == 10
+    newer = copy.deepcopy(GOOD_ALIGN)
+    newer["reference_points"] = 8
+    with Session(engine) as s:
+        old = s.exec(select(Alignment)).one()
+        old.status = "superseded"
+        s.add(old)
+        s.flush()
+        s.add(
+            Alignment(
+                map_version_id=v1,
+                params=newer,
+                stats={},
+                status="applied",
+                source="fit",
+                created_by="a",
+            )
+        )
+        s.commit()
+    assert src.get()["reference_points"] == 8
+
+
+def test_db_align_keeps_serving_the_last_good_alignment_when_the_database_fails(
+    tmp_path, monkeypatch
+):
+    engine, v1, _, Alignment = _db_with_version(tmp_path)
+    _applied(engine, Alignment, v1, GOOD_ALIGN)
+    src = alignment.DbAlign(engine, v1)
+    assert src.get() is not None
+
+    def boom(self, *a, **k):
+        raise RuntimeError("database mati")
+
+    monkeypatch.setattr(Session, "exec", boom)
+    assert src.get()["reference_points"] == 10
+
+
+def test_localizer_prefers_the_dashboard_alignment_over_the_file(tmp_path):
+    from server.localizer import Localizer
+
+    p = tmp_path / "align.json"
+    alignment._write_atomic(p, GOOD_ALIGN)
+    loc = object.__new__(Localizer)  # tanpa memuat model: hanya sifat align yang diuji
+    loc._align = alignment.AlignFile(p)
+    dash = copy.deepcopy(GOOD_ALIGN)
+    dash["reference_points"] = 7
+    loc._align_source = lambda: dash
+    assert loc.align["reference_points"] == 7
+    loc._align_source = lambda: None  # belum ada yang diterapkan: berkas lama (manage align)
+    assert loc.align["reference_points"] == 10
+    loc._align_source = None
+    assert loc.align["reference_points"] == 10
+
+
+def test_cli_warns_when_a_dashboard_alignment_takes_precedence(tmp_path, monkeypatch, capsys):
+    from server.db import Alignment
+
+    map_dir, _area_dir, src = layout(tmp_path)
+    engine = create_engine(f"sqlite:///{tmp_path / 'db.sqlite'}")
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as s:
+        vid = publish(s, register(s, "floor10", "Lantai 10", str(map_dir)).id).id
+        s.add(
+            Alignment(
+                map_version_id=vid,
+                params=GOOD_ALIGN,
+                stats={},
+                status="applied",
+                source="fit",
+                created_by="a",
+            )
+        )
+        s.commit()
+    monkeypatch.setattr(manage, "engine_from_env", lambda: engine)
+    monkeypatch.setenv("EUTOPOS_MAPS_ROOT", str(tmp_path / "maps"))
+    monkeypatch.setattr(
+        "sys.argv", ["manage", "align", "--version", str(vid), "--align", str(src / "align.json")]
+    )
+    manage.main()
+    out = capsys.readouterr().out
+    assert "didahulukan" in out and "tanpa restart" not in out

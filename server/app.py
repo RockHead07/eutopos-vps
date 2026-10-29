@@ -38,6 +38,7 @@ from pydantic import BaseModel
 from sqlmodel import Session
 
 from server import active_map, area_api, calibration_api, localize_log, maps_api, navgraph, uploads
+from server.alignment import DbAlign
 from server.contract import CONTRACT_VERSION
 from server.db import active_version, engine_from_env
 from server.localizer import Localizer
@@ -57,11 +58,14 @@ async def lifespan(app: FastAPI):
     # (2 vCPU). Kalau antrean permintaan jadi masalah, jalankan beberapa proses pekerja.
     st.lock = threading.Lock()
     if os.environ.get("DATABASE_URL"):
-        with Session(engine_from_env()) as s:
+        engine = engine_from_env()
+        with Session(engine) as s:
             v = active_version(s, active_map.serving_area())
         if v:
             try:
-                st.localizer = active_map.load_localizer(Path(v.path))
+                st.localizer = active_map.load_localizer(
+                    Path(v.path), align_source=DbAlign(engine, v.id).get
+                )
                 st.area_id, st.map_version = v.area_id, v.version
             except Exception as e:
                 # Tetap menyala, /localize 503: dashboard di proses ini dipakai untuk menerbitkan

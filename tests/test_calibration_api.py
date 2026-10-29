@@ -10,11 +10,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from server import alignment, auth, calibration_api, content_migration, maps_api, uploads
+from server import alignment, auth, calibration_api, content_migration, uploads
 from server.db import Alignment, Area, CalibrationSet, MapVersion, PublishedGraph, Room
 
 JSON = {"content-type": "application/json"}
-RUN = "kp1024-r1024"
 
 
 def truth():
@@ -50,17 +49,13 @@ def client(tmp_path, monkeypatch):
     url = f"sqlite:///{tmp_path / 'c.db'}"
     engine = create_engine(url)
     SQLModel.metadata.create_all(engine)
-    maps = tmp_path / "maps"
     with Session(engine) as s:
         s.add(Area(id="floor10", name="Lantai 10"))
         for n, status in ((1, "published"), (2, "candidate")):
-            d = maps / "floor10" / f"job-{n}"
-            (d / RUN).mkdir(parents=True)
-            s.add(MapVersion(area_id="floor10", version=n, path=str(d), status=status))
+            s.add(MapVersion(area_id="floor10", version=n, path=f"/maps/job-{n}", status=status))
         s.commit()
     monkeypatch.setenv("DATABASE_URL", url)
     monkeypatch.setenv("EUTOPOS_DEV_NO_AUTH", "1")
-    monkeypatch.setattr(maps_api, "MAPS_ROOT", maps)
     monkeypatch.delenv("CF_ACCESS_TEAM_DOMAIN", raising=False)
     monkeypatch.delenv("CF_ACCESS_AUD", raising=False)
     app = FastAPI()
@@ -69,12 +64,13 @@ def client(tmp_path, monkeypatch):
     st = app.state
     st.localizer, st.area_id, st.map_version, st.lock = None, "floor10", 1, threading.Lock()
     with TestClient(app) as c:
-        c.maps, c.engine = maps, engine
+        c.engine = engine
         yield c
 
 
-def align_path(client, version=1):
-    return client.maps / "floor10" / f"job-{version}" / RUN / "align.json"
+def served(client, version=1):
+    """Yang dibaca Localizer untuk versi itu (alignment.DbAlign), bukan berkas di /maps."""
+    return alignment.DbAlign(client.engine, version).get()
 
 
 def make_set(client, version_id=1, points=None):
@@ -156,15 +152,15 @@ def test_fit_has_no_side_effects(client):
     assert abs(body["stats"]["scale"] - 0.25) < 1e-6
     assert body["align"]["holdout_points"] == ["T1"] and len(body["rows"]) == 9
     assert history(client) == []
-    assert not align_path(client).exists()
+    assert served(client) is None
 
 
-def test_apply_writes_a_valid_align_json_and_records_history(client):
+def test_apply_records_a_valid_alignment_and_history(client):
     sid = ready_set(client)
     r = apply(client, sid)
     assert r.status_code == 200, r.text
     first = r.json()["alignment_id"]
-    alignment.validate_align(json.loads(align_path(client).read_text()))
+    alignment.validate_align(served(client))
     h = history(client)
     assert [(a["id"], a["status"], a["source"]) for a in h] == [(first, "applied", "fit")]
     assert abs(h[0]["scale"] - 0.25) < 1e-6 and h[0]["stats"]["reference_points"] == 8
@@ -178,30 +174,34 @@ def test_apply_writes_a_valid_align_json_and_records_history(client):
 def test_apply_with_a_stale_base_is_a_conflict(client):
     sid = ready_set(client)
     first = apply(client, sid).json()["alignment_id"]
-    before = align_path(client).read_text()
+    before = served(client)
     assert apply(client, sid, base=None).status_code == 409
     assert apply(client, sid, base=first + 100).status_code == 409
-    assert align_path(client).read_text() == before
+    assert served(client) == before
     assert [a["status"] for a in history(client)] == ["applied"]
 
 
-def test_failed_file_write_leaves_the_database_untouched(client, monkeypatch):
-    sid = ready_set(client)
+def test_a_failed_content_move_leaves_alignment_and_content_untouched(client, monkeypatch):
+    first = apply(client, ready_set(client)).json()["alignment_id"]
+    add_room(client)
+    before = served(client)
+    other = ready_set(client, sim=other_truth())
 
-    def boom(dst, data):
-        raise OSError("disk penuh")
+    def boom(*a, **k):
+        raise RuntimeError("pemindahan gagal")
 
-    monkeypatch.setattr(alignment, "_write_atomic", boom)
-    r = apply(client, sid)
-    assert r.status_code == 500 and "align.json" in r.json()["detail"]
-    assert history(client) == [] and not align_path(client).exists()
+    monkeypatch.setattr(content_migration, "migrate", boom)
+    with pytest.raises(RuntimeError):
+        apply(client, other, base=first)
+    assert served(client) == before
+    assert [(a["id"], a["status"]) for a in history(client)] == [(first, "applied")]
+    assert room_xy(client) == (3.0, 1.0)
 
 
-def test_a_failed_commit_restores_the_previous_file(client, monkeypatch):
-    sid = ready_set(client)
-    first = apply(client, sid).json()["alignment_id"]
-    before = align_path(client).read_text()
-    other = ready_set(client, shift={"P03": 40.0})  # pengamatan berbeda, hasil berbeda
+def test_a_failed_commit_leaves_the_alignment_untouched(client, monkeypatch):
+    first = apply(client, ready_set(client)).json()["alignment_id"]
+    before = served(client)
+    other = ready_set(client, sim=other_truth())
 
     def boom(self):
         raise RuntimeError("commit gagal")
@@ -209,19 +209,20 @@ def test_a_failed_commit_restores_the_previous_file(client, monkeypatch):
     monkeypatch.setattr(Session, "commit", boom)
     with pytest.raises(RuntimeError):
         apply(client, other, base=first)
-    assert align_path(client).read_text() == before
+    monkeypatch.undo()
+    assert served(client) == before
 
 
 def test_revert_restores_the_previous_params(client):
     sid = ready_set(client)
     first = apply(client, sid).json()["alignment_id"]
-    first_text = align_path(client).read_text()
+    first_params = served(client)
     shifted = ready_set(client, shift={"P03": 40.0})
     second = apply(client, shifted, base=first).json()["alignment_id"]
-    assert align_path(client).read_text() != first_text
+    assert served(client) != first_params
     r = client.post(f"/api/alignments/{first}/revert", json={"base_alignment_id": second})
     assert r.status_code == 200, r.text
-    assert json.loads(align_path(client).read_text()) == json.loads(first_text)
+    assert served(client) == first_params
     h = history(client)
     assert (h[0]["source"], h[0]["status"]) == ("revert", "applied")
     assert [a["status"] for a in h[1:]] == ["superseded", "superseded"]
@@ -235,12 +236,12 @@ def test_revert_restores_the_previous_params(client):
     )
 
 
-def test_apply_for_a_non_serving_version_still_writes_its_file(client):
+def test_apply_for_a_non_serving_version_is_kept_for_when_it_is_published(client):
     sid = ready_set(client, version_id=2)  # versi 2: kandidat, bukan yang dilayani
     r = apply(client, sid)  # app.state.localizer = None: menyentuhnya akan gagal
     assert r.status_code == 200, r.text
-    alignment.validate_align(json.loads(align_path(client, 2).read_text()))
-    assert not align_path(client, 1).exists()
+    alignment.validate_align(served(client, 2))
+    assert served(client, 1) is None
 
 
 def test_fit_error_codes_are_422_with_a_code(client):
@@ -251,18 +252,6 @@ def test_fit_error_codes_are_422_with_a_code(client):
     assert r.status_code == 422 and r.json()["detail"]["code"] == "too_few_reference"
     assert apply(client, sid).status_code == 422
     assert history(client) == []
-
-
-def test_version_path_outside_the_maps_root_is_refused(client, tmp_path):
-    with Session(client.engine) as s:
-        v = s.get(MapVersion, 1)
-        v.path = str(tmp_path / "elsewhere")
-        s.add(v)
-        s.commit()
-    sid = ready_set(client)
-    assert apply(client, sid).status_code == 409
-    with Session(client.engine) as s:
-        assert s.exec(select(Alignment)).all() == []
 
 
 def test_unknown_set_and_version_are_404(client):
@@ -319,7 +308,7 @@ def test_apply_moves_rooms_of_the_active_version_only(client):
     assert r.json()["moved"] == {"rooms": 1, "strokes": 0, "edits": 0}
     assert r.json()["republish_required"] is False
     old = json.loads(history_params(client, first))["meter_from_model"]
-    new = json.loads(align_path(client).read_text())["meter_from_model"]
+    new = served(client)["meter_from_model"]
     move = content_migration.plane_transform(old, new, 1.3)
     assert room_xy(client) == pytest.approx(move(3.0, 1.0), abs=1e-6)
     # tempat fisik yang sama, dihitung tanpa kode migrasi: titik G lama lewat level_shift

@@ -21,7 +21,7 @@ from pathlib import Path
 from sqlmodel import Session, select
 
 from server import alignment, jobs, navgraph
-from server.db import MapJob, MapVersion, engine_from_env, publish, register
+from server.db import Alignment, MapJob, MapVersion, engine_from_env, publish, register
 from server.map_layout import missing_files
 from server.pipeline import missing_inputs
 from server.worker import DATA, MAPS, backfill_previews, backfill_thumbs
@@ -119,7 +119,21 @@ def main():
                 print(f"PERINGATAN: {w}")
             for p in written:
                 print(f"dipasang: {p}")
-            if a.align and v.status == "published":
+            dashboard = (
+                a.align
+                and s.exec(
+                    select(Alignment.id).where(
+                        Alignment.map_version_id == v.id, Alignment.status == "applied"
+                    )
+                ).first()
+            )
+            if dashboard:
+                print(
+                    f"PERINGATAN: penyelarasan dari dashboard (id {dashboard}) sedang berlaku "
+                    f"untuk versi id {v.id} dan didahulukan; align.json ini hanya dipakai untuk "
+                    "versi tanpa penyelarasan dari dashboard. Ubah lewat halaman Kalibrasi."
+                )
+            elif a.align and v.status == "published":
                 print(
                     f"Versi id {v.id} sedang aktif: layanan memakai align.json baru pada "
                     "permintaan berikutnya, tanpa restart (cek /health aligned)."

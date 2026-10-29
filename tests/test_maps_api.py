@@ -22,7 +22,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.delenv("CF_ACCESS_TEAM_DOMAIN", raising=False)
     monkeypatch.delenv("CF_ACCESS_AUD", raising=False)
     monkeypatch.setattr(maps_api, "MAPS_ROOT", tmp_path / "maps")
-    monkeypatch.setattr(active_map, "load_localizer", lambda path: f"loc:{path.name}")
+    monkeypatch.setattr(active_map, "load_localizer", lambda path, **kw: f"loc:{path.name}")
     app = FastAPI()
     app.include_router(uploads.router)
     app.include_router(maps_api.router)

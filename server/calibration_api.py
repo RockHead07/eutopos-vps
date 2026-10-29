@@ -2,15 +2,13 @@
 
 Rencana `docs/plans/2026-10-29-kalibrasi-dashboard.md`. `fit` tidak menyimpan apa pun; `apply`
 selalu menghitung ulang dari set yang tersimpan (klien tidak pernah mengirim parameter), lalu
-menulis align.json atomik yang dibaca Localizer tanpa memuat ulang layanan. Penerapan dijaga tiga
-hal: `base_alignment_id` (dua admin tidak saling menimpa), penulisan berkas sebelum commit, dan
+mencatatnya sebagai baris applied di tabel alignment, yang dibaca Localizer lewat alignment.DbAlign
+tanpa memuat ulang layanan (kontainer api memasang /maps hanya-baca, jadi tidak ada berkas yang
+ditulis). Penerapan satu transaksi, dijaga `base_alignment_id` (dua admin tidak saling menimpa) dan
 indeks unik "satu applied per versi" di database.
 """
 
-import logging
-import os
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
@@ -18,8 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
-from server import alignment, area_api, calibration, content_migration, maps_api, uploads
-from server.active_map import _env_int  # ponytail: pembaca env yang sama dengan load_localizer
+from server import area_api, calibration, content_migration, uploads
 from server.area_api import _write  # ponytail: aturan JSON + admin yang sama dengan area_api
 from server.db import (
     Alignment,
@@ -30,7 +27,6 @@ from server.db import (
     iso_utc,
 )
 
-log = logging.getLogger("eutopos")
 router = APIRouter()
 
 MAX_POINTS = 500
@@ -177,17 +173,6 @@ def fit(set_id: int, request: Request, user: uploads.User, s: uploads.DB) -> dic
     return {"align": r.align, "stats": r.stats, "rows": r.rows}
 
 
-def _align_path(v: MapVersion) -> Path:
-    """align.json di folder run versi itu, sama dengan yang dibaca active_map.load_localizer."""
-    run = Path(v.path) / f"kp{_env_int('EUTOPOS_MAX_KP', 1024)}-r{_env_int('EUTOPOS_RESIZE', 1024)}"
-    run = run.resolve()
-    if not run.is_relative_to(maps_api.MAPS_ROOT.resolve()):
-        raise HTTPException(409, "the map folder of this version is outside the maps root")
-    if not run.is_dir():
-        raise HTTPException(409, "the map folder of this version has no run directory")
-    return run / "align.json"
-
-
 def _current(s, version_id: int) -> Alignment | None:
     return s.exec(
         select(Alignment).where(
@@ -201,18 +186,6 @@ def _check_base(current: Alignment | None, base_id: int | None) -> None:
         raise HTTPException(409, "the alignment changed since you loaded this page; reload")
 
 
-def _restore(dst: Path, old: str | None) -> None:
-    try:
-        if old is None:
-            dst.unlink(missing_ok=True)
-        else:
-            tmp = dst.with_name(dst.name + ".tmp")
-            tmp.write_text(old, encoding="utf-8")
-            os.replace(tmp, dst)
-    except OSError:
-        log.exception("align.json lama tidak bisa dipulihkan: %s", dst)
-
-
 def _migrate(s, v: MapVersion, old: dict | None, new: dict) -> dict:
     """Konten area berpindah hanya bila versi ini yang terbit; kandidat tidak menyentuhnya."""
     if v.status != "published":
@@ -221,10 +194,8 @@ def _migrate(s, v: MapVersion, old: dict | None, new: dict) -> dict:
 
 
 def _install(s, v, current, params, stats, set_id, source, user) -> dict:
-    """Ubah database tanpa commit, tulis berkas, baru commit; gagal di mana pun berarti tidak
-    ada yang berubah (berkas lama dipulihkan bila commit yang gagal)."""
-    dst = _align_path(v)
-    old = dst.read_text(encoding="utf-8") if dst.exists() else None
+    """Satu transaksi: yang lama diganti, yang baru berlaku, konten area bergeser. Gagal di mana
+    pun berarti tidak ada yang berubah. Localizer membaca baris applied lewat alignment.DbAlign."""
     row = Alignment(
         map_version_id=v.id,
         set_id=set_id,
@@ -242,25 +213,10 @@ def _install(s, v, current, params, stats, set_id, source, user) -> dict:
             s.flush()  # indeks unik: yang lama harus lepas sebelum yang baru masuk
         s.add(row)
         moved = _migrate(s, v, current.params if current else None, params)
-        s.flush()
-    except IntegrityError as e:
-        s.rollback()
-        raise HTTPException(409, "another alignment was applied at the same time") from e
-    try:
-        alignment._write_atomic(dst, params)
-    except OSError as e:
-        s.rollback()
-        dst.with_name(dst.name + ".tmp").unlink(missing_ok=True)
-        log.exception("gagal menulis %s", dst)
-        raise HTTPException(500, f"could not write align.json: {e.__class__.__name__}") from e
-    try:
         s.commit()
     except IntegrityError as e:
-        _restore(dst, old)
+        s.rollback()
         raise HTTPException(409, "another alignment was applied at the same time") from e
-    except Exception:
-        _restore(dst, old)
-        raise
     area_api.clear_cache()
     republish = moved.pop("republish_required")
     return {"alignment_id": row.id, "republish_required": republish, "moved": moved}
