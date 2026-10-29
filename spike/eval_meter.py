@@ -30,10 +30,14 @@ Contoh:
 import argparse
 import csv
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
 import pycolmap
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # akar repo, untuk paket server
+from server.sim3 import fit
 
 AMBANG_M = 1.0  # pertanyaan spike: galat <= 1,0 m pada >= 70% foto uji
 SALAH_M = 3.0  # bawaan --wrong-m: kira-kira sudah di depan pintu atau lorong yang salah
@@ -60,14 +64,6 @@ def heading_error(sim, view_model, gt_deg):
         return None
     yaw = np.degrees(np.arctan2(d[1], d[0]))
     return round(float(abs((yaw - gt_deg + 180) % 360 - 180)), 1)
-
-
-def fit(src, tgt, ransac_m):
-    """Sim3 tgt_from_src dengan LO-RANSAC; None kalau gagal."""
-    opts = pycolmap.RANSACOptions()
-    opts.max_error = ransac_m
-    ret = pycolmap.estimate_sim3d_robust(src, tgt, opts)
-    return ret["tgt_from_src"] if ret else None
 
 
 def evaluate(rows, gt, height_m, ransac_m, salah_m=SALAH_M, dirs=None, holdout=()):
