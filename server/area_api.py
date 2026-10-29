@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, StringConstraints
 from sqlmodel import select
 
 from server import auth, floorplan, navgraph, routegraph, uploads, walkable
-from server.db import PublishedGraph, Room, RouteEdit, WalkableStroke, active_version
+from server.db import PublishedGraph, Room, RouteEdit, WalkableStroke, active_version, iso_utc
 from server.floorplan import to_building
 
 router = APIRouter()
@@ -141,7 +141,7 @@ def get_graph(area_id: str, request: Request, user: uploads.User, s: uploads.DB)
         "draft": nav,
         "warnings": warnings,
         "unmatched_edits": unmatched,
-        "published_at": pub.published_at.isoformat() if pub else None,
+        "published_at": iso_utc(pub.published_at) if pub else None,
     }
 
 
@@ -330,7 +330,7 @@ def publish_graph(area_id: str, request: Request, user: uploads.User, s: uploads
     s.add(row)
     s.commit()
     return {
-        "published_at": row.published_at.isoformat(),
+        "published_at": iso_utc(row.published_at),
         "warnings": walkable.room_warnings(grid, rooms),
     }
 

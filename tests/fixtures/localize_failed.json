@@ -1,0 +1,14 @@
+{
+  "contract_version": 1,
+  "status": "failed",
+  "inliers": 7,
+  "correspondences": 30,
+  "intrinsics_source": "client",
+  "pose_model": null,
+  "pose_building": null,
+  "area_id": "floor10",
+  "map_version": 4,
+  "t_s": {
+    "total": 0.2
+  }
+}

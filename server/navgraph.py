@@ -22,6 +22,8 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 
+from server.contract import CONTRACT_VERSION
+
 FILE_NAME = "navgraph.json"
 
 
@@ -164,7 +166,7 @@ def _published(area_id: str) -> dict | None:
         return None
     from sqlmodel import Session
 
-    from server.db import PublishedGraph
+    from server.db import PublishedGraph, iso_utc
 
     with Session(_engine(url)) as s:
         row = s.get(PublishedGraph, area_id)
@@ -174,7 +176,7 @@ def _published(area_id: str) -> dict | None:
         graph = validate(row.graph)
     except ValueError as e:
         raise HTTPException(500, f"published route graph invalid: {e}") from e
-    return {"graph": graph, "walkable": row.walkable, "revision": row.published_at.isoformat()}
+    return {"graph": graph, "walkable": row.walkable, "revision": iso_utc(row.published_at)}
 
 
 @router.get("/navgraph")
@@ -186,6 +188,7 @@ def get_navgraph(request: Request) -> dict:
         raise HTTPException(503, "no active map")
     if published := _published(area_id):
         out = {
+            "contract_version": CONTRACT_VERSION,
             "area_id": area_id,
             "map_version": getattr(st, "map_version", None),
             "graph": published["graph"],
@@ -201,7 +204,12 @@ def get_navgraph(request: Request) -> dict:
         graph = validate(json.loads(path.read_text(encoding="utf-8")))
     except ValueError as e:  # json.JSONDecodeError juga ValueError
         raise HTTPException(500, f"navgraph.json invalid: {e}") from e
-    return {"area_id": area_id, "map_version": getattr(st, "map_version", None), "graph": graph}
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "area_id": area_id,
+        "map_version": getattr(st, "map_version", None),
+        "graph": graph,
+    }
 
 
 if __name__ == "__main__":

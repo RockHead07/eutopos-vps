@@ -152,6 +152,12 @@ class PublishedGraph(SQLModel, table=True):
     )
 
 
+def iso_utc(at: datetime) -> str:
+    """ISO 8601 dengan zona. PostgreSQL mengembalikan waktu dengan zona dan SQLite tidak, jadi
+    tanpa ini klien menerima dua bentuk berbeda untuk nilai yang sama."""
+    return (at if at.tzinfo else at.replace(tzinfo=UTC)).isoformat()
+
+
 def engine_from_env():
     return create_engine(os.environ["DATABASE_URL"])
 
