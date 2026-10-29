@@ -19,6 +19,7 @@ import {
   type XY,
 } from "@/lib/api";
 import { useLocale, useT } from "@/lib/i18n";
+import Link from "@/lib/Link";
 import { PageHead } from "@/lib/PageHead";
 import { usePoll } from "@/lib/usePoll";
 
@@ -62,6 +63,15 @@ function AreaPage() {
   const [name, setName] = useState("");
   const [confirming, setConfirming] = useState(false);
   const anim = useRef<number | null>(null);
+  const [calVersion, setCalVersion] = useState<number | null>(null); // versi terbit, untuk tautan kalibrasi
+
+  useEffect(() => {
+    if (!id) return;
+    api.versions().then(
+      (all) => setCalVersion(all.find((v) => v.area_id === id && v.status === "published")?.id ?? null),
+      () => setCalVersion(null),
+    );
+  }, [id]);
 
   const reload = useCallback(async () => {
     try {
@@ -201,6 +211,14 @@ function AreaPage() {
           {t("area.pageDesc")}
           {graph?.published_at && (
             <> {t("area.lastPublished", { date: formatDate(graph.published_at, locale) })}</>
+          )}
+          {admin && calVersion !== null && (
+            <>
+              {" "}
+              <Link className="underline" href={`/calibration/?version=${calVersion}`}>
+                {t("cal.openArea")}
+              </Link>
+            </>
           )}
         </p>
       </PageHead>

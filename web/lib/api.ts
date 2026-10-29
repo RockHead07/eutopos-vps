@@ -165,6 +165,11 @@ export function formatApiError(detail: unknown, status: number): string {
   if (typeof detail === "string" && detail.trim().length > 0) {
     return detail;
   }
+  // galat kalibrasi: {code, message}
+  if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+    const message = (detail as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim().length > 0) return message;
+  }
   if (Array.isArray(detail) && detail.length > 0) {
     const formatted = detail
       .map(parseIssue)
@@ -209,12 +214,19 @@ function fieldSentence(issue: ApiIssue): string {
 export class ApiError extends Error {
   status: number;
   fields: Partial<Record<ApiField, string>>;
+  code?: string; // kode galat mesin dari server (kalibrasi: too_few_reference, collinear, ...)
 
-  constructor(message: string, status: number, fields: Partial<Record<ApiField, string>> = {}) {
+  constructor(
+    message: string,
+    status: number,
+    fields: Partial<Record<ApiField, string>> = {},
+    code?: string,
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.fields = fields;
+    this.code = code;
   }
 }
 
@@ -229,12 +241,14 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   if (!r.ok) {
     let detail = `error ${r.status}`;
     let fields: Partial<Record<ApiField, string>> = {};
+    let code: string | undefined;
     try {
       const body = await r.json();
       detail = formatApiError(body?.detail, r.status);
       fields = fieldErrorsFromApi(body?.detail);
+      if (typeof body?.detail?.code === "string") code = body.detail.code;
     } catch {}
-    throw new ApiError(detail, r.status, fields);
+    throw new ApiError(detail, r.status, fields, code);
   }
   if (r.status === 204) return undefined as T; // DELETE tanpa isi
   return (await r.json()) as T;
@@ -321,6 +335,65 @@ export const areaApi = {
       method: "POST",
       body: JSON.stringify({}),
     }),
+};
+
+export type CalRole = "reference" | "test";
+export type CalPointIn = { point_id: string; x_m: number; y_m: number; role: CalRole };
+export type CalRow = {
+  point_id: string;
+  role: CalRole;
+  x_m: number;
+  y_m: number;
+  observed_x: number | null;
+  observed_y: number | null;
+  error_m: number | null;
+};
+export type CalStats = {
+  reference_points: number;
+  test_points: number;
+  point_spread: number;
+  scale: number;
+  residual_median_m: number;
+  residual_max_m: number;
+  test_median_m: number | null;
+  test_p90_m: number | null;
+  test_max_m: number | null;
+};
+export type CalFit = { align: Record<string, unknown>; stats: CalStats; rows: CalRow[] };
+export type CalImport = {
+  accepted: number;
+  rejected_low_inliers: string[];
+  unknown_points: string[];
+};
+export type AlignmentRow = {
+  id: number;
+  status: "applied" | "superseded";
+  source: "fit" | "revert";
+  created_by: string;
+  created_at: string;
+  stats: Partial<CalStats>;
+  scale: number;
+};
+export type ApplyResult = {
+  alignment_id: number;
+  republish_required: boolean;
+  moved: { rooms: number; strokes: number; edits: number };
+};
+
+const post = (body: unknown) => ({ method: "POST", body: JSON.stringify(body) });
+
+export const calibrationApi = {
+  createSet: (versionId: number, points: CalPointIn[], note?: string) =>
+    call<{ id: number }>(`/api/versions/${versionId}/calibration`, post({ points, note })),
+  importObservations: (setId: number, csv: string) =>
+    call<CalImport>(`/api/calibration/${setId}/observations/import`, post({ csv })),
+  fit: (setId: number) => call<CalFit>(`/api/calibration/${setId}/fit`, post({})),
+  apply: (setId: number, base: number | null) =>
+    call<ApplyResult>(`/api/calibration/${setId}/apply`, post({ base_alignment_id: base })),
+  alignments: (versionId: number) =>
+    call<AlignmentRow[]>(`/api/versions/${versionId}/alignments`),
+  revert: (alignmentId: number, base: number | null) =>
+    call<ApplyResult>(`/api/alignments/${alignmentId}/revert`, post({ base_alignment_id: base })),
 };
 
 export const api = {

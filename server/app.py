@@ -37,7 +37,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlmodel import Session
 
-from server import active_map, area_api, localize_log, maps_api, navgraph, uploads
+from server import active_map, area_api, calibration_api, localize_log, maps_api, navgraph, uploads
 from server.contract import CONTRACT_VERSION
 from server.db import active_version, engine_from_env
 from server.localizer import Localizer
@@ -78,6 +78,7 @@ app.include_router(uploads.router)
 app.include_router(maps_api.router)
 app.include_router(navgraph.router)
 app.include_router(area_api.router)
+app.include_router(calibration_api.router)
 app.include_router(localize_log.router)
 
 
