@@ -48,6 +48,13 @@ export type Version = {
   published_by: string | null;
   job_id: number | null;
   has_report: boolean;
+  has_splat: boolean;
+};
+
+export type SplatPlacement = {
+  position: [number, number, number];
+  rotation_xyzw: [number, number, number, number];
+  scale: number;
 };
 export type ServiceStatus = {
   area_id: string | null;
@@ -405,6 +412,8 @@ export const api = {
   deleteVersion: (id: number) =>
     call<{ status: string; job_id?: number }>(`/api/versions/${id}`, { method: "DELETE" }),
   versions: () => call<Version[]>("/api/versions"),
+  splatPlacement: (versionId: number) =>
+    call<SplatPlacement>(`/api/versions/${versionId}/splat/placement`),
   publish: (id: number) =>
     call<{ version: Version; reload: "started" | "other_area" }>(`/api/versions/${id}/publish`, {
       method: "POST",

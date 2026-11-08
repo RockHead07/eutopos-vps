@@ -625,6 +625,28 @@ export const en = {
   "theme.light": "Light",
   "theme.dark": "Dark",
   "theme.system": "System",
+  // Splat Viewer
+  "splat.title": "3D Splat Viewer",
+  "splat.backToMaps": "Back to Maps",
+  "splat.missingVersion": "Version ID is missing or invalid.",
+  "splat.versionNotFound": "Map version not found.",
+  "splat.noSplat": "This map version has no 3D Gaussian splat.",
+  "splat.notAlignedWarning": "Uncalibrated: Map version has no alignment to building coordinates. Displaying unaligned preview.",
+  "splat.noWebGL2": "WebGL2 is not supported by your browser.",
+  "splat.downloadFailed": "Failed to download 3D splat.",
+  "splat.downloading": "Downloading 3D splat...",
+  "splat.preparing": "Preparing 3D view...",
+  "splat.downloadProgress": "Downloading 3D splat: {received} of {total} ({pct}%)",
+  "splat.downloadProgressUnknown": "Downloading 3D splat: {received}",
+  "splat.retry": "Retry",
+  "splat.resetCamera": "Reset Camera",
+  "splat.showMarkers": "Show Markers",
+  "splat.hideMarkers": "Hide Markers",
+  "splat.noMarkers": "No room markers available",
+  "splat.meshToggle": "3D Mesh",
+  "splat.meshUnavailable": "3D mesh not yet available",
+  "splat.invalidCam": "Invalid camera parameter ignored.",
+  "splat.view3d": "View 3D",
 } as const;
 
 export type TranslationKey = keyof typeof en;

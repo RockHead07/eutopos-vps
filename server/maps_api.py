@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlmodel import select
 
-from server import active_map, auth, jobs, system, uploads
+from server import active_map, alignment, auth, jobs, splat_frame, system, uploads
 from server.db import MapJob, MapVersion, publish
 
 MAPS_ROOT = Path("/maps")  # jalur peta di dalam container (deploy/compose.yaml)
@@ -27,12 +27,30 @@ class VersionOut(BaseModel):
     published_by: str | None
     job_id: int | None
     has_report: bool
+    has_splat: bool
 
 
 def _report(v: MapVersion) -> Path | None:
     p = (Path(v.path) / "report.html").resolve()
     if p.is_relative_to(MAPS_ROOT.resolve()) and p.is_file():
         return p
+    return None
+
+
+def _splat(v: MapVersion) -> Path | None:
+    p = (Path(v.path) / "splat" / "scene.sog").resolve()
+    if p.is_relative_to(MAPS_ROOT.resolve()) and p.is_file():
+        return p
+    return None
+
+
+def _align(s, v: MapVersion) -> dict | None:
+    db_align = alignment.DbAlign(s.get_bind(), v.id).get()
+    if db_align is not None:
+        return db_align
+    p = (Path(v.path) / "align.json").resolve()
+    if p.is_relative_to(MAPS_ROOT.resolve()) and p.is_file():
+        return alignment.AlignFile(p).get()
     return None
 
 
@@ -50,6 +68,7 @@ def _out(s, v: MapVersion) -> VersionOut:
         ),
         job_id=job,
         has_report=_report(v) is not None,
+        has_splat=_splat(v) is not None,
     )
 
 
@@ -75,6 +94,27 @@ def report(version_id: int, user: uploads.User, s: uploads.DB) -> FileResponse:
     if v is None or (path := _report(v)) is None:
         raise HTTPException(404, "report not found")
     return FileResponse(path, media_type="text/html")
+
+
+@router.get("/api/versions/{version_id}/splat")
+def splat_file(version_id: int, user: uploads.User, s: uploads.DB) -> FileResponse:
+    v = s.get(MapVersion, version_id)
+    if v is None or (path := _splat(v)) is None:
+        raise HTTPException(404, "splat not found")
+    return FileResponse(path, media_type="application/octet-stream")
+
+
+@router.get("/api/versions/{version_id}/splat/placement")
+def splat_placement(version_id: int, user: uploads.User, s: uploads.DB) -> dict:
+    v = s.get(MapVersion, version_id)
+    if v is None:
+        raise HTTPException(404, "version not found")
+    align = _align(s, v)
+    if align is None:
+        raise HTTPException(
+            404, detail={"code": "not_aligned", "message": "map version has no alignment"}
+        )
+    return splat_frame.placement(align["meter_from_model"])
 
 
 @router.post("/api/versions/{version_id}/publish")
