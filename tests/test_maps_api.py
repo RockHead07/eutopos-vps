@@ -2,6 +2,7 @@
 
 import threading
 import time
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
@@ -9,7 +10,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, SQLModel, create_engine
 
 from server import active_map, auth, jobs, maps_api, uploads
-from server.db import MapJob, publish, register
+from server.db import Alignment, MapJob, publish, register
 
 
 @pytest.fixture
@@ -367,3 +368,73 @@ def test_deleted_version_cannot_be_published(client):
         f"/api/versions/{v.id}/publish", json={}, headers={"content-type": "application/json"}
     )
     assert r.status_code == 404
+
+
+def test_has_splat_false_when_missing_and_404(client):
+    v = make_version(client)
+    rows = {r["id"]: r for r in client.get("/api/versions").json()}
+    assert rows[v.id]["has_splat"] is False
+    r = client.get(f"/api/versions/{v.id}/splat")
+    assert r.status_code == 404
+    assert r.json()["detail"] == "splat not found"
+
+
+def test_splat_served_when_present(client):
+    v = make_version(client)
+    splat_dir = Path(v.path) / "splat"
+    splat_dir.mkdir(parents=True, exist_ok=True)
+    content = b"PK\x03\x04dummy-sog-bytes"
+    (splat_dir / "scene.sog").write_bytes(content)
+    rows = {r["id"]: r for r in client.get("/api/versions").json()}
+    assert rows[v.id]["has_splat"] is True
+    r = client.get(f"/api/versions/{v.id}/splat")
+    assert r.status_code == 200
+    assert r.content == content
+
+
+def test_splat_requires_auth(client, monkeypatch):
+    v = make_version(client)
+    splat_dir = Path(v.path) / "splat"
+    splat_dir.mkdir(parents=True, exist_ok=True)
+    (splat_dir / "scene.sog").write_bytes(b"splat-data")
+    monkeypatch.delenv("EUTOPOS_DEV_NO_AUTH", raising=False)
+    monkeypatch.setenv("CF_ACCESS_TEAM_DOMAIN", "https://test.cloudflareaccess.com")
+    monkeypatch.setenv("CF_ACCESS_AUD", "test-aud")
+    assert client.get(f"/api/versions/{v.id}/splat").status_code == 401
+    assert client.get(f"/api/versions/{v.id}/splat/placement").status_code == 401
+
+
+def test_placement_404_not_aligned(client):
+    v = make_version(client)
+    r = client.get(f"/api/versions/{v.id}/splat/placement")
+    assert r.status_code == 404
+    assert r.json()["detail"]["code"] == "not_aligned"
+
+
+def test_placement_200_when_aligned_in_db(client):
+    v = make_version(client)
+    align_params = {
+        "meter_from_model": {
+            "scale": 1.0,
+            "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+            "translation": [0.0, 0.0, 0.0],
+        },
+        "reference_points": 4,
+        "residual_median_m": 0.05,
+    }
+    row = Alignment(
+        map_version_id=v.id,
+        params=align_params,
+        stats={},
+        status="applied",
+        source="fit",
+        created_by="dev@local",
+    )
+    client.db.add(row)
+    client.db.commit()
+    r = client.get(f"/api/versions/{v.id}/splat/placement")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["scale"] == 1.0
+    assert len(data["position"]) == 3
+    assert len(data["rotation_xyzw"]) == 4

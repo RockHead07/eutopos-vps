@@ -387,6 +387,13 @@ export default function MapsPage() {
                                   </a>
                                 </DropdownMenuItem>
                               )}
+                              {v.has_splat && (
+                                <DropdownMenuItem asChild>
+                                  <Link href={`/splat/?version=${v.id}`}>
+                                    <Icon name="view-3d" /> {t("splat.view3d")}
+                                  </Link>
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuItem
                                 onClick={() => {
                                   setCompareArea(v.area_id);
@@ -585,6 +592,13 @@ export default function MapsPage() {
                       <a href={`/api/versions/${selectedVersion.id}/report`} target="_blank" rel="noreferrer">
                         <Icon name="view-3d" /> {t("maps.inspect3DReport")}
                       </a>
+                    </Button>
+                  )}
+                  {selectedVersion.has_splat && (
+                    <Button asChild variant="outline" className="rounded-full">
+                      <Link href={`/splat/?version=${selectedVersion.id}`}>
+                        <Icon name="view-3d" /> {t("splat.view3d")}
+                      </Link>
                     </Button>
                   )}
                   <Button
