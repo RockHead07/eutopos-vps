@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import type * as PlayCanvas from "playcanvas";
+import type { CameraControls } from "playcanvas/scripts/esm/camera-controls.mjs";
 import { api, areaApi, mb, type Room, type SplatPlacement, type Version } from "@/lib/api";
 import { parseCam, camToPlayCanvas, type CamPose } from "@/lib/splatCam";
+import { buildingToPlayCanvas, getBuildingCameraMatrix } from "@/lib/splatAxes";
 import { useT } from "@/lib/i18n";
 import Link from "@/lib/Link";
 import { Button } from "@/components/ui/button";
@@ -16,7 +18,17 @@ const VERTICAL_FOV_DEG = 41.0; // FOV foto latih
 const CAMERA_NEAR_CLIP = 0.05;
 const CAMERA_FAR_CLIP = 200.0;
 const DEFAULT_ROOM_MARKER_HEIGHT_M = 1.6; // tinggi mata rata-rata untuk data ruangan 2D
-const UNALIGNED_FALLBACK_ROTATION: [number, number, number] = [180, 0, 0]; // sementara, ditentukan empiris di Task 3 Step 4
+const UNALIGNED_FALLBACK_ROTATION: [number, number, number] = [180, 0, 0];
+
+// Konstanta kontrol kamera PlayCanvas (skala meter)
+const DEFAULT_FOCUS_DISTANCE_M = 2.0;
+const CAMERA_ZOOM_MIN_M = 0.2;
+const CAMERA_ZOOM_MAX_M = 150.0;
+const CAMERA_PITCH_MIN_DEG = -90.0;
+const CAMERA_PITCH_MAX_DEG = 90.0;
+const CAMERA_MOVE_SPEED_MPS = 3.0;
+const CAMERA_MOVE_FAST_SPEED_MPS = 8.0;
+const CAMERA_MOVE_SLOW_SPEED_MPS = 1.0;
 
 interface SplatViewerProps {
   versionId: number | null;
@@ -55,16 +67,21 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [showMarkers, setShowMarkers] = useState(true);
+  const [showGrid, setShowGrid] = useState(true);
   const [camInvalid, setCamInvalid] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
 
-  // App & camera refs for cleanup and reset
+  // App, camera, controls, dan ViewCube refs
   const appRef = useRef<PlayCanvas.Application | null>(null);
   const cameraRef = useRef<PlayCanvas.Entity | null>(null);
-  const initialCamPose = useRef<{ pos: [number, number, number]; target: [number, number, number] } | null>(null);
-  const orbitTargetRef = useRef<PlayCanvas.Vec3 | null>(null);
+  const controlsRef = useRef<CameraControls | null>(null);
+  const viewCubeRef = useRef<PlayCanvas.ViewCube | null>(null);
+  const gridEntityRef = useRef<PlayCanvas.Entity | null>(null);
+  const initialCamPose = useRef<{ focus: PlayCanvas.Vec3; position: PlayCanvas.Vec3 } | null>(null);
+
   const roomsRef = useRef<Room[]>([]);
   const showMarkersRef = useRef(true);
+  const showGridRef = useRef(true);
   const isAlignedRef = useRef(false);
 
   useEffect(() => {
@@ -76,7 +93,17 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
   }, [showMarkers]);
 
   useEffect(() => {
+    showGridRef.current = showGrid;
+    if (gridEntityRef.current) {
+      gridEntityRef.current.enabled = showGrid && isAlignedRef.current;
+    }
+  }, [showGrid]);
+
+  useEffect(() => {
     isAlignedRef.current = isAligned === true;
+    if (gridEntityRef.current) {
+      gridEntityRef.current.enabled = isAligned === true && showGridRef.current;
+    }
   }, [isAligned]);
 
   // 1. Initial WebGL2 check
@@ -132,8 +159,7 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
     };
   }, [versionId]);
 
-  // 3. Engine setup, Splat download, and Render loop
-  // D5: Keluarkan t dari dependensi efek agar pergantian bahasa tidak memicu download ulang
+  // 3. Engine setup, Splat download, CameraControls, ViewCube, Grid, and Render loop
   useEffect(() => {
     if (!webgl2Supported || !version || !version.has_splat || loadingVersion || !canvasRef.current || !containerRef.current) {
       return;
@@ -148,7 +174,7 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
     setDownloadProgress({ receivedBytes: 0, totalBytes: null });
     setIsReady(false);
 
-    // D5: Validasi camParam dan simpan status boolean di state
+    // Validasi camParam dan simpan status boolean di state
     let parsedCam: CamPose | null = null;
     if (camParam !== null) {
       parsedCam = parseCam(camParam);
@@ -161,7 +187,11 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
 
     async function initEngine() {
       try {
-        const pc = await import("playcanvas");
+        const [pc, { CameraControls }, { Grid }] = await Promise.all([
+          import("playcanvas"),
+          import("playcanvas/scripts/esm/camera-controls.mjs"),
+          import("playcanvas/scripts/esm/grid.mjs"),
+        ]);
         if (destroyed) return;
 
         const canvas = canvasRef.current;
@@ -243,7 +273,7 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
           splatEntity.setLocalEulerAngles(...UNALIGNED_FALLBACK_ROTATION);
         }
 
-        // Configure Camera Pose
+        // Configure Camera Initial Pose
         let initPos: [number, number, number];
         let initTarget: [number, number, number];
 
@@ -260,151 +290,115 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
           initPos = [0, 2.0, 5.0];
         }
 
+        // Set position and orientation BEFORE attaching CameraControls script
         camera.setPosition(initPos[0], initPos[1], initPos[2]);
         const targetVec = new pc.Vec3(initTarget[0], initTarget[1], initTarget[2]);
         camera.lookAt(targetVec, new pc.Vec3(0, 1, 0));
 
-        orbitTargetRef.current = targetVec.clone();
-        initialCamPose.current = { pos: [...initPos], target: [...initTarget] };
+        // focusPoint: posisi + arah depan * 2.0 m untuk cam=; targetVec untuk non-cam
+        const initialFocus = parsedCam
+          ? camera.getPosition().clone().add(camera.forward.clone().mulScalar(DEFAULT_FOCUS_DISTANCE_M))
+          : targetVec.clone();
+        const initialPosition = camera.getPosition().clone();
 
-        // Setup Minimal Orbit Controls
-        let isDragging = false;
-        let isPanning = false;
-        let lastX = 0;
-        let lastY = 0;
-        let touchStartDist = 0;
-        // D6: Lacak ID pointer aktif untuk mencegah rotasi saat cubitan multi-sentuh
-        const activePointers = new Set<number>();
+        initialCamPose.current = {
+          focus: initialFocus.clone(),
+          position: initialPosition.clone(),
+        };
 
-        const onPointerDown = (e: PointerEvent) => {
-          activePointers.add(e.pointerId);
-          if (e.button === 1 || e.button === 2 || e.shiftKey) {
-            isPanning = true;
-          } else if (e.button === 0) {
-            isDragging = true;
+        // Attach CameraControls script to camera entity
+        camera.addComponent("script");
+        const scriptComp = camera.script;
+        if (!scriptComp) throw new Error("Failed to add script component to camera");
+
+        const controls = scriptComp.create(CameraControls, {
+          properties: {
+            focusPoint: initialFocus,
+            zoomRange: new pc.Vec2(CAMERA_ZOOM_MIN_M, CAMERA_ZOOM_MAX_M),
+            pitchRange: new pc.Vec2(CAMERA_PITCH_MIN_DEG, CAMERA_PITCH_MAX_DEG),
+            moveSpeed: CAMERA_MOVE_SPEED_MPS,
+            moveFastSpeed: CAMERA_MOVE_FAST_SPEED_MPS,
+            moveSlowSpeed: CAMERA_MOVE_SLOW_SPEED_MPS,
+          },
+        }) as CameraControls;
+
+        controls.focusPoint = initialFocus;
+        controls.zoomRange = new pc.Vec2(CAMERA_ZOOM_MIN_M, CAMERA_ZOOM_MAX_M);
+        controls.pitchRange = new pc.Vec2(CAMERA_PITCH_MIN_DEG, CAMERA_PITCH_MAX_DEG);
+        controls.moveSpeed = CAMERA_MOVE_SPEED_MPS;
+        controls.moveFastSpeed = CAMERA_MOVE_FAST_SPEED_MPS;
+        controls.moveSlowSpeed = CAMERA_MOVE_SLOW_SPEED_MPS;
+
+        controlsRef.current = controls;
+
+        // ViewCube setup
+        const viewCube = new pc.ViewCube(new pc.Vec4(1, 1, 0, 0));
+        viewCubeRef.current = viewCube;
+
+        // Pindahkan viewCube.dom dari document.body ke dalam kontainer viewport
+        if (viewCube.dom && container) {
+          container.appendChild(viewCube.dom);
+          viewCube.dom.addEventListener("pointerdown", (e) => e.stopPropagation());
+          viewCube.dom.addEventListener("pointerup", (e) => e.stopPropagation());
+          viewCube.dom.addEventListener("click", (e) => e.stopPropagation());
+        }
+
+        // Tangani event klik muka kubus: EVENT_CAMERAALIGN
+        viewCube.on(pc.ViewCube.EVENT_CAMERAALIGN, (axisBuilding: PlayCanvas.Vec3) => {
+          if (!controlsRef.current || !cameraRef.current) return;
+
+          // Ubah sumbu kerangka gedung ke PlayCanvas: (vx, vy, vz) -> (vx, vz, -vy)
+          const axisPC = buildingToPlayCanvas(axisBuilding);
+
+          const focus = controlsRef.current.focusPoint.clone();
+          const currentPos = cameraRef.current.getPosition();
+          const dist = Math.max(currentPos.distance(focus), 0.5);
+
+          // Penanganan degenerasi lookAt untuk pandangan atas (+Z gedung) dan bawah (-Z gedung):
+          // Tambahkan epsilon kecil pada sumbu Z (1e-4) agar arah depan tidak persis sejajar sumbu Y dunia,
+          // mencegah NaN dan menjaga roll bernilai 0 dengan arah Utara (gedung +Y) menghadap atas layar.
+          if (Math.abs(axisPC.y) > 0.999) {
+            axisPC.z += 1e-4 * Math.sign(axisPC.y);
+            axisPC.normalize();
           }
-          lastX = e.clientX;
-          lastY = e.clientY;
-          canvas.setPointerCapture(e.pointerId);
-        };
 
-        const onPointerMove = (e: PointerEvent) => {
-          if (!isDragging && !isPanning) return;
-          const dx = e.clientX - lastX;
-          const dy = e.clientY - lastY;
-          lastX = e.clientX;
-          lastY = e.clientY;
+          const targetPos = focus.clone().add(axisPC.mulScalar(dist));
+          controlsRef.current.reset(focus, targetPos);
+        });
 
-          const target = orbitTargetRef.current;
-          if (!target) return;
-
-          const camPos = camera.getPosition();
-          const offset = camPos.clone().sub(target);
-          let dist = offset.length();
-          if (dist < 0.01) dist = 0.01;
-
-          if (isPanning) {
-            const factor = dist * 0.0015;
-            const rightMove = camera.right.clone().mulScalar(-dx * factor);
-            const upMove = camera.up.clone().mulScalar(dy * factor);
-            target.add(rightMove).add(upMove);
-            camera.setPosition(camera.getPosition().add(rightMove).add(upMove));
-          } else if (isDragging) {
-            // D6: Abaikan rotasi bila lebih dari satu pointer aktif (cubitan/multi-touch)
-            if (activePointers.size > 1) return;
-
-            let azimuth = Math.atan2(offset.x, offset.z);
-            let elevation = Math.atan2(offset.y, Math.sqrt(offset.x * offset.x + offset.z * offset.z));
-
-            azimuth -= dx * 0.005;
-            elevation += dy * 0.005;
-            const maxElev = 1.48; // ~85 deg
-            if (elevation > maxElev) elevation = maxElev;
-            if (elevation < -maxElev) elevation = -maxElev;
-
-            const cosEl = Math.cos(elevation);
-            const newOff = new pc.Vec3(dist * cosEl * Math.sin(azimuth), dist * Math.sin(elevation), dist * cosEl * Math.cos(azimuth));
-            camera.setPosition(target.x + newOff.x, target.y + newOff.y, target.z + newOff.z);
-            camera.lookAt(target, new pc.Vec3(0, 1, 0));
+        // Floor Grid setup (opsional)
+        try {
+          const gridEntity = new pc.Entity("GridFloor");
+          gridEntity.setLocalScale(100, 1, 100);
+          gridEntity.addComponent("script");
+          const gridScript = gridEntity.script;
+          if (gridScript) {
+            gridScript.create(Grid, {
+              properties: {
+                resolution: Grid.RESOLUTION_HIGH,
+              },
+            });
           }
-        };
+          app.root.addChild(gridEntity);
+          gridEntity.enabled = aligned && showGridRef.current;
+          gridEntityRef.current = gridEntity;
+        } catch (gridErr) {
+          console.warn("Failed to initialize floor Grid:", gridErr);
+        }
 
-        const onPointerUp = (e: PointerEvent) => {
-          activePointers.delete(e.pointerId);
-          if (activePointers.size === 0) {
-            isDragging = false;
-            isPanning = false;
-          }
-          try {
-            canvas.releasePointerCapture(e.pointerId);
-          } catch {}
-        };
-
-        const onWheel = (e: WheelEvent) => {
-          e.preventDefault();
-          const target = orbitTargetRef.current;
-          if (!target) return;
-
-          const camPos = camera.getPosition();
-          const offset = camPos.clone().sub(target);
-          let dist = offset.length();
-          const factor = 1 + Math.sign(e.deltaY) * 0.08;
-          dist = Math.max(0.2, Math.min(150, dist * factor));
-
-          offset.normalize().mulScalar(dist);
-          camera.setPosition(target.x + offset.x, target.y + offset.y, target.z + offset.z);
-          camera.lookAt(target, new pc.Vec3(0, 1, 0));
-        };
-
-        const onTouchStart = (e: TouchEvent) => {
-          if (e.touches.length === 2) {
-            const dx = e.touches[0].clientX - e.touches[1].clientX;
-            const dy = e.touches[0].clientY - e.touches[1].clientY;
-            touchStartDist = Math.hypot(dx, dy);
-          }
-        };
-
-        const onTouchMove = (e: TouchEvent) => {
-          if (e.touches.length === 2 && touchStartDist > 0) {
-            const dx = e.touches[0].clientX - e.touches[1].clientX;
-            const dy = e.touches[0].clientY - e.touches[1].clientY;
-            const dist = Math.hypot(dx, dy);
-            const delta = dist - touchStartDist;
-            touchStartDist = dist;
-
-            const target = orbitTargetRef.current;
-            if (!target) return;
-
-            const camPos = camera.getPosition();
-            const offset = camPos.clone().sub(target);
-            let curDist = offset.length();
-            const factor = 1 - delta * 0.005;
-            curDist = Math.max(0.2, Math.min(150, curDist * factor));
-
-            offset.normalize().mulScalar(curDist);
-            camera.setPosition(target.x + offset.x, target.y + offset.y, target.z + offset.z);
-            camera.lookAt(target, new pc.Vec3(0, 1, 0));
-          }
-        };
-
-        const onTouchEnd = () => {
-          touchStartDist = 0;
-        };
-
-        canvas.addEventListener("pointerdown", onPointerDown);
-        canvas.addEventListener("pointermove", onPointerMove);
-        canvas.addEventListener("pointerup", onPointerUp);
-        canvas.addEventListener("pointercancel", onPointerUp);
-        canvas.addEventListener("wheel", onWheel, { passive: false });
-        canvas.addEventListener("touchstart", onTouchStart, { passive: true });
-        canvas.addEventListener("touchmove", onTouchMove, { passive: true });
-        canvas.addEventListener("touchend", onTouchEnd, { passive: true });
-        canvas.addEventListener("touchcancel", onTouchEnd, { passive: true });
-
-        // Update loop: sync HTML marker positions
+        // Update loop
+        const mPrime = new pc.Mat4();
         const screenPos = new pc.Vec3();
         const worldPos = new pc.Vec3();
+
         app.on("update", () => {
+          // Update ViewCube dengan matriks M' = P^-1 * W
+          if (viewCubeRef.current && cameraRef.current) {
+            getBuildingCameraMatrix(cameraRef.current.getWorldTransform(), mPrime);
+            viewCubeRef.current.update(mPrime);
+          }
+
+          // Sinkronisasi posisi marker HTML ruangan
           const overlay = markersOverlayRef.current;
           if (!overlay) return;
 
@@ -423,7 +417,7 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
             const div = childDivs[i] as HTMLElement | undefined;
             if (!div) continue;
 
-            // Building (x, y, z) -> PlayCanvas (x, z, -y)
+            // Gedung (x, y, z) -> PlayCanvas (x, z, -y)
             worldPos.set(r.x, DEFAULT_ROOM_MARKER_HEIGHT_M, -r.y);
             camComp.worldToScreen(worldPos, screenPos);
 
@@ -505,21 +499,27 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
       abortCtrl.abort();
       if (ro) ro.disconnect();
       if (blobUrl) URL.revokeObjectURL(blobUrl);
+      if (viewCubeRef.current) {
+        viewCubeRef.current.destroy();
+        viewCubeRef.current = null;
+      }
+      if (gridEntityRef.current) {
+        gridEntityRef.current.destroy();
+        gridEntityRef.current = null;
+      }
       if (appRef.current) {
         appRef.current.destroy();
         appRef.current = null;
       }
+      controlsRef.current = null;
       cameraRef.current = null;
-      orbitTargetRef.current = null;
     };
   }, [version, webgl2Supported, loadingVersion, retryNonce, camParam]);
 
   const handleResetCamera = useCallback(() => {
-    if (!cameraRef.current || !initialCamPose.current || !orbitTargetRef.current) return;
-    const { pos, target } = initialCamPose.current;
-    cameraRef.current.setPosition(pos[0], pos[1], pos[2]);
-    orbitTargetRef.current.set(target[0], target[1], target[2]);
-    cameraRef.current.lookAt(orbitTargetRef.current, { x: 0, y: 1, z: 0 } as PlayCanvas.Vec3);
+    if (!controlsRef.current || !initialCamPose.current) return;
+    const { focus, position } = initialCamPose.current;
+    controlsRef.current.reset(focus, position);
   }, []);
 
   // UI Error / Empty States
@@ -580,7 +580,7 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
 
   return (
     <div className="flex w-full flex-col gap-4">
-      {/* D3: Header terintegrasi dengan PageHead dan flex-wrap tombol */}
+      {/* Header dengan PageHead dan flex-wrap tombol kontrol */}
       <PageHead
         crumbs={[
           { label: t("nav.mapVersions"), href: "/maps/" },
@@ -589,7 +589,26 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
         title={t("splat.title")}
         controls={
           <div className="flex flex-wrap items-center gap-2">
-            {/* D2: Tombol Mesh tanpa ikon */}
+            {/* Tombol Grid (opsional) */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-full cursor-pointer"
+              disabled={!isAligned}
+              onClick={() => {
+                setShowGrid((prev) => {
+                  const next = !prev;
+                  if (gridEntityRef.current) {
+                    gridEntityRef.current.enabled = next && isAlignedRef.current;
+                  }
+                  return next;
+                });
+              }}
+            >
+              {t("splat.gridToggle")}
+            </Button>
+
+            {/* Tombol Mesh tanpa ikon */}
             <Button
               variant="outline"
               size="sm"
@@ -600,7 +619,7 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
               {t("splat.meshToggle")} ({t("splat.meshUnavailable")})
             </Button>
 
-            {/* D2: Tombol Marker tanpa ikon */}
+            {/* Tombol Marker tanpa ikon */}
             <Button
               variant="outline"
               size="sm"
@@ -616,7 +635,7 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
                 : t("splat.showMarkers")}
             </Button>
 
-            {/* D2: Tombol Reset Kamera memakai ikon restore */}
+            {/* Tombol Reset Kamera memakai ikon restore */}
             <Button
               variant="outline"
               size="sm"
@@ -635,7 +654,7 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
         ) : null}
       </PageHead>
 
-      {/* D3: Peringatan tanpa penyelarasan dan peringatan cam sebagai baris sendiri */}
+      {/* Peringatan tanpa penyelarasan dan peringatan cam sebagai baris sendiri */}
       {isAligned === false && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-sm text-amber-700 dark:text-amber-400">
           {t("splat.notAlignedWarning")}
@@ -647,7 +666,7 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
         </div>
       )}
 
-      {/* D3, D4: Viewport 3D dengan tinggi 70dvh (min-h 320px) dan touch-none */}
+      {/* Viewport 3D dengan tinggi 70dvh (min-h 320px) dan touch-none */}
       <div
         ref={containerRef}
         className="relative w-full h-[70dvh] min-h-[320px] rounded-xl overflow-hidden bg-black border border-border touch-none"
@@ -674,7 +693,7 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
           ))}
         </div>
 
-        {/* D1: Downloading / Preparing Progress Overlay - hanya tampil selama !isReady && !downloadError */}
+        {/* Downloading / Preparing Progress Overlay - hanya tampil selama !isReady && !downloadError */}
         {!isReady && !downloadError && (
           <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-background/80 p-6 backdrop-blur">
             <div className="w-full max-w-sm rounded-xl border bg-card p-6 text-center shadow-lg">
@@ -741,6 +760,22 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
           </div>
         )}
       </div>
+
+      {/* Bantuan Navigasi & Kontrol (<details>) */}
+      <details className="rounded-xl border border-border bg-card p-3.5 text-xs text-muted-foreground transition-all">
+        <summary className="cursor-pointer font-medium text-foreground select-none">
+          {t("splat.controls.title")}
+        </summary>
+        <ul className="mt-2.5 space-y-1.5 border-t border-border/50 pt-2.5">
+          <li>{t("splat.controls.orbit")}</li>
+          <li>{t("splat.controls.pan")}</li>
+          <li>{t("splat.controls.zoom")}</li>
+          <li>{t("splat.controls.fly")}</li>
+          <li>{t("splat.controls.keys")}</li>
+          <li>{t("splat.controls.speed")}</li>
+          <li>{t("splat.controls.viewcube")}</li>
+        </ul>
+      </details>
     </div>
   );
 }
