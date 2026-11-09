@@ -651,4 +651,13 @@ export const id: Record<TranslationKey, string> = {
   "splat.meshUnavailable": "Mesh 3D belum tersedia",
   "splat.invalidCam": "Parameter kamera tidak sah diabaikan.",
   "splat.view3d": "Lihat 3D",
+  "splat.controls.title": "Bantuan Navigasi & Kontrol",
+  "splat.controls.orbit": "Klik kiri & seret (atau 1 jari layar sentuh): Putar orbit kamera",
+  "splat.controls.pan": "Klik tengah / Shift + klik kiri (atau seret 2 jari): Geser kamera (pan)",
+  "splat.controls.zoom": "Roda mouse (atau cubitan 2 jari): Zoom jarak kamera",
+  "splat.controls.fly": "Klik kanan & seret: Mode terbang bebas (fly / look around)",
+  "splat.controls.keys": "Tombol W/A/S/D atau Panah: Gerak terbang; Q/E: Turun / Naik",
+  "splat.controls.speed": "Shift: Gerak cepat (8 m/s); Ctrl: Gerak lambat (1 m/s)",
+  "splat.controls.viewcube": "ViewCube (kanan-atas): Klik lingkaran sumbu untuk pandangan tegak lurus gedung",
+  "splat.gridToggle": "Grid",
 };

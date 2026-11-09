@@ -647,6 +647,15 @@ export const en = {
   "splat.meshUnavailable": "3D mesh not yet available",
   "splat.invalidCam": "Invalid camera parameter ignored.",
   "splat.view3d": "View 3D",
+  "splat.controls.title": "Navigation & Controls Help",
+  "splat.controls.orbit": "Left click & drag (or 1 finger touch): Orbit camera",
+  "splat.controls.pan": "Middle click / Shift + left click (or 2 finger drag): Pan camera",
+  "splat.controls.zoom": "Mouse wheel (or 2 finger pinch): Zoom distance",
+  "splat.controls.fly": "Right click & drag: Fly mode (look around)",
+  "splat.controls.keys": "W/A/S/D or Arrow keys: Fly movement; Q/E: Move down / up",
+  "splat.controls.speed": "Shift: Fast movement (8 m/s); Ctrl: Slow movement (1 m/s)",
+  "splat.controls.viewcube": "ViewCube (top-right): Click axis circle to align camera with building axis",
+  "splat.gridToggle": "Grid",
 } as const;
 
 export type TranslationKey = keyof typeof en;
