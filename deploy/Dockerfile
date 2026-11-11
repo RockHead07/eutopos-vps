@@ -89,5 +89,7 @@ COPY --chown=eutopos:eutopos pyproject.toml ./
 COPY --chown=eutopos:eutopos tests ./tests
 # Tes umpan drive (tests/test_host_disk_feed.py) menjalankan fungsi dari skrip aslinya. Hanya tahap test: image layanan tidak membawanya.
 COPY --chown=eutopos:eutopos deploy/autodeploy.sh ./deploy/autodeploy.sh
+# Tes compose (tests/test_deploy_compose.py) membaca compose.yaml dan Dockerfile.splat sebagai teks. Hanya tahap test.
+COPY --chown=eutopos:eutopos deploy/compose.yaml deploy/Dockerfile.splat ./deploy/
 USER eutopos
 RUN pytest -q -p no:cacheprovider

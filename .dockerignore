@@ -1,5 +1,5 @@
-# Konteks build: pyproject.toml, uv.lock, server/, spike/, web/ (dashboard), tests/ dan deploy/autodeploy.sh
-# (keduanya hanya dipakai tahap test).
+# Konteks build: pyproject.toml, uv.lock, server/, spike/, web/ (dashboard), tests/ dan tiga berkas deploy/
+# (autodeploy.sh, compose.yaml, Dockerfile.splat; ketiganya hanya dipakai tahap test).
 *
 !pyproject.toml
 !uv.lock
@@ -8,6 +8,8 @@
 !web/
 !tests/
 !deploy/autodeploy.sh
+!deploy/compose.yaml
+!deploy/Dockerfile.splat
 **/__pycache__
 web/node_modules
 web/.next
