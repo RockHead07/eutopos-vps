@@ -15,7 +15,7 @@ export type PipelineStageId = (typeof PIPELINE_STAGES)[number]["id"];
 
 interface PipelineStageIndicatorProps {
   status: string; // uploading, queued, running, done, failed, deleting
-  currentStage: string | null; // extract, build, inspect, register
+  currentStage: string | null; // gpu_wait, extract, build, inspect, register
   timings?: Record<string, number>; // summary.run.t_map_s
 }
 
@@ -107,6 +107,7 @@ export function PipelineStageIndicator({
 
   let summary = t("pipeline.notStarted");
   if (status === "done") summary = t("pipeline.allStagesFinished");
+  else if (status === "running" && currentStage === "gpu_wait") summary = t("pipeline.waitingGpu");
   else if (status === "running") {
     summary = currentStageLabel
       ? t("pipeline.stageXofY", {
