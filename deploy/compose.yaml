@@ -79,6 +79,9 @@ services:
     shm_size: "2gb"
     environment:
       DATABASE_URL: postgresql+psycopg://eutopos:${POSTGRES_PASSWORD}@db:5432/eutopos
+      # Antre pekerjaan 3D otomatis setelah peta jadi. Hidupkan (1) HANYA bersama profil splat,
+      # kalau tidak antrean 3D menumpuk tanpa pekerja. Lihat README bagian 10.
+      EUTOPOS_SPLAT_AUTO: ${EUTOPOS_SPLAT_AUTO:-0}
     volumes:
       # Pekerja menulis peta baru, jadi /maps baca tulis (api tetap baca saja).
       - type: bind
@@ -97,6 +100,39 @@ services:
     depends_on:
       # Bukan service_healthy: kalau api gagal memuat peta aktif, pekerja tetap harus bisa membangun
       # peta pengganti. Kalau migrasi belum selesai, pekerja gagal lalu diulang oleh restart.
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+  splat-worker:
+    # Opt-in: autodeploy menjalankan `docker compose build` dan `up` untuk semua layanan tanpa profil.
+    # Aktifkan dengan COMPOSE_PROFILES=splat di deploy/.env (atau --profile splat). Lihat README bagian 10.
+    profiles: ["splat"]
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.splat
+    init: true
+    shm_size: "2gb"
+    # Batas RAM kontainer: pelatih terukur sekitar2 GB (Task 8 B7); bila melonjak, hanya kontainer ini
+    # yang dimatikan kernel, bukan VM tempat api dan worker berjalan.
+    mem_limit: "8g"
+    memswap_limit: "8g"
+    environment:
+      DATABASE_URL: postgresql+psycopg://eutopos:${POSTGRES_PASSWORD}@db:5432/eutopos
+    volumes:
+      - type: bind
+        source: ${EUTOPOS_MAPS_DIR:?isi EUTOPOS_MAPS_DIR di deploy/.env}
+        target: /maps
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${EUTOPOS_DATA_DIR:?isi EUTOPOS_DATA_DIR di deploy/.env}
+        target: /data
+        bind:
+          create_host_path: false
+    healthcheck:
+      disable: true
+    depends_on:
       api:
         condition: service_started
     restart: unless-stopped
