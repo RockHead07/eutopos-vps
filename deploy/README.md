@@ -381,3 +381,38 @@ deploy/autodeploy.sh --dry-run                     # alasan commit terbaru belum
 **Bekerja manual di PC lab** (pindah cabang, mengubah berkas): timer otomatis berhenti mengubah apa pun
 selama checkout bukan `main` yang bersih. Untuk menghentikannya sama sekali:
 `sudo systemctl disable --now "eutopos-deploy@$USER.timer"`.
+
+## 10. Layanan Pekerja Splat (splat-worker)
+
+Layanan `splat-worker` membangun Gaussian Splat (3DGS) secara otomatis saat peta selesai dibangun.
+Layanan ini memuat gsplat 1.5.3, `@playcanvas/splat-transform` 3.10.3, dan modul orkestrasi `server.splat_worker`.
+
+* **Status di produksi**: opt-in. Layanan memakai profil `splat`, jadi `docker compose build` dan `up` (termasuk
+  `autodeploy.sh`) TIDAK membangun atau menyalakannya.
+* **Mengaktifkan (dua saklar, selalu bersamaan)** di `deploy/.env`:
+  ```
+  COMPOSE_PROFILES=splat
+  EUTOPOS_SPLAT_AUTO=1
+  ```
+  `COMPOSE_PROFILES=splat` menyalakan pekerja splat. `EUTOPOS_SPLAT_AUTO=1` membuat `worker` mengantre pekerjaan
+  3D otomatis setiap peta baru selesai (bawaan 0). Jangan menyalakan saklar kedua tanpa yang pertama: antrean 3D
+  menumpuk tanpa pekerja dan menahan penghapusan versi. Menyalakan hanya yang pertama aman (hanya tombol
+  "Bangun ulang 3D" admin yang mengantre). Sesudah mengubah `.env`: `docker compose up -d --build`.
+* **Awas**: jangan menekan "Bangun ulang 3D" sebelum `COMPOSE_PROFILES=splat` aktif. Tanpa pekerja, pekerjaan
+  berstatus queued dan menahan penghapusan versi itu sampai pekerja menyala. Pekerjaan peta yang antre saat
+  pelatihan berjalan menunggu kunci GPU sampai pelatihan selesai (sekitar 16 menit pada 401 frame).
+* **Pratinjau untuk peta yang sudah ada**: pemicu otomatis hanya untuk peta BARU. Untuk versi yang sudah terbit,
+  admin menekan "Bangun ulang 3D" di halaman Versi peta (butuh frame; versi dari CLI tanpa frame ditolak).
+* **Perilaku**: satu pekerjaan sekaligus; peta didahulukan (pekerjaan 3D menunggu selama ada pekerjaan peta
+  queued atau running); pelatihan berbagi GPU dengan lokalisasi lewat kunci GPU bersama (`pg_advisory_lock`).
+  Sebelum melatih, VRAM bebas diperiksa: kurang dari 4.096 MiB gagal dengan pesan jelas (coba lagi lewat tombol
+  bangun ulang). RAM kontainer dibatasi 8 GB.
+* **Terukur (PC lab RTX 3070 8 GB, 401 frame, 30.000 langkah, 10 Nov 2026)**: total 942 detik (pelatihan 875 detik),
+  VRAM tambahan sekitar 2 GB di atas lokalisasi produksi (1,4 GB), RAM sekitar 2 GB, hasil 7,7 MB (657.978
+  Gaussian setelah pangkas L1 23,8%). Lantai dengan ribuan frame belum diukur.
+* **Kebutuhan disk**: Image berukuran sekitar 24-30 GB (lapisan PyTorch 2.4.0 devel CUDA 12.1 dan cache JIT). Pastikan host memiliki ruang disk bebas minimal 35 GB.
+* **Cara membangun image**:
+  ```bash
+  docker build -f deploy/Dockerfile.splat -t eutopos-splat-worker:dev .
+  ```
+* **Migrasi database**: Memerlukan migrasi `0007_splat_job.py`. Migrasi diterapkan otomatis oleh layanan `api` saat container `api` dinyalakan ulang sesudah deploy.
