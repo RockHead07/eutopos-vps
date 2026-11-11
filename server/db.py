@@ -65,6 +65,28 @@ class MapJob(SQLModel, table=True):
     finished_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
 
 
+class SplatJob(SQLModel, table=True):
+    """Satu pekerjaan splat per versi peta, terpisah dari pekerjaan bangun peta."""
+
+    __tablename__ = "splat_job"
+
+    id: int | None = Field(default=None, primary_key=True)
+    # CASCADE: versi dihapus lewat maps_api (versi CLI) dan worker.purge; satu pemilik, di DB.
+    map_version_id: int = Field(foreign_key="map_version.id", ondelete="CASCADE", unique=True)
+    status: str = "queued"
+    stage: str | None = None
+    params: dict = Field(
+        default_factory=lambda: {"steps": 30000, "min_opacity": 0.02}, sa_type=JSON
+    )
+    summary: dict | None = Field(default=None, sa_type=JSON)
+    error: str | None = None
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC), sa_type=DateTime(timezone=True)
+    )
+    started_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
+    finished_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
+
+
 class Room(SQLModel, table=True):
     """Ruangan yang ditaruh staf di dashboard, posisi di kerangka gedung G (spek 2026-10-21 5b)."""
 

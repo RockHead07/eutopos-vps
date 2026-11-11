@@ -6,14 +6,14 @@ tidak menyalin EXIF, jadi foto interior gedung tidak membawa metadata ponsel.
 
 from pathlib import Path
 
-import cv2
-
 WIDTH = 480
 QUALITY = 80
 
 
 def make_thumbs(mapping_dir: Path, out_dir: Path, width: int = WIDTH) -> int:
     """Foto kecil (nama sama dengan frame) untuk semua frame; mengembalikan jumlah yang dibuat."""
+    import cv2  # impor tertunda: splat-worker mengimpor server.worker tetapi tidak memasang OpenCV
+
     frames = sorted(mapping_dir.glob("*.jpg")) if mapping_dir.is_dir() else []
     if not frames:
         return 0

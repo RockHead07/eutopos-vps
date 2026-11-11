@@ -9,8 +9,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlmodel import select
 
-from server import active_map, alignment, auth, jobs, splat_frame, system, uploads
-from server.db import MapJob, MapVersion, publish
+from server import active_map, alignment, auth, jobs, splat_frame, splat_jobs, system, uploads
+from server.db import MapJob, MapVersion, SplatJob, publish
 
 MAPS_ROOT = Path("/maps")  # jalur peta di dalam container (deploy/compose.yaml)
 PLOTLY_JS = Path(plotly.__file__).parent / "package_data" / "plotly.min.js"
@@ -28,6 +28,9 @@ class VersionOut(BaseModel):
     job_id: int | None
     has_report: bool
     has_splat: bool
+    splat_status: str | None = None
+    splat_stage: str | None = None
+    splat_error: str | None = None
 
 
 def _report(v: MapVersion) -> Path | None:
@@ -62,6 +65,7 @@ def preview_path(job: MapJob) -> Path | None:
 
 def _out(s, v: MapVersion) -> VersionOut:
     job = s.exec(select(MapJob.id).where(MapJob.map_version_id == v.id)).first()
+    splat_job = s.exec(select(SplatJob).where(SplatJob.map_version_id == v.id)).first()
     return VersionOut(
         **v.model_dump(
             include={"id", "area_id", "version", "status", "created_at", "published_by"}
@@ -69,6 +73,9 @@ def _out(s, v: MapVersion) -> VersionOut:
         job_id=job,
         has_report=_report(v) is not None,
         has_splat=_splat(v) is not None,
+        splat_status=splat_job.status if splat_job else None,
+        splat_stage=splat_job.stage if splat_job else None,
+        splat_error=splat_job.error if (splat_job and splat_job.status == "failed") else None,
     )
 
 
@@ -115,6 +122,45 @@ def splat_placement(version_id: int, user: uploads.User, s: uploads.DB) -> dict:
             404, detail={"code": "not_aligned", "message": "map version has no alignment"}
         )
     return splat_frame.placement(align["meter_from_model"])
+
+
+@router.post("/api/versions/{version_id}/splat/rebuild", status_code=202)
+def rebuild_splat(version_id: int, request: Request, user: uploads.User, s: uploads.DB) -> dict:
+    if request.headers.get("content-type", "").split(";")[0].strip() != "application/json":
+        raise HTTPException(415, "send with Content-Type: application/json")
+    if not auth.is_admin(user):
+        raise HTTPException(403, "only admins can rebuild the 3D view")
+    v = s.get(MapVersion, version_id)
+    if v is None:
+        raise HTTPException(404, "version not found")
+    if s.exec(
+        select(MapJob.id).where(MapJob.map_version_id == v.id, MapJob.status == "deleting")
+    ).first():
+        raise HTTPException(409, "its job is being deleted")
+    if not s.exec(select(MapJob.id).where(MapJob.map_version_id == v.id)).first():
+        raise HTTPException(
+            409,
+            detail={
+                "code": "splat_no_frames",
+                "message": "this map version has no build job, so there are no frames to train on",
+            },
+        )
+    try:
+        splat_jobs.enqueue(s, v.id)
+    except ValueError as e:
+        msg = str(e)
+        if msg == "already queued or running":
+            raise HTTPException(
+                409,
+                detail={
+                    "code": "splat_busy",
+                    "message": "a 3D build is already queued or running for this version",
+                },
+            ) from e
+        if msg == "map version not found":
+            raise HTTPException(404, "version not found") from e
+        raise
+    return {"status": "queued"}
 
 
 @router.post("/api/versions/{version_id}/publish")

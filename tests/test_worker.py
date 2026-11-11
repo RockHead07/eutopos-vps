@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 import pytest
 from mp4_builder import mp4
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 
 from server import jobs, pipeline, worker
 from server.db import MapJob, MapVersion, publish, register
@@ -482,3 +482,357 @@ def test_backfill_ignores_jobs_outside_the_maps_folder(session, tmp_path):
     keep_frames(data, job)
     assert worker.backfill_previews(session, data, maps) == (0, 0)
     assert list(outside.iterdir()) == []
+
+
+class FakeGpuLock:
+    def __init__(self, on_enter=None, error=None):
+        self.held = False
+        self.events = []
+        self.on_enter = on_enter
+        self.error = error
+
+    def __enter__(self):
+        self.events.append("enter")
+        if self.on_enter is not None:
+            self.on_enter()
+        if self.error is not None:
+            raise self.error
+        self.held = True
+
+    def __exit__(self, exc_type, exc, traceback):
+        assert self.held
+        self.held = False
+        self.events.append("exit")
+
+
+def test_process_holds_the_lock_around_every_stage(session, tmp_path, monkeypatch):
+    data, maps, _, _, videos = make_inputs(tmp_path)
+    job = queued(session, videos)
+    gate = FakeGpuLock()
+    calls = []
+    delegate = fake_runner(calls)
+    original_stage, original_finish = jobs.set_stage, jobs.finish
+
+    def run_held(argv, log):
+        assert gate.held
+        delegate(argv, log)
+
+    def free_held(path):
+        assert gate.held
+        return 10**12
+
+    def host_held(path):
+        assert gate.held
+        return None
+
+    def set_stage(s, j, stage):
+        assert gate.held is (stage != "gpu_wait")
+        original_stage(s, j, stage)
+
+    def finish(*args, **kwargs):
+        assert gate.held
+        original_finish(*args, **kwargs)
+
+    monkeypatch.setattr(jobs, "set_stage", set_stage)
+    monkeypatch.setattr(jobs, "finish", finish)
+    worker.process(
+        session,
+        job,
+        data,
+        maps,
+        runner=run_held,
+        free_bytes=free_held,
+        host_disk=host_held,
+        lock=lambda: gate,
+    )
+    assert job.status == "done", job.error
+    assert calls == ["extract_frames.py", "extract_frames.py", "run.py", "inspect_map.py"]
+    assert gate.held is False
+    assert gate.events == ["enter", "exit"]
+
+
+def test_process_sets_gpu_wait_before_blocking_then_extract(session, tmp_path, monkeypatch):
+    data, maps, _, _, videos = make_inputs(tmp_path)
+    job = queued(session, videos)
+    stages = []
+    original = jobs.set_stage
+
+    def before_enter():
+        assert job.stage == "gpu_wait"
+        assert stages == ["gpu_wait"]
+
+    def set_stage(s, j, stage):
+        stages.append(stage)
+        original(s, j, stage)
+
+    monkeypatch.setattr(jobs, "set_stage", set_stage)
+    gate = FakeGpuLock(on_enter=before_enter)
+    worker.process(
+        session,
+        job,
+        data,
+        maps,
+        runner=fake_runner([]),
+        free_bytes=lambda p: 10**12,
+        lock=lambda: gate,
+    )
+    assert job.status == "done", job.error
+    assert stages == ["gpu_wait", "extract", "build", "inspect", "register"]
+    assert gate.events == ["enter", "exit"]
+
+
+@pytest.mark.parametrize(
+    ("fail_on", "stage"),
+    [("extract_frames.py", "extract"), ("run.py", "build"), ("inspect_map.py", "inspect")],
+)
+def test_process_releases_the_lock_when_a_stage_fails(
+    session, tmp_path, monkeypatch, fail_on, stage
+):
+    data, maps, _, _, videos = make_inputs(tmp_path)
+    job = queued(session, videos)
+    gate = FakeGpuLock()
+    original_fail = jobs.fail
+
+    def fail(*args, **kwargs):
+        assert gate.held is False
+        assert gate.events == ["enter", "exit"]
+        original_fail(*args, **kwargs)
+
+    monkeypatch.setattr(jobs, "fail", fail)
+    worker.process(
+        session,
+        job,
+        data,
+        maps,
+        runner=fake_runner([], fail_on=fail_on),
+        free_bytes=lambda p: 10**12,
+        lock=lambda: gate,
+    )
+    assert (job.status, job.stage) == ("failed", stage)
+    assert fail_on in job.error
+    assert gate.held is False
+    assert gate.events == ["enter", "exit"]
+
+
+def test_process_fails_the_job_when_the_lock_cannot_be_acquired(session, tmp_path):
+    data, maps, uploaded, _, videos = make_inputs(tmp_path)
+    job = queued(session, videos)
+    calls = []
+    gate = FakeGpuLock(error=RuntimeError("GPU lock unavailable"))
+    worker.process(
+        session,
+        job,
+        data,
+        maps,
+        runner=fake_runner(calls),
+        free_bytes=lambda p: 10**12,
+        lock=lambda: gate,
+    )
+    assert (job.status, job.stage) == ("failed", "gpu_wait")
+    assert "GPU lock unavailable" in job.error
+    assert calls == [] and gate.events == ["enter"] and gate.held is False
+    assert not uploaded.exists()
+
+
+def test_process_default_lock_is_built_from_the_session_bind(session, tmp_path, monkeypatch):
+    data, maps, _, _, videos = make_inputs(tmp_path)
+    job = queued(session, videos)
+    gate = FakeGpuLock()
+    binds = []
+
+    def fake(engine):
+        binds.append(engine)
+        return gate
+
+    monkeypatch.setattr(worker, "gpu_lock", fake)
+    worker.process(
+        session,
+        job,
+        data,
+        maps,
+        runner=fake_runner([]),
+        free_bytes=lambda p: 10**12,
+    )
+    assert job.status == "done", job.error
+    assert len(binds) == 1 and binds[0] is session.get_bind()
+    assert gate.events == ["enter", "exit"] and gate.held is False
+
+
+def test_process_without_a_lock_argument_still_works_on_sqlite(session, tmp_path):
+    data, maps, _, _, videos = make_inputs(tmp_path)
+    job = queued(session, videos)
+    worker.process(
+        session,
+        job,
+        data,
+        maps,
+        runner=fake_runner([]),
+        free_bytes=lambda p: 10**12,
+    )
+    assert job.status == "done", job.error
+
+
+def test_purge_removes_the_splat_work_folder_but_keeps_the_frames(session, tmp_path):
+    """Pembangunan 3D yang gagal meninggalkan PLY ratusan MB di data/jobs/<id>/splat."""
+    data, maps = tmp_path / "data", tmp_path / "maps"
+    job, _version, _map_dir = finished_job(session, maps)
+    jobdir = data / "jobs" / str(job.id)
+    (jobdir / "dataset").mkdir(parents=True)
+    (jobdir / "dataset" / "f.jpg").write_text("jpg")
+    (jobdir / "splat" / "result" / "ply").mkdir(parents=True)
+    (jobdir / "splat" / "result" / "ply" / "point_cloud_29999.ply").write_text("ply")
+    jobs.request_delete(session, job)
+
+    worker.purge(session, job, maps, data=data)
+
+    assert not (jobdir / "splat").exists()
+    assert (jobdir / "dataset" / "f.jpg").exists()  # frame tetap: masukan pembangunan ulang
+    assert session.get(MapJob, job.id) is None
+
+
+def test_purge_works_when_there_is_no_splat_work_folder(session, tmp_path):
+    data, maps = tmp_path / "data", tmp_path / "maps"
+    job, _version, map_dir = finished_job(session, maps)
+    jobs.request_delete(session, job)
+
+    worker.purge(session, job, maps, data=data)
+
+    assert session.get(MapJob, job.id) is None
+    assert not map_dir.exists()
+
+
+def test_purge_never_follows_a_symlinked_splat_folder(session, tmp_path):
+    """Folder splat berupa symlink tidak diikuti: target tidak disentuh, penghapusan tetap jalan."""
+    data, maps = tmp_path / "data", tmp_path / "maps"
+    job, _version, map_dir = finished_job(session, maps)
+    jobdir = data / "jobs" / str(job.id)
+    jobdir.mkdir(parents=True)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "keep.txt").write_text("keep")
+    try:
+        (jobdir / "splat").symlink_to(elsewhere, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("sistem ini tidak mengizinkan membuat symlink")
+    jobs.request_delete(session, job)
+
+    worker.purge(session, job, maps, data=data)
+
+    assert (elsewhere / "keep.txt").read_text() == "keep"
+    assert session.get(MapJob, job.id) is None
+    assert not map_dir.exists()
+
+
+# --- Task 9: pemicu 3D setelah peta jadi ---------------------------------------------------------
+
+
+def splat_rows(session):
+    from server.db import SplatJob
+
+    return session.exec(select(SplatJob)).all()
+
+
+def test_finishing_a_map_job_enqueues_a_splat_job_when_auto_is_on(session, tmp_path, monkeypatch):
+    monkeypatch.setenv("EUTOPOS_SPLAT_AUTO", "1")
+    data, maps, _, _, videos = make_inputs(tmp_path)
+    job = queued(session, videos)
+
+    worker.process(session, job, data, maps, runner=fake_runner([]), free_bytes=lambda p: 10**12)
+
+    assert job.status == "done", job.error
+    rows = splat_rows(session)
+    assert [(r.map_version_id, r.status) for r in rows] == [(job.map_version_id, "queued")]
+
+
+def test_finishing_a_map_job_enqueues_nothing_by_default(session, tmp_path, monkeypatch):
+    monkeypatch.delenv("EUTOPOS_SPLAT_AUTO", raising=False)
+    data, maps, _, _, videos = make_inputs(tmp_path)
+    job = queued(session, videos)
+
+    worker.process(session, job, data, maps, runner=fake_runner([]), free_bytes=lambda p: 10**12)
+
+    assert job.status == "done", job.error
+    assert splat_rows(session) == []
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("1", True),
+        ("true", True),
+        ("YES", True),
+        (" on ", True),
+        ("0", False),
+        ("", False),
+        ("false", False),
+        ("no", False),
+        ("2", False),
+    ],
+)
+def test_splat_auto_flag_parsing(monkeypatch, value, expected):
+    monkeypatch.setenv("EUTOPOS_SPLAT_AUTO", value)
+    assert worker.splat_auto_enabled() is expected
+
+
+def test_enqueue_failure_does_not_fail_the_map_job(session, tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("EUTOPOS_SPLAT_AUTO", "1")
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("database hiccup")
+
+    monkeypatch.setattr(worker.splat_jobs, "enqueue", boom)
+    data, maps, _, _, videos = make_inputs(tmp_path)
+    job = queued(session, videos)
+
+    worker.process(session, job, data, maps, runner=fake_runner([]), free_bytes=lambda p: 10**12)
+
+    session.refresh(job)
+    assert (job.status, job.error) == ("done", None)
+    assert session.get(MapVersion, job.map_version_id) is not None
+    assert "database hiccup" in capsys.readouterr().err
+
+
+def test_failed_map_job_enqueues_nothing(session, tmp_path, monkeypatch):
+    monkeypatch.setenv("EUTOPOS_SPLAT_AUTO", "1")
+    data, maps, _, _, videos = make_inputs(tmp_path)
+    job = queued(session, videos)
+
+    runner = fake_runner([], fail_on="run.py")
+    worker.process(session, job, data, maps, runner=runner, free_bytes=lambda p: 10**12)
+
+    assert job.status == "failed"
+    assert splat_rows(session) == []
+
+
+def test_splat_job_is_for_the_new_version_not_the_map_job_id(session, tmp_path, monkeypatch):
+    monkeypatch.setenv("EUTOPOS_SPLAT_AUTO", "1")
+    register(session, "other", "Other", str(tmp_path / "maps" / "other" / "job-0"))
+    data, maps, _, _, videos = make_inputs(tmp_path)
+    job = queued(session, videos)
+
+    worker.process(session, job, data, maps, runner=fake_runner([]), free_bytes=lambda p: 10**12)
+
+    assert job.status == "done", job.error
+    assert job.map_version_id != job.id  # ids sengaja berbeda supaya salah ambil id terlihat
+    assert [r.map_version_id for r in splat_rows(session)] == [job.map_version_id]
+
+
+@pytest.mark.filterwarnings("ignore::sqlalchemy.exc.SAWarning")
+def test_enqueue_that_breaks_the_transaction_leaves_the_session_usable(
+    session, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("EUTOPOS_SPLAT_AUTO", "1")
+
+    def poison(sess, version_id, params=None):
+        # kunci utama ganda: commit gagal dan sesi harus di-rollback sebelum dipakai lagi
+        sess.add(MapVersion(id=version_id, area_id="floor10", version=99, path="/x"))
+        sess.commit()
+
+    monkeypatch.setattr(worker.splat_jobs, "enqueue", poison)
+    data, maps, _, _, videos = make_inputs(tmp_path)
+    job = queued(session, videos)
+
+    worker.process(session, job, data, maps, runner=fake_runner([]), free_bytes=lambda p: 10**12)
+
+    session.refresh(job)  # PendingRollbackError bila rollback hilang
+    assert job.status == "done"

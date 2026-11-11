@@ -438,3 +438,310 @@ def test_placement_200_when_aligned_in_db(client):
     assert data["scale"] == 1.0
     assert len(data["position"]) == 3
     assert len(data["rotation_xyzw"]) == 4
+
+
+# --- Tiket agy 13: Task 7 tests ---
+
+
+@pytest.mark.parametrize("status", ["queued", "running", "failed", "done"])
+def test_splat_status_is_null_without_a_row_and_reflects_the_row(client, status):
+    from server import splat_jobs
+
+    v = make_version(client)
+    row = client.get("/api/versions").json()[0]
+    assert row["splat_status"] is None
+    assert row["splat_stage"] is None
+    assert row["splat_error"] is None
+
+    sj = splat_jobs.enqueue(client.db, v.id)
+    splat_jobs.set_stage(client.db, sj, "prepare")
+    if status == "running":
+        splat_jobs.claim_next(client.db)
+        splat_jobs.set_stage(client.db, sj, "train")
+    elif status == "failed":
+        claimed = splat_jobs.claim_next(client.db)
+        splat_jobs.set_stage(client.db, claimed, "train")
+        splat_jobs.fail(client.db, claimed, "train failed")
+    elif status == "done":
+        claimed = splat_jobs.claim_next(client.db)
+        splat_jobs.set_stage(client.db, claimed, "place")
+        splat_jobs.finish(client.db, claimed, {"out": 1})
+
+    row = client.get("/api/versions").json()[0]
+    assert row["splat_status"] == status
+    if status == "running":
+        assert row["splat_stage"] == "train"
+    elif status == "failed":
+        assert row["splat_stage"] == "train"
+    elif status == "done":
+        assert row["splat_stage"] == "place"
+    elif status == "queued":
+        assert row["splat_stage"] == "prepare"
+
+
+def test_splat_error_only_for_failed_rows(client):
+    from server import splat_jobs
+
+    v = make_version(client)
+    splat_jobs.enqueue(client.db, v.id)
+    claimed = splat_jobs.claim_next(client.db)
+    splat_jobs.fail(client.db, claimed, "oom error")
+    row = client.get("/api/versions").json()[0]
+    assert row["splat_status"] == "failed"
+    assert row["splat_error"] == "oom error"
+
+    # Done row with old error column content must yield splat_error = None
+    claimed.status = "done"
+    claimed.error = "old error string"
+    client.db.add(claimed)
+    client.db.commit()
+
+    row = client.get("/api/versions").json()[0]
+    assert row["splat_status"] == "done"
+    assert row["splat_error"] is None
+
+
+def test_has_splat_is_file_based_and_independent_of_status(client):
+    from server import splat_jobs
+
+    v = make_version(client)
+    splat_dir = Path(v.path) / "splat"
+    splat_dir.mkdir(parents=True, exist_ok=True)
+    (splat_dir / "scene.sog").write_bytes(b"PK\x03\x04old-sog")
+    splat_jobs.enqueue(client.db, v.id)
+    splat_jobs.claim_next(client.db)
+    row = client.get("/api/versions").json()[0]
+    assert row["has_splat"] is True
+    assert row["splat_status"] == "running"
+
+    v2 = make_version(client, area="floor9")
+    splat_jobs.enqueue(client.db, v2.id)
+    claimed2 = splat_jobs.claim_next(client.db)
+    splat_jobs.fail(client.db, claimed2, "failed")
+    rows = {r["id"]: r for r in client.get("/api/versions").json()}
+    assert rows[v2.id]["has_splat"] is False
+    assert rows[v2.id]["splat_status"] == "failed"
+
+
+@pytest.mark.parametrize("prev_status", ["failed", "done"])
+def test_rebuild_queues_a_failed_or_done_job(client, prev_status):
+    from sqlmodel import select
+
+    from server import splat_jobs
+    from server.db import SplatJob
+
+    v = make_version(client)
+    splat_jobs.enqueue(client.db, v.id)
+    claimed = splat_jobs.claim_next(client.db)
+    if prev_status == "failed":
+        splat_jobs.fail(client.db, claimed, "bad run")
+    else:
+        splat_jobs.finish(client.db, claimed, {"ok": 1})
+
+    r = client.post(f"/api/versions/{v.id}/splat/rebuild", json={})
+    assert r.status_code == 202
+    assert r.json() == {"status": "queued"}
+
+    client.db.expire_all()
+    updated = client.db.exec(select(SplatJob).where(SplatJob.map_version_id == v.id)).first()
+    assert updated.status == "queued"
+    assert updated.error is None
+
+
+def test_rebuild_creates_a_row_when_none_exists(client):
+    from sqlmodel import select
+
+    from server.db import SplatJob
+
+    v = make_version(client)
+    assert client.db.exec(select(SplatJob).where(SplatJob.map_version_id == v.id)).first() is None
+
+    r = client.post(f"/api/versions/{v.id}/splat/rebuild", json={})
+    assert r.status_code == 202
+    assert r.json() == {"status": "queued"}
+
+    client.db.expire_all()
+    rows = client.db.exec(select(SplatJob).where(SplatJob.map_version_id == v.id)).all()
+    assert len(rows) == 1
+    assert rows[0].status == "queued"
+    assert rows[0].params == {"steps": 30000, "min_opacity": 0.02}
+
+
+@pytest.mark.parametrize("status", ["queued", "running"])
+def test_rebuild_409_when_queued_or_running(client, status):
+    from sqlmodel import select
+
+    from server import splat_jobs
+    from server.db import SplatJob
+
+    v = make_version(client)
+    splat_jobs.enqueue(client.db, v.id)
+    if status == "running":
+        splat_jobs.claim_next(client.db)
+
+    r = client.post(f"/api/versions/{v.id}/splat/rebuild", json={})
+    assert r.status_code == 409
+    body = r.json()
+    assert body["detail"]["code"] == "splat_busy"
+
+    client.db.expire_all()
+    row = client.db.exec(select(SplatJob).where(SplatJob.map_version_id == v.id)).first()
+    assert row.status == status
+
+
+def test_rebuild_404_for_unknown_version(client):
+    from sqlmodel import select
+
+    from server.db import SplatJob
+
+    r = client.post("/api/versions/999/splat/rebuild", json={})
+    assert r.status_code == 404
+    assert client.db.exec(select(SplatJob)).all() == []
+
+
+def test_rebuild_requires_login(client, monkeypatch):
+    v = make_version(client)
+    monkeypatch.delenv("EUTOPOS_DEV_NO_AUTH", raising=False)
+    monkeypatch.setenv("CF_ACCESS_TEAM_DOMAIN", "https://test.cloudflareaccess.com")
+    monkeypatch.setenv("CF_ACCESS_AUD", "test-aud")
+    r = client.post(f"/api/versions/{v.id}/splat/rebuild", json={})
+    assert r.status_code == 401
+
+
+def test_rebuild_needs_admin(client, monkeypatch):
+    from sqlmodel import select
+
+    from server.db import SplatJob
+
+    v = make_version(client)
+    as_guest(client, monkeypatch)
+    r = client.post(f"/api/versions/{v.id}/splat/rebuild", json={})
+    assert r.status_code == 403
+    assert client.db.exec(select(SplatJob)).all() == []
+
+
+def test_rebuild_rejects_a_version_without_a_build_job(client):
+    from sqlmodel import select
+
+    from server.db import SplatJob
+
+    v = make_version(client, job=False)
+    r = client.post(f"/api/versions/{v.id}/splat/rebuild", json={})
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "splat_no_frames"
+    assert client.db.exec(select(SplatJob)).all() == []
+
+
+def test_rebuild_is_refused_while_its_job_is_being_deleted(client):
+    from sqlmodel import select
+
+    from server.db import SplatJob
+
+    v = make_version(client)
+    j = client.db.exec(select(MapJob).where(MapJob.map_version_id == v.id)).first()
+    jobs.request_delete(client.db, j)
+    r = client.post(f"/api/versions/{v.id}/splat/rebuild", json={})
+    assert r.status_code == 409
+    assert "deleted" in r.json()["detail"]
+    assert client.db.exec(select(SplatJob)).all() == []
+
+
+def test_rebuild_rejects_a_cross_site_form(client):
+    from sqlmodel import select
+
+    from server.db import SplatJob
+
+    v = make_version(client)
+    r = client.post(
+        f"/api/versions/{v.id}/splat/rebuild",
+        content=b"{}",
+        headers={"Content-Type": "text/plain"},
+    )
+    assert r.status_code == 415
+    assert client.db.exec(select(SplatJob)).all() == []
+
+
+def test_rebuild_accepts_json_with_a_charset(client):
+    v = make_version(client)
+    r = client.post(
+        f"/api/versions/{v.id}/splat/rebuild",
+        content=b"{}",
+        headers={"Content-Type": "application/json; charset=utf-8"},
+    )
+    assert r.status_code == 202
+
+
+def test_rebuild_ignores_the_request_body(client):
+    from sqlmodel import select
+
+    from server.db import SplatJob
+
+    v = make_version(client)
+    r = client.post(f"/api/versions/{v.id}/splat/rebuild", json={"steps": 1, "min_opacity": 0.9})
+    assert r.status_code == 202
+    row = client.db.exec(select(SplatJob).where(SplatJob.map_version_id == v.id)).first()
+    assert row.params == {"steps": 30000, "min_opacity": 0.02}
+
+
+def test_rebuild_touches_nothing_else(client):
+    from sqlmodel import select
+
+    v = make_version(client)
+    splat_dir = Path(v.path) / "splat"
+    splat_dir.mkdir(parents=True, exist_ok=True)
+    content = b"PK\x03\x04original-scene-sog"
+    (splat_dir / "scene.sog").write_bytes(content)
+
+    map_job = client.db.exec(select(MapJob).where(MapJob.map_version_id == v.id)).first()
+    job_status_before = map_job.status
+    version_status_before = v.status
+
+    r = client.post(f"/api/versions/{v.id}/splat/rebuild", json={})
+    assert r.status_code == 202
+
+    client.db.expire_all()
+    map_job_after = client.db.exec(select(MapJob).where(MapJob.map_version_id == v.id)).first()
+    v_after = client.db.get(type(v), v.id)
+    assert map_job_after.status == job_status_before
+    assert v_after.status == version_status_before
+    assert (splat_dir / "scene.sog").read_bytes() == content
+
+    row = client.get("/api/versions").json()[0]
+    assert row["has_splat"] is True
+
+
+def test_rebuild_unexpected_value_error_is_not_reported_as_busy(client, monkeypatch):
+    from server import splat_jobs
+
+    v = make_version(client)
+
+    def raise_unexpected(*args, **kwargs):
+        raise ValueError("something unexpected")
+
+    monkeypatch.setattr(splat_jobs, "enqueue", raise_unexpected)
+    c = TestClient(client.app, raise_server_exceptions=False)
+    r = c.post(f"/api/versions/{v.id}/splat/rebuild", json={})
+    assert r.status_code == 500
+
+
+def test_rebuild_non_admin_gets_403_even_for_an_unknown_version(client, monkeypatch):
+    """403 sebelum 404: yang bukan admin tidak bisa menebak id versi lewat bedanya kode."""
+    as_guest(client, monkeypatch)
+    assert client.post("/api/versions/999/splat/rebuild", json={}).status_code == 403
+
+
+def test_rebuild_maps_a_version_that_vanishes_before_queueing_to_404(client, monkeypatch):
+    from sqlmodel import select
+
+    from server import splat_jobs
+    from server.db import SplatJob
+
+    v = make_version(client)
+
+    def vanished(*args, **kwargs):
+        raise ValueError("map version not found")
+
+    monkeypatch.setattr(splat_jobs, "enqueue", vanished)
+    r = client.post(f"/api/versions/{v.id}/splat/rebuild", json={})
+    assert r.status_code == 404
+    assert client.db.exec(select(SplatJob)).all() == []
