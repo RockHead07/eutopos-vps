@@ -49,6 +49,9 @@ export type Version = {
   job_id: number | null;
   has_report: boolean;
   has_splat: boolean;
+  splat_status: "queued" | "running" | "done" | "failed" | null;
+  splat_stage: string | null;
+  splat_error: string | null;
 };
 
 export type SplatPlacement = {
@@ -414,6 +417,8 @@ export const api = {
   versions: () => call<Version[]>("/api/versions"),
   splatPlacement: (versionId: number) =>
     call<SplatPlacement>(`/api/versions/${versionId}/splat/placement`),
+  rebuildSplat: (id: number) =>
+    call<{ status: string }>(`/api/versions/${id}/splat/rebuild`, post({})),
   publish: (id: number) =>
     call<{ version: Version; reload: "started" | "other_area" }>(`/api/versions/${id}/publish`, {
       method: "POST",

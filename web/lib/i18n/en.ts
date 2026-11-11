@@ -449,6 +449,8 @@ export const en = {
   "pipeline.stoppedAt": "Stopped at {stage}",
   "pipeline.stoppedBeforeFirst": "Stopped before the first stage",
   "pipeline.waitingWorker": "Waiting for a worker",
+  "pipeline.waitingGpu":
+    "Waiting for the GPU; another job is using it (this can take several minutes)",
   "pipeline.waitingUpload": "Waiting for the upload to finish",
   "pipeline.deletingJob": "Deleting this job",
   "pipeline.doneFraction": "done",
@@ -656,6 +658,13 @@ export const en = {
   "splat.controls.speed": "Shift: Fast movement (8 m/s); Ctrl: Slow movement (1 m/s)",
   "splat.controls.viewcube": "ViewCube (top-right): Click axis circle to align camera with building axis",
   "splat.gridToggle": "Grid",
+  "splat.status.queued": "3D queued",
+  "splat.status.running": "3D processing",
+  "splat.status.failed": "3D failed",
+  "splat.statusLabel": "3D",
+  "splat.rebuild": "Rebuild 3D",
+  "splat.rebuildConfirm": "Rebuild 3D view for version {version}? This uses GPU for about 16 minutes and holds map building.",
+  "splat.rebuildQueued": "3D build for version {version} has been queued.",
 } as const;
 
 export type TranslationKey = keyof typeof en;

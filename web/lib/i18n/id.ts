@@ -453,6 +453,8 @@ export const id: Record<TranslationKey, string> = {
   "pipeline.stoppedAt": "Berhenti di {stage}",
   "pipeline.stoppedBeforeFirst": "Berhenti sebelum tahap pertama",
   "pipeline.waitingWorker": "Menunggu worker",
+  "pipeline.waitingGpu":
+    "Menunggu GPU, pekerjaan lain sedang memakainya (bisa beberapa menit)",
   "pipeline.waitingUpload": "Menunggu unggahan selesai",
   "pipeline.deletingJob": "Menghapus pekerjaan ini",
   "pipeline.doneFraction": "selesai",
@@ -660,4 +662,11 @@ export const id: Record<TranslationKey, string> = {
   "splat.controls.speed": "Shift: Gerak cepat (8 m/s); Ctrl: Gerak lambat (1 m/s)",
   "splat.controls.viewcube": "ViewCube (kanan-atas): Klik lingkaran sumbu untuk pandangan tegak lurus gedung",
   "splat.gridToggle": "Grid",
+  "splat.status.queued": "3D antre",
+  "splat.status.running": "3D diproses",
+  "splat.status.failed": "3D gagal",
+  "splat.statusLabel": "3D",
+  "splat.rebuild": "Bangun ulang 3D",
+  "splat.rebuildConfirm": "Bangun ulang tampilan 3D versi {version}? Ini memakai GPU sekitar 16 menit dan menahan pembangunan peta.",
+  "splat.rebuildQueued": "Pembangunan 3D versi {version} masuk antrean.",
 };

@@ -6,6 +6,7 @@ import { SortableHead, type SortDirection } from "@/components/SortableHead";
 import { StatusBadge } from "@/components/StatusBadge";
 import { TableFilterBar } from "@/components/TableFilterBar";
 import { DeleteConsentDialog } from "@/components/DeleteConsentDialog";
+import { JobFailureDiagnosis } from "@/components/JobFailureDiagnosis";
 import { VersionComparisonPanel } from "@/components/VersionComparisonPanel";
 import { Thumbnail } from "@/components/Thumbnail";
 import { Button } from "@/components/ui/button";
@@ -196,6 +197,25 @@ export default function MapsPage() {
     }
   }
 
+  async function rebuildSplat(id: number, version: number) {
+    if (!window.confirm(t("splat.rebuildConfirm", { version }))) return;
+    setError(null);
+    setMessage(null);
+    try {
+      await api.rebuildSplat(id);
+      setMessage(t("splat.rebuildQueued", { version }));
+      setSelectedVersion((prev) =>
+        prev && prev.id === id ? { ...prev, splat_status: "queued" } : prev
+      );
+      setLocalVersions((prev) =>
+        prev ? prev.map((v) => (v.id === id ? { ...v, splat_status: "queued" } : v)) : null
+      );
+      setTick((t) => t + 1);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   const s = service.data;
   return (
     <>
@@ -319,7 +339,17 @@ export default function MapsPage() {
                         <TableCell className="text-left max-sm:whitespace-normal max-sm:break-words">{v.area_id}</TableCell>
                         <TableCell className="text-left">{v.version}</TableCell>
                         <TableCell className="text-left">
-                          <VersionBadge status={effectiveStatus} />
+                          <div className="flex flex-col gap-1 items-start">
+                            <VersionBadge status={effectiveStatus} />
+                            {v.splat_status &&
+                              (v.splat_status === "queued" ||
+                                v.splat_status === "running" ||
+                                v.splat_status === "failed") && (
+                                <StatusBadge status={v.splat_status}>
+                                  {t(`splat.status.${v.splat_status}` as TranslationKey)}
+                                </StatusBadge>
+                              )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-left max-[959px]:hidden">
                           {v.job_id ? <Link href={`/job/?id=${v.job_id}`}>{v.job_id}</Link> : "-"}
@@ -394,6 +424,16 @@ export default function MapsPage() {
                                   </Link>
                                 </DropdownMenuItem>
                               )}
+                              {me?.is_admin && v.job_id ? (
+                                <DropdownMenuItem
+                                  onClick={() => rebuildSplat(v.id, v.version)}
+                                  disabled={
+                                    v.splat_status === "queued" || v.splat_status === "running"
+                                  }
+                                >
+                                  {t("splat.rebuild")}
+                                </DropdownMenuItem>
+                              ) : null}
                               <DropdownMenuItem
                                 onClick={() => {
                                   setCompareArea(v.area_id);
@@ -576,6 +616,28 @@ export default function MapsPage() {
                             {selectedVersion.has_report ? t("maps.yes") : t("maps.no")}
                           </span>
                         </dd>
+
+                        <dt className="text-muted-foreground">{t("splat.statusLabel")}</dt>
+                        <dd>
+                          {selectedVersion.splat_status &&
+                          (selectedVersion.splat_status === "queued" ||
+                            selectedVersion.splat_status === "running" ||
+                            selectedVersion.splat_status === "failed") ? (
+                            <StatusBadge status={selectedVersion.splat_status}>
+                              {t(`splat.status.${selectedVersion.splat_status}` as TranslationKey)}
+                            </StatusBadge>
+                          ) : (
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                selectedVersion.has_splat
+                                  ? "bg-forest/10 text-forest"
+                                  : "bg-muted text-muted-foreground"
+                              }`}
+                            >
+                              {selectedVersion.has_splat ? t("maps.yes") : t("maps.no")}
+                            </span>
+                          )}
+                        </dd>
                       </dl>
                     ) : (
                       <p className="text-xs text-muted-foreground">
@@ -583,6 +645,13 @@ export default function MapsPage() {
                       </p>
                     )}
                   </div>
+
+                  {selectedVersion.splat_status === "failed" && selectedVersion.splat_error && (
+                    <JobFailureDiagnosis
+                      error={selectedVersion.splat_error}
+                      stage={selectedVersion.splat_stage}
+                    />
+                  )}
                 </div>
 
                 {/* Footer */}
@@ -601,6 +670,21 @@ export default function MapsPage() {
                       </Link>
                     </Button>
                   )}
+                  {me?.is_admin && selectedVersion.job_id ? (
+                    <Button
+                      variant="outline"
+                      className="rounded-full cursor-pointer"
+                      onClick={() =>
+                        rebuildSplat(selectedVersion.id, selectedVersion.version)
+                      }
+                      disabled={
+                        selectedVersion.splat_status === "queued" ||
+                        selectedVersion.splat_status === "running"
+                      }
+                    >
+                      {t("splat.rebuild")}
+                    </Button>
+                  ) : null}
                   <Button
                     variant="outline"
                     className="rounded-full cursor-pointer"
