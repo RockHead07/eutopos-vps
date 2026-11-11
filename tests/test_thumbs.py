@@ -44,3 +44,22 @@ def test_backfill_makes_thumbs_for_finished_jobs(tmp_path):
         assert worker.backfill_thumbs(s, data, maps) == (1, 0)
         assert (maps / "floor10" / "job-21" / "thumbs" / "v0_00001.jpg").is_file()
         assert worker.backfill_thumbs(s, data, maps) == (0, 0)  # sudah punya, dilewati
+
+
+def test_importing_thumbs_and_worker_does_not_load_opencv():
+    """splat-worker mengimpor server.worker tetapi tidak memasang OpenCV; hanya make_thumbs() yang
+    memerlukannya, jadi impor cv2 harus tertunda seperti di server/previews.py."""
+    import subprocess
+    import sys
+
+    code = (
+        "import sys, server.thumbs, server.worker; "
+        "assert 'cv2' not in sys.modules, 'cv2 dimuat saat impor'"
+    )
+    r = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 0, r.stderr[-400:]

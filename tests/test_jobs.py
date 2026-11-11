@@ -264,3 +264,33 @@ def test_delete_block_reason_uploading(session):
         [{**v, "activity_at": (now - timedelta(minutes=15)).isoformat()}],
     )
     assert jobs.delete_block_reason(session, stalled_job) is None
+
+
+def done_job_with_version(session):
+    job = jobs.create_job(session, "floor10", "Lantai 10", "a@x.id", [MAP], "queued")
+    jobs.claim_next(session)
+    version = register(session, "floor10", "Lantai 10", "/maps/floor10/job-1")
+    jobs.finish(session, job, version.id, {})
+    return job, version
+
+
+@pytest.mark.parametrize("status", ["queued", "running"])
+def test_delete_is_blocked_while_a_3d_build_is_active(session, status):
+    from server.db import SplatJob
+
+    job, version = done_job_with_version(session)
+    session.add(SplatJob(map_version_id=version.id, status=status))
+    session.commit()
+    reason = jobs.delete_block_reason(session, job)
+    assert reason is not None and "3D build" in reason
+
+
+@pytest.mark.parametrize("status", [None, "done", "failed"])
+def test_delete_is_allowed_when_no_3d_build_is_active(session, status):
+    from server.db import SplatJob
+
+    job, version = done_job_with_version(session)
+    if status is not None:
+        session.add(SplatJob(map_version_id=version.id, status=status))
+        session.commit()
+    assert jobs.delete_block_reason(session, job) is None

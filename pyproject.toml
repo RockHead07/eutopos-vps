@@ -4,8 +4,10 @@ version = "0.0.0"
 description = "Visual Positioning System lokal untuk navigasi dalam gedung"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
-# Dependensi runtime torch dan hloc belum dideklarasikan di sini (varian CPU atau CUDA dan commit
-# hloc dipasang manual, docs/spike-plan.md bagian 12). FastAPI untuk server/ sudah dideklarasikan.
+# Dependensi runtime berat dipasang oleh deploy/Dockerfile langkah 1 (torch, CPU atau CUDA)
+# dan 2 (hloc pada commit yang dipin), bukan dari uv.lock. numpy, pycolmap, opencv-python,
+# dan scipy berasal dari hloc; Pillow berasal dari matplotlib (dependensi hloc).
+# FastAPI untuk server/ sudah dideklarasikan di sini.
 dependencies = [
     "alembic>=1.20.0",
     "fastapi[standard]>=0.141.1",

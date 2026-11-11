@@ -9,7 +9,7 @@ from pathlib import Path
 
 from sqlmodel import Session, select
 
-from server.db import Area, MapJob, MapVersion
+from server.db import Area, MapJob, MapVersion, SplatJob
 
 ROLES = {"peta", "uji"}
 ERROR_MAX = 4000  # cukup untuk 50 baris log terakhir
@@ -170,6 +170,15 @@ def delete_block_reason(session: Session, job: MapJob) -> str | None:
     version = session.get(MapVersion, job.map_version_id) if job.map_version_id else None
     if version is not None and version.status == "published":
         return "its map version is published; publish another version first"
+    if (
+        version is not None
+        and session.exec(
+            select(SplatJob.id).where(
+                SplatJob.map_version_id == version.id, SplatJob.status.in_(["queued", "running"])
+            )
+        ).first()
+    ):
+        return "a 3D build is queued or running for its map version; wait for it to finish"
     return None
 
 

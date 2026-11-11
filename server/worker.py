@@ -7,17 +7,21 @@ mendaftarkan hasilnya sebagai versi kandidat. Satu pekerja, satu pekerjaan dalam
 """
 
 import json
+import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 from collections.abc import Callable
+from contextlib import AbstractContextManager as ContextManager
 from pathlib import Path
 
 from sqlmodel import Session, select
 
-from server import jobs
+from server import jobs, splat_jobs, splat_pipeline
 from server.db import Area, MapJob, MapVersion, engine_from_env, register
+from server.gpu_lock import gpu_lock
 from server.map_layout import missing_files
 from server.pipeline import (
     GLOBAL_RESIZE,
@@ -148,6 +152,30 @@ def backfill_thumbs(session: Session, data: Path, maps: Path) -> tuple[int, int]
     return made, skipped
 
 
+def splat_auto_enabled() -> bool:
+    """Pemicu 3D otomatis hanya hidup bila diminta, bersama profil compose `splat` (README 10).
+
+    Tanpa pekerja splat, pekerjaan 3D menumpuk berstatus queued dan menahan penghapusan versi.
+    """
+    return os.environ.get("EUTOPOS_SPLAT_AUTO", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def queue_splat(session: Session, version_id: int) -> None:
+    """3D adalah tambahan: gagal mengantre tidak boleh menggagalkan peta yang sudah jadi."""
+    if not splat_auto_enabled():
+        return
+    try:
+        splat_jobs.enqueue(session, version_id)
+    except Exception as exc:
+        session.rollback()
+        detail = " ".join(str(exc).splitlines())
+        print(
+            f"warning: could not queue a 3D build for version {version_id}: {detail}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+
 def process(
     session: Session,
     job: MapJob,
@@ -156,49 +184,57 @@ def process(
     runner: Callable[[list[str], Path], None] = run,
     free_bytes: Callable[[Path], int] = lambda p: shutil.disk_usage(p).free,
     host_disk: Callable[[Path], HostDisk | None] = lambda m: read_host_disk(get_host_disk_path(m)),
+    lock: Callable[[], ContextManager[None]] | None = None,
 ) -> None:
+    lock = (lambda: gpu_lock(session.get_bind())) if lock is None else lock
     job_dir = data / "jobs" / str(job.id)
     dataset, log = job_dir / "dataset", job_dir / "log.txt"
     map_dir = maps / job.area_id / f"job-{job.id}"
     try:
-        jobs.set_stage(session, job, "extract")
-        job_dir.mkdir(parents=True, exist_ok=True)  # di dalam try: folder tak bisa ditulis = gagal
-        if min(free_bytes(data), free_bytes(maps)) < MIN_FREE_BYTES:
-            raise StageError("less than 20 GB of free disk; job not started")
-        # ponytail: umpan hilang atau basi (timer deploy mati) tidak memblokir pekerjaan:
-        # tanpa angka segar tidak ada dasar menolak. Balik bila disk penuh lebih mahal.
-        host = host_disk(maps)
-        if host and not host.stale and host.free_bytes < MIN_HOST_FREE_BYTES:
-            raise StageError(
-                f"less than 30 GB of free space on host drive {host.mount}; job not started"
+        jobs.set_stage(session, job, "gpu_wait")
+        with lock():
+            jobs.set_stage(session, job, "extract")
+            # di dalam try: folder tak bisa ditulis = gagal
+            job_dir.mkdir(parents=True, exist_ok=True)
+            if min(free_bytes(data), free_bytes(maps)) < MIN_FREE_BYTES:
+                raise StageError("less than 20 GB of free disk; job not started")
+            # ponytail: umpan hilang atau basi (timer deploy mati) tidak memblokir pekerjaan:
+            # tanpa angka segar tidak ada dasar menolak. Balik bila disk penuh lebih mahal.
+            host = host_disk(maps)
+            if host and not host.stale and host.free_bytes < MIN_HOST_FREE_BYTES:
+                raise StageError(
+                    f"less than 30 GB of free space on host drive {host.mount}; job not started"
+                )
+            if missing := missing_inputs(job.videos):
+                raise StageError(f"input files not found: {', '.join(missing)}")
+            stamp_recorded(session, job)
+            for sub in ("mapping", "query"):
+                (dataset / sub).mkdir(parents=True, exist_ok=True)
+            copy_frame_dirs(job.videos, dataset)
+            for argv in extract_commands(job.videos, dataset):
+                runner(argv, log)
+            delete_uploaded_videos(job.videos, data / "uploads")
+
+            jobs.set_stage(session, job, "build")
+            runner(build_command(dataset, map_dir), log)
+
+            jobs.set_stage(session, job, "inspect")
+            runner(inspect_command(map_dir), log)
+            make_preview(dataset / "mapping", job.videos, map_dir / "preview.jpg")
+            make_thumbs(dataset / "mapping", map_dir / "thumbs")
+
+            jobs.set_stage(session, job, "register")
+            if missing := missing_files(map_dir, MAX_KP, RESIZE, GLOBAL_RESIZE):
+                raise StageError(f"map is incomplete: {', '.join(map(str, missing))}")
+            summary = {
+                "run": json.loads((run_dir(map_dir) / "summary.json").read_text(encoding="utf-8")),
+                "inspect": json.loads((map_dir / "inspect.json").read_text(encoding="utf-8")),
+            }
+            version = register(
+                session, job.area_id, session.get(Area, job.area_id).name, str(map_dir)
             )
-        if missing := missing_inputs(job.videos):
-            raise StageError(f"input files not found: {', '.join(missing)}")
-        stamp_recorded(session, job)
-        for sub in ("mapping", "query"):
-            (dataset / sub).mkdir(parents=True, exist_ok=True)
-        copy_frame_dirs(job.videos, dataset)
-        for argv in extract_commands(job.videos, dataset):
-            runner(argv, log)
-        delete_uploaded_videos(job.videos, data / "uploads")
-
-        jobs.set_stage(session, job, "build")
-        runner(build_command(dataset, map_dir), log)
-
-        jobs.set_stage(session, job, "inspect")
-        runner(inspect_command(map_dir), log)
-        make_preview(dataset / "mapping", job.videos, map_dir / "preview.jpg")
-        make_thumbs(dataset / "mapping", map_dir / "thumbs")
-
-        jobs.set_stage(session, job, "register")
-        if missing := missing_files(map_dir, MAX_KP, RESIZE, GLOBAL_RESIZE):
-            raise StageError(f"map is incomplete: {', '.join(map(str, missing))}")
-        summary = {
-            "run": json.loads((run_dir(map_dir) / "summary.json").read_text(encoding="utf-8")),
-            "inspect": json.loads((map_dir / "inspect.json").read_text(encoding="utf-8")),
-        }
-        version = register(session, job.area_id, session.get(Area, job.area_id).name, str(map_dir))
-        jobs.finish(session, job, version.id, summary)
+            jobs.finish(session, job, version.id, summary)
+            queue_splat(session, version.id)
     except Exception as e:  # pekerjaan gagal, pekerja tetap hidup untuk pekerjaan berikutnya
         session.rollback()
         # Privasi: video unggahan tidak boleh tertinggal walau pekerjaan gagal sebelum ekstraksi.
@@ -208,12 +244,20 @@ def process(
         jobs.fail(session, job, f"{msg}\n{tail}".strip())
 
 
-def purge(session: Session, job: MapJob, maps: Path, uploads: Path = DATA / "uploads") -> None:
+def purge(
+    session: Session,
+    job: MapJob,
+    maps: Path,
+    uploads: Path = DATA / "uploads",
+    data: Path = DATA,
+) -> None:
     """Hapus peta hasil dan baris database sebuah pekerjaan yang diminta dihapus (DELETE /api/jobs).
 
     Folder frame di data/jobs/<id> sengaja dibiarkan: itu masukan yang bisa membangun ulang peta
-    (video unggahan sudah dibuang setelah ekstraksi). Folder hanya dihapus kalau tepat
-    <maps>/<area>/job-<id>; jalur lain berarti baris database rusak dan pekerjaan ditandai gagal.
+    (video unggahan sudah dibuang setelah ekstraksi). Folder kerja splat (data/jobs/<id>/splat,
+    PLY ratusan MB yang tertinggal bila pembangunan 3D gagal) ikut dihapus. Folder peta hanya
+    dihapus kalau tepat <maps>/<area>/job-<id>; jalur lain berarti baris database rusak dan
+    pekerjaan ditandai gagal.
     """
     root = maps.resolve()
     map_dir = (maps / job.area_id / f"job-{job.id}").resolve()
@@ -225,6 +269,9 @@ def purge(session: Session, job: MapJob, maps: Path, uploads: Path = DATA / "upl
             raise StageError(f"refusing to delete outside the maps folder: {map_dir}")
         if map_dir.exists():
             shutil.rmtree(map_dir)
+        splat_work = splat_pipeline.work_dir(data, job.id)  # jalurnya turunan id bilangan bulat
+        if splat_work.is_dir() and not splat_work.is_symlink():
+            shutil.rmtree(splat_work)
         uids = [v["upload_id"] for v in job.videos if isinstance(v, dict) and v.get("upload_id")]
         delete_upload_files(uids, uploads)
         session.delete(job)

@@ -250,6 +250,18 @@ Komponen PA lain (aplikasi Unity, AI avatar, RAG, anchoring tool) **tidak** ada 
   bisa dihitung balik. Foto uji berikutnya wajib mode foto.
 - **Di Windows, `tests/test_db.py::test_migration_cli_runs_like_the_container` gagal juga di `main`**
   (lingkungan lokal). CI di Docker yang menentukan.
+- **Pekerja splat (3D) opt-in dengan DUA saklar yang selalu bersamaan.** `splat-worker` memakai profil compose `splat`
+  (autodeploy membangun dan menyalakan semua layanan tanpa profil, image-nya 24 GB). Pemicu otomatis di `worker`
+  hidup dengan `EUTOPOS_SPLAT_AUTO=1`. Menyalakan pemicu tanpa pekerja membuat antrean 3D menumpuk dan menahan
+  penghapusan versi. Rinci di `deploy/README.md` bagian 10 dan `docs/specs/2026-11-09-splat-pipeline-design.md`.
+- **Image `Dockerfile.splat` memuat DUA environment Python** (conda 3.11 untuk pelatih gsplat dengan pycolmap fork,
+  venv 3.12 untuk layanan dan alat dengan pycolmap resmi). Daftar paket apt pertama tidak boleh diubah (membatalkan
+  cache lapisan pelatih, 11 menit); `/opt/conda/bin/python` melatih, `sys.executable` menjalankan alat.
+- **Pelatihan splat berbagi GPU dengan `/localize` produksi.** Terukur sekitar 2 GB VRAM di atas lokalisasi pada 401
+  frame; pekerja menolak melatih bila VRAM bebas di bawah 4.096 MiB. Kunci GPU (`pg_advisory_lock`) berlaku per
+  DATABASE: uji dengan database sementara TIDAK berbagi kunci dengan `worker` produksi, jadi pantau VRAM sendiri.
+- **`.sog` bukan PLY.** Koordinat `means` di `meta.json` memakai transformasi log, jadi `mins`/`maxs` di sana bukan
+  rentang meter. Penampil `/splat/` memutar 180 derajat pada sumbu X untuk versi yang belum diselaraskan.
 
 ## Aturan repo publik
 
@@ -392,3 +404,7 @@ Skill global yang juga relevan: `ponytail` (anti over-engineering), `engineering
 | `docs/specs/2026-10-07-cpu-gpu-usage-benchmark-design.md` | Rancangan pengukuran pemakaian CPU dan GPU (konfigurasi, noise, metrik, batas) yang ditetapkan sebelum hasil |
 | `docs/prd/` | PRD pekerjaan terencana: dukungan video 360 |
 | `docs/figures/` | Gambar 1 (arsitektur) dan Gambar 2 (alur) dokumen pengajuan |
+| `docs/specs/2026-11-09-splat-pipeline-design.md` | Tahap splat otomatis: rancangan, keputusan akhir (bagian 10), dan angka terukur (bagian 11) |
+| `docs/plans/2026-11-09-splat-pipeline.md` | Rencana 10 tugas dan status pelaksanaannya |
+| `docs/splat-pipeline-measurements.md` | Pengukuran dua latihan penuh di PC lab: waktu, VRAM, RAM, kualitas, dampak ke produksi, batas |
+| `docs/splat-prune.md` | Pemangkasan Gaussian L1 pada SOG: cara kerja dan ukuran |
