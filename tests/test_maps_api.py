@@ -9,8 +9,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlmodel import Session, SQLModel, create_engine
 
-from server import active_map, auth, jobs, maps_api, uploads
-from server.db import Alignment, MapJob, publish, register
+from server import active_map, auth, jobs, maps_api, splat_views, uploads
+from server.db import Alignment, MapJob, SplatJob, publish, register
 
 
 @pytest.fixture
@@ -72,6 +72,70 @@ def test_versions_have_job_and_report(client):
     rows = {r["id"]: r for r in client.get("/api/versions").json()}
     assert rows[v.id]["job_id"] is not None and rows[v.id]["has_report"] is True
     assert client.get(f"/api/versions/{v.id}/report").text == "<html>laporan</html>"
+
+
+def test_version_has_splat_summary_when_done(client):
+    v = make_version(client)
+    client.db.add(
+        SplatJob(
+            map_version_id=v.id,
+            status="done",
+            summary={
+                "gaussians_after": 1001679,
+                "built_at": "2026-11-17T15:57:52+00:00",
+                "stage_seconds": {"train": 1157.7},
+                "metrics": {"psnr": 27.615, "ssim": 0.9128, "lpips": 0.1953},
+            },
+        )
+    )
+    client.db.commit()
+    s = next(x for x in client.get("/api/versions").json() if x["id"] == v.id)["splat_summary"]
+    assert s == {
+        "gaussians": 1001679,
+        "psnr": 27.615,
+        "ssim": 0.9128,
+        "lpips": 0.1953,
+        "train_seconds": 1157.7,
+        "built_at": "2026-11-17T15:57:52+00:00",
+    }
+
+
+def test_old_summary_without_metrics_gives_nulls(client):
+    v = make_version(client)
+    client.db.add(SplatJob(map_version_id=v.id, status="done", summary={"gaussians_after": 5}))
+    client.db.commit()
+    s = next(x for x in client.get("/api/versions").json() if x["id"] == v.id)["splat_summary"]
+    assert s == {
+        "gaussians": 5,
+        "psnr": None,
+        "ssim": None,
+        "lpips": None,
+        "train_seconds": None,
+        "built_at": None,
+    }
+
+
+def test_failed_or_queued_job_has_no_summary(client):
+    for status in ("failed", "queued", "running"):
+        v = make_version(client)
+        client.db.add(SplatJob(map_version_id=v.id, status=status, summary={"gaussians_after": 1}))
+        client.db.commit()
+        row = next(x for x in client.get("/api/versions").json() if x["id"] == v.id)
+        assert row["splat_summary"] is None
+
+
+@pytest.mark.parametrize("summary", [None, {}])
+def test_done_job_missing_summary_fields(client, summary):
+    v = make_version(client)
+    assert client.get("/api/versions").json()[0]["splat_summary"] is None
+    client.db.add(SplatJob(map_version_id=v.id, status="done", summary=summary))
+    client.db.commit()
+    result = client.get("/api/versions").json()[0]["splat_summary"]
+    assert result == (
+        None
+        if summary is None
+        else dict.fromkeys(("gaussians", "psnr", "ssim", "lpips", "train_seconds", "built_at"))
+    )
 
 
 def test_report_outside_maps_root_is_404(client, tmp_path):
@@ -409,6 +473,53 @@ def test_placement_404_not_aligned(client):
     r = client.get(f"/api/versions/{v.id}/splat/placement")
     assert r.status_code == 404
     assert r.json()["detail"]["code"] == "not_aligned"
+
+
+def test_splat_views_returns_loader_output(client, monkeypatch):
+    v = make_version(client)
+    want = {
+        "start": 0,
+        "level_rotation_xyzw": [0, 0, 0, 1],
+        "views": [{"name": "a.jpg", "center": [0, 0, 0], "forward": [0, 0, 1]}],
+    }
+    seen = []
+    monkeypatch.setattr(splat_views, "load_views", lambda sfm: seen.append(sfm) or want)
+    r = client.get(f"/api/versions/{v.id}/splat/views")
+    assert r.status_code == 200 and r.json() == want
+    assert seen[0] == Path(v.path) / "kp1024-r1024" / "sfm"
+
+
+def test_splat_views_without_sfm_is_404_no_sfm(client):
+    v = make_version(client)
+    r = client.get(f"/api/versions/{v.id}/splat/views")
+    assert r.status_code == 404 and r.json()["detail"]["code"] == "no_sfm"
+
+
+def test_splat_views_unknown_version_is_404(client):
+    r = client.get("/api/versions/999/splat/views")
+    assert r.status_code == 404 and r.json()["detail"] == "version not found"
+
+
+def test_splat_views_outside_maps_root_is_not_loaded(client, monkeypatch, tmp_path):
+    v = register(client.db, "floor10", "L10", str(tmp_path / "outside"))
+
+    def unexpected_load(sfm):
+        pytest.fail("must not load an SfM model outside MAPS_ROOT")
+
+    monkeypatch.setattr(splat_views, "load_views", unexpected_load)
+    r = client.get(f"/api/versions/{v.id}/splat/views")
+    assert r.status_code == 404 and r.json()["detail"]["code"] == "no_sfm"
+
+
+def test_splat_views_empty_reconstruction_is_404_no_sfm(client, monkeypatch):
+    v = make_version(client)
+
+    def empty(sfm):
+        raise ValueError("no registered images")
+
+    monkeypatch.setattr(splat_views, "load_views", empty)
+    r = client.get(f"/api/versions/{v.id}/splat/views")
+    assert r.status_code == 404 and r.json()["detail"]["code"] == "no_sfm"
 
 
 def test_placement_200_when_aligned_in_db(client):

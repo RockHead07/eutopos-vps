@@ -52,8 +52,26 @@ export type Version = {
   splat_status: "queued" | "running" | "done" | "failed" | null;
   splat_stage: string | null;
   splat_error: string | null;
+  splat_summary: {
+    gaussians: number | null;
+    psnr: number | null;
+    ssim: number | null;
+    lpips: number | null;
+    train_seconds: number | null;
+    built_at: string | null;
+  } | null;
 };
 
+export type SplatView = {
+  name: string;
+  center: [number, number, number];
+  forward: [number, number, number];
+};
+export type SplatViews = {
+  start: number;
+  level_rotation_xyzw: [number, number, number, number];
+  views: SplatView[];
+};
 export type SplatPlacement = {
   position: [number, number, number];
   rotation_xyzw: [number, number, number, number];
@@ -417,6 +435,8 @@ export const api = {
   versions: () => call<Version[]>("/api/versions"),
   splatPlacement: (versionId: number) =>
     call<SplatPlacement>(`/api/versions/${versionId}/splat/placement`),
+  splatViews: (versionId: number) =>
+    call<SplatViews>(`/api/versions/${versionId}/splat/views`),
   rebuildSplat: (id: number) =>
     call<{ status: string }>(`/api/versions/${id}/splat/rebuild`, post({})),
   publish: (id: number) =>
