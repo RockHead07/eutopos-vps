@@ -574,6 +574,30 @@ export default function MapsPage() {
                       <dd className="text-foreground min-w-0 break-words">
                         {selectedVersion.published_by ?? "-"}
                       </dd>
+                      {selectedVersion.splat_summary && (
+                        <>
+                          <dt className="text-muted-foreground">{t("maps.splatGaussians")}</dt>
+                          <dd className="text-foreground min-w-0 break-words tabular-nums">
+                            {selectedVersion.splat_summary.gaussians?.toLocaleString() ?? "-"}
+                          </dd>
+                          <dt className="text-muted-foreground">{t("maps.splatQuality")}</dt>
+                          <dd className="text-foreground min-w-0 break-words tabular-nums">
+                            {selectedVersion.splat_summary.psnr?.toFixed(2) ?? "-"} / {selectedVersion.splat_summary.ssim?.toFixed(3) ?? "-"} / {selectedVersion.splat_summary.lpips?.toFixed(3) ?? "-"}
+                          </dd>
+                          <dt className="text-muted-foreground">{t("maps.splatTrainTime")}</dt>
+                          <dd className="text-foreground tabular-nums">
+                            {selectedVersion.splat_summary.train_seconds == null
+                              ? "-"
+                              : Math.round(selectedVersion.splat_summary.train_seconds / 60)}
+                          </dd>
+                          <dt className="text-muted-foreground">{t("maps.splatBuiltAt")}</dt>
+                          <dd className="text-foreground min-w-0 break-words tabular-nums">
+                            {selectedVersion.splat_summary.built_at == null
+                              ? "-"
+                              : formatDate(selectedVersion.splat_summary.built_at)}
+                          </dd>
+                        </>
+                      )}
                     </dl>
                   </div>
 

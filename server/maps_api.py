@@ -9,13 +9,33 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlmodel import select
 
-from server import active_map, alignment, auth, jobs, splat_frame, splat_jobs, system, uploads
+from server import (
+    active_map,
+    alignment,
+    auth,
+    jobs,
+    splat_frame,
+    splat_jobs,
+    splat_pipeline,
+    splat_views,
+    system,
+    uploads,
+)
 from server.db import MapJob, MapVersion, SplatJob, publish
 
 MAPS_ROOT = Path("/maps")  # jalur peta di dalam container (deploy/compose.yaml)
 PLOTLY_JS = Path(plotly.__file__).parent / "package_data" / "plotly.min.js"
 
 router = APIRouter()
+
+
+class SplatSummaryOut(BaseModel):
+    gaussians: int | None
+    psnr: float | None
+    ssim: float | None
+    lpips: float | None
+    train_seconds: float | None
+    built_at: str | None
 
 
 class VersionOut(BaseModel):
@@ -31,6 +51,7 @@ class VersionOut(BaseModel):
     splat_status: str | None = None
     splat_stage: str | None = None
     splat_error: str | None = None
+    splat_summary: SplatSummaryOut | None = None
 
 
 def _report(v: MapVersion) -> Path | None:
@@ -66,6 +87,19 @@ def preview_path(job: MapJob) -> Path | None:
 def _out(s, v: MapVersion) -> VersionOut:
     job = s.exec(select(MapJob.id).where(MapJob.map_version_id == v.id)).first()
     splat_job = s.exec(select(SplatJob).where(SplatJob.map_version_id == v.id)).first()
+    splat_summary = None
+    if splat_job and splat_job.status == "done" and splat_job.summary is not None:
+        summary = splat_job.summary
+        metrics = summary.get("metrics") or {}
+        stages = summary.get("stage_seconds") or {}
+        splat_summary = SplatSummaryOut(
+            gaussians=summary.get("gaussians_after"),
+            psnr=metrics.get("psnr"),
+            ssim=metrics.get("ssim"),
+            lpips=metrics.get("lpips"),
+            train_seconds=stages.get("train"),
+            built_at=summary.get("built_at"),
+        )
     return VersionOut(
         **v.model_dump(
             include={"id", "area_id", "version", "status", "created_at", "published_by"}
@@ -76,6 +110,7 @@ def _out(s, v: MapVersion) -> VersionOut:
         splat_status=splat_job.status if splat_job else None,
         splat_stage=splat_job.stage if splat_job else None,
         splat_error=splat_job.error if (splat_job and splat_job.status == "failed") else None,
+        splat_summary=splat_summary,
     )
 
 
@@ -122,6 +157,21 @@ def splat_placement(version_id: int, user: uploads.User, s: uploads.DB) -> dict:
             404, detail={"code": "not_aligned", "message": "map version has no alignment"}
         )
     return splat_frame.placement(align["meter_from_model"])
+
+
+@router.get("/api/versions/{version_id}/splat/views")
+def splat_views_endpoint(version_id: int, user: uploads.User, s: uploads.DB) -> dict:
+    v = s.get(MapVersion, version_id)
+    if v is None:
+        raise HTTPException(404, "version not found")
+    sfm = splat_pipeline.sfm_dir(Path(v.path)).resolve()
+    no_sfm = {"code": "no_sfm", "message": "map version has no SfM model"}
+    if not sfm.is_relative_to(MAPS_ROOT.resolve()):
+        raise HTTPException(404, detail=no_sfm)
+    try:
+        return splat_views.load_views(sfm)
+    except (FileNotFoundError, ValueError) as e:
+        raise HTTPException(404, detail=no_sfm) from e
 
 
 @router.post("/api/versions/{version_id}/splat/rebuild", status_code=202)

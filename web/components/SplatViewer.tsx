@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type * as PlayCanvas from "playcanvas";
 import type { CameraControls } from "playcanvas/scripts/esm/camera-controls.mjs";
-import { api, areaApi, mb, type Room, type SplatPlacement, type Version } from "@/lib/api";
+import { api, areaApi, mb, type Room, type SplatPlacement, type SplatViews, type Version } from "@/lib/api";
+import { viewPose } from "@/lib/splatViews";
 import { parseCam, camToPlayCanvas, type CamPose } from "@/lib/splatCam";
 import { buildingToPlayCanvas, getBuildingCameraMatrix } from "@/lib/splatAxes";
 import { useT } from "@/lib/i18n";
@@ -70,6 +71,9 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
   const [showGrid, setShowGrid] = useState(true);
   const [camInvalid, setCamInvalid] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
+  // null = kamera tidak berada di pandangan latihan (mulai dari ?cam=), penghitung disembunyikan
+  const [activeViewIndex, setActiveViewIndex] = useState<number | null>(0);
+  const [viewCount, setViewCount] = useState(0);
 
   // App, camera, controls, dan ViewCube refs
   const appRef = useRef<PlayCanvas.Application | null>(null);
@@ -77,6 +81,10 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
   const controlsRef = useRef<CameraControls | null>(null);
   const viewCubeRef = useRef<PlayCanvas.ViewCube | null>(null);
   const gridEntityRef = useRef<PlayCanvas.Entity | null>(null);
+  const splatEntityRef = useRef<PlayCanvas.Entity | null>(null);
+  const trainingViewsRef = useRef<SplatViews | null>(null);
+  const activeViewIndexRef = useRef(0);
+  const camOverrideRef = useRef(false);
   const initialCamPose = useRef<{ focus: PlayCanvas.Vec3; position: PlayCanvas.Vec3 } | null>(null);
 
   const roomsRef = useRef<Room[]>([]);
@@ -173,6 +181,8 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
     setDownloadError(null);
     setDownloadProgress({ receivedBytes: 0, totalBytes: null });
     setIsReady(false);
+    setViewCount(0);
+    trainingViewsRef.current = null;
 
     // Validasi camParam dan simpan status boolean di state
     let parsedCam: CamPose | null = null;
@@ -237,6 +247,7 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
         // Splat Entity
         const splatEntity = new pc.Entity("SplatEntity");
         app.root.addChild(splatEntity);
+        splatEntityRef.current = splatEntity;
 
         // Fetch placement
         let placement: SplatPlacement | null = null;
@@ -257,6 +268,19 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
 
         if (destroyed) return;
 
+        let views: SplatViews | null = null;
+        try {
+          views = await api.splatViews(currentVersion.id);
+        } catch {
+          // Older versions or unavailable SfM views keep the existing camera fallback.
+        }
+        if (destroyed) return;
+        trainingViewsRef.current = views;
+        activeViewIndexRef.current = views?.start ?? 0;
+        camOverrideRef.current = parsedCam !== null;
+        setActiveViewIndex(camOverrideRef.current ? null : activeViewIndexRef.current);
+        setViewCount(views?.views.length ?? 0);
+
         // Apply placement or unaligned fallback
         if (aligned && placement) {
           splatEntity.setLocalPosition(placement.position[0], placement.position[1], placement.position[2]);
@@ -269,6 +293,8 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
             )
           );
           splatEntity.setLocalScale(placement.scale, placement.scale, placement.scale);
+        } else if (views) {
+          splatEntity.setLocalRotation(new pc.Quat(...views.level_rotation_xyzw));
         } else {
           splatEntity.setLocalEulerAngles(...UNALIGNED_FALLBACK_ROTATION);
         }
@@ -281,6 +307,10 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
           const pcCam = camToPlayCanvas(parsedCam);
           initPos = pcCam.position;
           initTarget = pcCam.target;
+        } else if (views) {
+          const pose = viewPose(views.views[views.start], splatEntity.getWorldTransform().data);
+          initPos = pose.position;
+          initTarget = pose.target;
         } else if (aligned && placement) {
           const [px, py, pz] = placement.position;
           initTarget = [px, py, pz];
@@ -295,8 +325,8 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
         const targetVec = new pc.Vec3(initTarget[0], initTarget[1], initTarget[2]);
         camera.lookAt(targetVec, new pc.Vec3(0, 1, 0));
 
-        // focusPoint: posisi + arah depan * 2.0 m untuk cam=; targetVec untuk non-cam
-        const initialFocus = parsedCam
+        // Camera poses use a fixed orbit focus distance, independent of model scale.
+        const initialFocus = parsedCam || views
           ? camera.getPosition().clone().add(camera.forward.clone().mulScalar(DEFAULT_FOCUS_DISTANCE_M))
           : targetVec.clone();
         const initialPosition = camera.getPosition().clone();
@@ -513,6 +543,9 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
       }
       controlsRef.current = null;
       cameraRef.current = null;
+      splatEntityRef.current = null;
+      trainingViewsRef.current = null;
+      initialCamPose.current = null;
     };
   }, [version, webgl2Supported, loadingVersion, retryNonce, camParam]);
 
@@ -520,6 +553,24 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
     if (!controlsRef.current || !initialCamPose.current) return;
     const { focus, position } = initialCamPose.current;
     controlsRef.current.reset(focus, position);
+    activeViewIndexRef.current = trainingViewsRef.current?.start ?? 0;
+    setActiveViewIndex(camOverrideRef.current ? null : activeViewIndexRef.current);
+  }, []);
+
+  const handleTrainingView = useCallback((step: number) => {
+    const views = trainingViewsRef.current;
+    const splat = splatEntityRef.current;
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!views || !splat || !camera || !controls) return;
+    const index = (activeViewIndexRef.current + step + views.views.length) % views.views.length;
+    const pose = viewPose(views.views[index], splat.getWorldTransform().data);
+    const position = camera.getPosition().clone().set(...pose.position);
+    const focus = position.clone().set(...pose.target).sub(position)
+      .mulScalar(DEFAULT_FOCUS_DISTANCE_M).add(position);
+    controls.reset(focus, position);
+    activeViewIndexRef.current = index;
+    setActiveViewIndex(index);
   }, []);
 
   // UI Error / Empty States
@@ -636,6 +687,23 @@ export function SplatViewer({ versionId, camParam }: SplatViewerProps) {
             </Button>
 
             {/* Tombol Reset Kamera memakai ikon restore */}
+            {viewCount > 0 && (
+              <>
+                <Button variant="outline" size="sm" className="rounded-full cursor-pointer"
+                  disabled={!isReady} onClick={() => handleTrainingView(-1)}>
+                  {t("splat.prevView")}
+                </Button>
+                {activeViewIndex !== null && (
+                  <span className="text-xs text-muted-foreground" aria-live="polite">
+                    {t("splat.viewCounter", { i: activeViewIndex + 1, n: viewCount })}
+                  </span>
+                )}
+                <Button variant="outline" size="sm" className="rounded-full cursor-pointer"
+                  disabled={!isReady} onClick={() => handleTrainingView(1)}>
+                  {t("splat.nextView")}
+                </Button>
+              </>
+            )}
             <Button
               variant="outline"
               size="sm"
