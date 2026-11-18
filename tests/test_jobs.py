@@ -327,4 +327,3 @@ def test_create_job_new_area_in_building(session):
     assert area.building_id == bld.id
     assert area.name == "New Area"
     assert job.status == "queued"
-

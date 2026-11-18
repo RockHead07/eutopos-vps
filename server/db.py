@@ -38,9 +38,7 @@ class Building(SQLModel, table=True):
 
 class Area(SQLModel, table=True):
     id: str = Field(primary_key=True)  # slug, misalnya "floor10"
-    building_id: int = Field(
-        default=None, foreign_key="building.id", nullable=False, index=True
-    )
+    building_id: int = Field(default=None, foreign_key="building.id", nullable=False, index=True)
     name: str
 
 
@@ -288,9 +286,7 @@ def active_version(session: Session, area_id: str) -> MapVersion | None:
     return session.exec(stmt).first()
 
 
-def ensure_area(
-    session: Session, area_id: str, name: str, building_id: int | None
-) -> Area:
+def ensure_area(session: Session, area_id: str, name: str, building_id: int | None) -> Area:
     """Ambil area yang ada atau buat baru dalam gedung yang ditentukan."""
     existing = session.get(Area, area_id)
     if existing is not None:

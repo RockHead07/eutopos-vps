@@ -26,9 +26,7 @@ def upgrade():
     op.create_table(
         "building",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column(
-            "org_id", sa.Integer(), sa.ForeignKey("organization.id"), nullable=False
-        ),
+        sa.Column("org_id", sa.Integer(), sa.ForeignKey("organization.id"), nullable=False),
         sa.Column("slug", sa.String(), nullable=False),
         sa.Column("name", sa.String(), nullable=False),
         sa.UniqueConstraint("org_id", "slug"),
@@ -37,9 +35,7 @@ def upgrade():
     op.create_index("ix_building_slug", "building", ["slug"])
 
     # Sisipkan organisasi bawaan dan gedung HCM
-    op.execute(
-        "INSERT INTO organization (slug, name) VALUES ('default', 'Organisasi bawaan')"
-    )
+    op.execute("INSERT INTO organization (slug, name) VALUES ('default', 'Organisasi bawaan')")
     op.execute(
         "INSERT INTO building (org_id, slug, name) "
         "SELECT id, 'hcm', 'HCM' FROM organization WHERE slug = 'default'"
@@ -55,9 +51,7 @@ def upgrade():
             )
         )
 
-    op.execute(
-        "UPDATE area SET building_id = (SELECT id FROM building WHERE slug = 'hcm' LIMIT 1)"
-    )
+    op.execute("UPDATE area SET building_id = (SELECT id FROM building WHERE slug = 'hcm' LIMIT 1)")
 
     with op.batch_alter_table("area") as batch_op:
         batch_op.alter_column(

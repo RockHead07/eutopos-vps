@@ -179,17 +179,13 @@ def test_migration_0008_puts_existing_areas_in_hcm(tmp_path, monkeypatch):
         org = orgs[0]
         assert org[1] == "default"
 
-        buildings = conn.execute(
-            text("SELECT id, org_id, slug, name FROM building")
-        ).fetchall()
+        buildings = conn.execute(text("SELECT id, org_id, slug, name FROM building")).fetchall()
         assert len(buildings) == 1
         bld = buildings[0]
         assert bld[1] == org[0]
         assert bld[2] == "hcm"
 
-        areas = conn.execute(
-            text("SELECT id, building_id FROM area ORDER BY id")
-        ).fetchall()
+        areas = conn.execute(text("SELECT id, building_id FROM area ORDER BY id")).fetchall()
         assert len(areas) == 2
         assert areas[0] == ("floor10", bld[0])
         assert areas[1] == ("hcm-lantai-10", bld[0])
@@ -308,5 +304,3 @@ def test_ensure_area_unknown_building(session):
 
     with pytest.raises(ValueError, match="building 99999 not found"):
         ensure_area(session, "brand-new", "Brand New", 99999)
-
-

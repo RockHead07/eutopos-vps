@@ -37,7 +37,16 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlmodel import Session
 
-from server import active_map, area_api, calibration_api, localize_log, maps_api, navgraph, uploads
+from server import (
+    active_map,
+    area_api,
+    buildings_api,
+    calibration_api,
+    localize_log,
+    maps_api,
+    navgraph,
+    uploads,
+)
 from server.alignment import DbAlign
 from server.contract import CONTRACT_VERSION
 from server.db import active_version, engine_from_env
@@ -78,6 +87,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="eutopos-vps", lifespan=lifespan)
+app.include_router(buildings_api.router)
 app.include_router(uploads.router)
 app.include_router(maps_api.router)
 app.include_router(navgraph.router)
