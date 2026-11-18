@@ -4,6 +4,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { en, type TranslationKey } from "./en";
 import { id } from "./id";
 import { formatDate } from "@/lib/api";
+import { formatNumber } from "@/lib/formatNumber";
 
 export type Locale = "id" | "en";
 
@@ -99,6 +100,14 @@ export function useFormatDate() {
   const { locale } = useLocale();
   return useCallback(
     (iso: string | null | undefined) => formatDate(iso, locale),
+    [locale],
+  );
+}
+
+export function useFormatNumber() {
+  const { locale } = useLocale();
+  return useCallback(
+    (value: number | null | undefined, digits = 0) => formatNumber(value, locale, digits),
     [locale],
   );
 }
