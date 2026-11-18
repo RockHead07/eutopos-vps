@@ -188,7 +188,10 @@ def test_navgraph_prefers_the_published_graph(tmp_path, monkeypatch):
     SQLModel.metadata.create_all(engine)
     published = broken(["targets"], [{"node": "P01", "name": "Dari dashboard"}])
     with Session(engine) as s:
-        s.add(Area(id="floor10", name="L10"))
+        from tests.conftest import make_building
+
+        bld = make_building(s)
+        s.add(Area(id="floor10", name="L10", building_id=bld.id))
         s.add(PublishedGraph(area_id="floor10", graph=published, published_by="dev@local"))
         s.commit()
     write_graph(tmp_path, "floor10", GOOD)

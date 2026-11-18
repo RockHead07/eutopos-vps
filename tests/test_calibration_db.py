@@ -16,10 +16,13 @@ from server.db import (
 
 @pytest.fixture
 def session():
+    from tests.conftest import make_building
+
     engine = create_engine("sqlite://")
     SQLModel.metadata.create_all(engine)
     with Session(engine) as s:
-        s.add(Area(id="floor10", name="Lantai 10"))
+        bld = make_building(s)
+        s.add(Area(id="floor10", name="Lantai 10", building_id=bld.id))
         s.add(MapVersion(area_id="floor10", version=1, path="/maps/floor10/v1"))
         s.commit()
         yield s

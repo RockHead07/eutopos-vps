@@ -15,8 +15,32 @@ from sqlmodel import Field, Session, SQLModel, create_engine, select
 Status = Literal["candidate", "published", "rejected", "retired"]
 
 
+DEFAULT_ORG_SLUG = "default"
+DEFAULT_ORG_NAME = "Organisasi bawaan"
+DEFAULT_BUILDING_SLUG = "hcm"
+DEFAULT_BUILDING_NAME = "HCM"
+
+
+class Organization(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    slug: str = Field(unique=True, index=True)
+    name: str
+
+
+class Building(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("org_id", "slug"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    org_id: int = Field(foreign_key="organization.id", index=True)
+    slug: str = Field(index=True)
+    name: str
+
+
 class Area(SQLModel, table=True):
     id: str = Field(primary_key=True)  # slug, misalnya "floor10"
+    building_id: int = Field(
+        default=None, foreign_key="building.id", nullable=False, index=True
+    )
     name: str
 
 

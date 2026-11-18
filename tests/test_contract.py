@@ -92,7 +92,10 @@ def navgraph_response(tmp_path, monkeypatch) -> dict:
     }
     walkable = json.loads((FIXTURES / "walkable_payload.json").read_text(encoding="utf-8"))
     with Session(engine) as s:
-        s.add(Area(id="floor10", name="Lantai 10"))
+        from tests.conftest import make_building
+
+        bld = make_building(s)
+        s.add(Area(id="floor10", name="Lantai 10", building_id=bld.id))
         s.add(
             PublishedGraph(
                 area_id="floor10",
