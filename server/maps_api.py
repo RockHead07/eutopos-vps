@@ -22,6 +22,7 @@ from server import (
     uploads,
 )
 from server.db import MapJob, MapVersion, SplatJob, publish
+from server.pipeline import run_dir
 
 MAPS_ROOT = Path("/maps")  # jalur peta di dalam container (deploy/compose.yaml)
 PLOTLY_JS = Path(plotly.__file__).parent / "package_data" / "plotly.min.js"
@@ -72,7 +73,8 @@ def _align(s, v: MapVersion) -> dict | None:
     db_align = alignment.DbAlign(s.get_bind(), v.id).get()
     if db_align is not None:
         return db_align
-    p = (Path(v.path) / "align.json").resolve()
+    # Satu pemilik jalur: sama dengan Localizer (<versi>/kp*-r*/align.json), bukan folder job.
+    p = (run_dir(Path(v.path)) / "align.json").resolve()
     if p.is_relative_to(MAPS_ROOT.resolve()) and p.is_file():
         return alignment.AlignFile(p).get()
     return None

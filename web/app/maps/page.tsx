@@ -31,7 +31,7 @@ import { api, type Job, type Version } from "@/lib/api";
 import { PageHead } from "@/lib/PageHead";
 import { Rows } from "@/lib/Rows";
 import { usePoll } from "@/lib/usePoll";
-import { type TranslationKey, useFormatDate, useT } from "@/lib/i18n";
+import { type TranslationKey, useFormatDate, useFormatNumber, useT } from "@/lib/i18n";
 
 function compareWithNullLast(
   valA: string | null | undefined,
@@ -50,6 +50,7 @@ function compareWithNullLast(
 export default function MapsPage() {
   const t = useT();
   const formatDate = useFormatDate();
+  const formatNumber = useFormatNumber();
   const [tick, setTick] = useState(0);
   const service = usePoll(api.service, 3000, [tick]);
   const reloading = service.data?.reloading ?? false;
@@ -578,11 +579,11 @@ export default function MapsPage() {
                         <>
                           <dt className="text-muted-foreground">{t("maps.splatGaussians")}</dt>
                           <dd className="text-foreground min-w-0 break-words tabular-nums">
-                            {selectedVersion.splat_summary.gaussians?.toLocaleString() ?? "-"}
+                            {formatNumber(selectedVersion.splat_summary.gaussians)}
                           </dd>
                           <dt className="text-muted-foreground">{t("maps.splatQuality")}</dt>
                           <dd className="text-foreground min-w-0 break-words tabular-nums">
-                            {selectedVersion.splat_summary.psnr?.toFixed(2) ?? "-"} / {selectedVersion.splat_summary.ssim?.toFixed(3) ?? "-"} / {selectedVersion.splat_summary.lpips?.toFixed(3) ?? "-"}
+                            {formatNumber(selectedVersion.splat_summary.psnr, 3)} / {formatNumber(selectedVersion.splat_summary.ssim, 3)} / {formatNumber(selectedVersion.splat_summary.lpips, 3)}
                           </dd>
                           <dt className="text-muted-foreground">{t("maps.splatTrainTime")}</dt>
                           <dd className="text-foreground tabular-nums">
