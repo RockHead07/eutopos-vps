@@ -21,6 +21,11 @@ def session():
     engine = create_engine("sqlite://")
     SQLModel.metadata.create_all(engine)
     with Session(engine) as s:
+        from tests.conftest import make_building
+
+        bld = make_building(s)
+        s.add(db.Area(id="test-area", name="Test area", building_id=bld.id))
+        s.commit()
         yield s
     engine.dispose()
 
@@ -355,7 +360,19 @@ def _count_splat_rows_after_deleting_the_version(engine):
     from sqlalchemy import text
 
     with engine.begin() as c:
-        c.execute(text("INSERT INTO area (id, name) VALUES ('a', 'A')"))
+        c.execute(
+            text(
+                "INSERT OR IGNORE INTO organization (id, slug, name) "
+                "VALUES (1, 'default', 'Default Org')"
+            )
+        )
+        c.execute(
+            text(
+                "INSERT OR IGNORE INTO building (id, org_id, slug, name) "
+                "VALUES (1, 1, 'hcm', 'HCM')"
+            )
+        )
+        c.execute(text("INSERT INTO area (id, building_id, name) VALUES ('a', 1, 'A')"))
         c.execute(
             text(
                 "INSERT INTO map_version (id, area_id, version, path, status, created_at) "

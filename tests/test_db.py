@@ -259,3 +259,54 @@ def test_building_slug_unique_per_org(session):
     session.commit()
     assert b3.id is not None
 
+
+def test_ensure_area_returns_existing(session):
+    from server.db import ensure_area
+    from tests.conftest import make_building
+
+    bld = make_building(session)
+    a1 = ensure_area(session, "test-existing", "L10", bld.id)
+    assert a1.id == "test-existing"
+    assert a1.name == "L10"
+    assert a1.building_id == bld.id
+
+    a2 = ensure_area(session, "test-existing", "Renamed", None)
+    assert a2.id == "test-existing"
+    assert a2.name == "L10"
+
+    a3 = ensure_area(session, "test-existing", "Renamed Again", bld.id)
+    assert a3.id == "test-existing"
+    assert a3.name == "L10"
+
+
+def test_ensure_area_rejects_other_building(session):
+    from server.db import Building, Organization, ensure_area
+    from tests.conftest import make_building
+
+    bld1 = make_building(session)
+    org2 = Organization(slug="other-org", name="Other Org")
+    session.add(org2)
+    session.commit()
+    bld2 = Building(org_id=org2.id, slug="other-bld", name="Other Building")
+    session.add(bld2)
+    session.commit()
+
+    ensure_area(session, "floor10", "L10", bld1.id)
+    with pytest.raises(ValueError, match="area floor10 belongs to another building"):
+        ensure_area(session, "floor10", "L10", bld2.id)
+
+
+def test_ensure_area_new_requires_building(session):
+    from server.db import ensure_area
+
+    with pytest.raises(ValueError, match="building_id is required for a new area"):
+        ensure_area(session, "brand-new", "Brand New", None)
+
+
+def test_ensure_area_unknown_building(session):
+    from server.db import ensure_area
+
+    with pytest.raises(ValueError, match="building 99999 not found"):
+        ensure_area(session, "brand-new", "Brand New", 99999)
+
+

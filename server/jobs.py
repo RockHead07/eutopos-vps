@@ -9,7 +9,7 @@ from pathlib import Path
 
 from sqlmodel import Session, select
 
-from server.db import Area, MapJob, MapVersion, SplatJob
+from server.db import MapJob, MapVersion, SplatJob, ensure_area
 
 ROLES = {"peta", "uji"}
 ERROR_MAX = 4000  # cukup untuk 50 baris log terakhir
@@ -69,6 +69,7 @@ def create_job(
     created_by: str,
     videos: list[dict],
     status: str = "uploading",
+    building_id: int | None = None,
 ) -> MapJob:
     """Buat pekerjaan. Ditolak di sini, bukan di GPU, kalau videonya tidak bisa jadi peta."""
     if unknown := {v["role"] for v in videos} - ROLES:
@@ -81,8 +82,7 @@ def create_job(
     stems = [p.stem for p in paths if p.suffix]
     if dup := sorted({s for s in stems if stems.count(s) > 1}):
         raise ValueError(f"duplicate video names {dup}; rename one of them")
-    if session.get(Area, area_id) is None:
-        session.add(Area(id=area_id, name=area_name))
+    ensure_area(session, area_id, area_name, building_id)
     job = MapJob(area_id=area_id, created_by=created_by, status=status, videos=videos)
     _save(session, job)
     return job

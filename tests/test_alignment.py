@@ -123,6 +123,12 @@ def test_cli_installs_for_a_registered_version(tmp_path, monkeypatch, capsys):
     engine = create_engine(f"sqlite:///{tmp_path / 'db.sqlite'}")
     SQLModel.metadata.create_all(engine)
     with Session(engine) as s:
+        from server.db import Area
+        from tests.conftest import make_building
+
+        bld = make_building(s)
+        s.add(Area(id="floor10", name="Lantai 10", building_id=bld.id))
+        s.commit()
         vid = publish(s, register(s, "floor10", "Lantai 10", str(map_dir)).id).id
     monkeypatch.setattr(manage, "engine_from_env", lambda: engine)
     monkeypatch.setenv("EUTOPOS_MAPS_ROOT", str(tmp_path / "maps"))
@@ -185,6 +191,12 @@ def _db_with_version(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'a.sqlite'}")
     SQLModel.metadata.create_all(engine)
     with Session(engine) as s:
+        from server.db import Area
+        from tests.conftest import make_building
+
+        bld = make_building(s)
+        s.add(Area(id="floor10", name="Lantai 10", building_id=bld.id))
+        s.commit()
         v1 = register(s, "floor10", "Lantai 10", "/maps/v1").id
         v2 = register(s, "floor10", "Lantai 10", "/maps/v2").id
     return engine, v1, v2, Alignment
@@ -284,6 +296,12 @@ def test_cli_warns_when_a_dashboard_alignment_takes_precedence(tmp_path, monkeyp
     engine = create_engine(f"sqlite:///{tmp_path / 'db.sqlite'}")
     SQLModel.metadata.create_all(engine)
     with Session(engine) as s:
+        from server.db import Area
+        from tests.conftest import make_building
+
+        bld = make_building(s)
+        s.add(Area(id="floor10", name="Lantai 10", building_id=bld.id))
+        s.commit()
         vid = publish(s, register(s, "floor10", "Lantai 10", str(map_dir)).id).id
         s.add(
             Alignment(

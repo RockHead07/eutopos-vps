@@ -15,6 +15,11 @@ def session():
     engine = create_engine("sqlite://")
     SQLModel.metadata.create_all(engine)
     with Session(engine) as s:
+        from tests.conftest import make_building
+
+        bld = make_building(s)
+        s.add(Area(id="floor10", name="Lantai 10", building_id=bld.id))
+        s.commit()
         yield s
 
 
@@ -82,7 +87,14 @@ def test_manage_job_queues_and_lists(tmp_path, monkeypatch, capsys):
     from server import manage
 
     url = f"sqlite:///{tmp_path / 'm.db'}"
-    SQLModel.metadata.create_all(create_engine(url))
+    eng = create_engine(url)
+    SQLModel.metadata.create_all(eng)
+    with Session(eng) as s:
+        from tests.conftest import make_building
+
+        bld = make_building(s)
+        s.add(Area(id="floor10", name="Lantai 10", building_id=bld.id))
+        s.commit()
     monkeypatch.setenv("DATABASE_URL", url)
     frames = tmp_path / "mapping"
     frames.mkdir()
@@ -103,7 +115,14 @@ def test_manage_job_rejects_missing_path(tmp_path, monkeypatch):
     from server import manage
 
     url = f"sqlite:///{tmp_path / 'm.db'}"
-    SQLModel.metadata.create_all(create_engine(url))
+    eng = create_engine(url)
+    SQLModel.metadata.create_all(eng)
+    with Session(eng) as s:
+        from tests.conftest import make_building
+
+        bld = make_building(s)
+        s.add(Area(id="floor10", name="Lantai 10", building_id=bld.id))
+        s.commit()
     monkeypatch.setenv("DATABASE_URL", url)
     monkeypatch.setattr("sys.argv", ["manage", "job", "floor10", "L10", "--map", "/tidak/ada"])
     with pytest.raises(SystemExit, match="tidak ditemukan"):
@@ -294,3 +313,18 @@ def test_delete_is_allowed_when_no_3d_build_is_active(session, status):
         session.add(SplatJob(map_version_id=version.id, status=status))
         session.commit()
     assert jobs.delete_block_reason(session, job) is None
+
+
+def test_create_job_new_area_in_building(session):
+    from tests.conftest import make_building
+
+    bld = make_building(session)
+    job = jobs.create_job(
+        session, "new-area", "New Area", "a@x.id", [MAP], "queued", building_id=bld.id
+    )
+    area = session.get(Area, "new-area")
+    assert area is not None
+    assert area.building_id == bld.id
+    assert area.name == "New Area"
+    assert job.status == "queued"
+

@@ -288,10 +288,31 @@ def active_version(session: Session, area_id: str) -> MapVersion | None:
     return session.exec(stmt).first()
 
 
-def register(session: Session, area_id: str, name: str, path: str) -> MapVersion:
+def ensure_area(
+    session: Session, area_id: str, name: str, building_id: int | None
+) -> Area:
+    """Ambil area yang ada atau buat baru dalam gedung yang ditentukan."""
+    existing = session.get(Area, area_id)
+    if existing is not None:
+        if building_id is not None and existing.building_id != building_id:
+            raise ValueError(f"area {area_id} belongs to another building")
+        return existing
+    if building_id is None:
+        raise ValueError("building_id is required for a new area")
+    building = session.get(Building, building_id)
+    if building is None:
+        raise ValueError(f"building {building_id} not found")
+    area = Area(id=area_id, name=name, building_id=building_id)
+    session.add(area)
+    session.flush()
+    return area
+
+
+def register(
+    session: Session, area_id: str, name: str, path: str, building_id: int | None = None
+) -> MapVersion:
     """Tambah versi kandidat baru untuk area (area dibuat kalau belum ada)."""
-    if session.get(Area, area_id) is None:
-        session.add(Area(id=area_id, name=name))
+    ensure_area(session, area_id, name, building_id)
     last = session.exec(
         select(func.max(MapVersion.version)).where(MapVersion.area_id == area_id)
     ).one()

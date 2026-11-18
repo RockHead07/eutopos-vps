@@ -16,7 +16,16 @@ from server.db import Alignment, MapJob, SplatJob, publish, register
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     url = f"sqlite:///{tmp_path / 'm.db'}"
-    SQLModel.metadata.create_all(create_engine(url))
+    eng = create_engine(url)
+    SQLModel.metadata.create_all(eng)
+    with Session(eng) as s:
+        from server.db import Area
+        from tests.conftest import make_building
+
+        bld = make_building(s)
+        s.add(Area(id="floor10", name="Lantai 10", building_id=bld.id))
+        s.add(Area(id="floor9", name="Lantai 9", building_id=bld.id))
+        s.commit()
     monkeypatch.setenv("DATABASE_URL", url)
     monkeypatch.setenv("EUTOPOS_DEV_NO_AUTH", "1")
     monkeypatch.setenv("EUTOPOS_AREA", "floor10")
