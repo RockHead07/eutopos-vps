@@ -29,6 +29,7 @@ import { useT, type TranslationKey } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme";
 import { Icon } from "@/lib/Icon";
 import { PageHead } from "@/lib/PageHead";
+import { usePoll } from "@/lib/usePoll";
 import { RETRY_DELAYS, shouldRetryUpload } from "@/lib/uploadRetry";
 import { lastUploadProtocol, probeFile, watchUploadProtocol } from "@/lib/uploadDiag";
 import { clearSession, fileKey, loadSession, matchUrl, saveSession, type SavedSession } from "@/lib/uploadSession";
@@ -134,6 +135,47 @@ export default function NewSessionPage() {
   const onRetryRef = useRef<RetryHandler | null>(null);
   onRetryRef.current = setRetryStatus;
   const [uppy] = useState(() => createUppy(onRetryRef, tRef));
+  const { data: buildings } = usePoll(api.buildings, 10000);
+  const { data: me } = usePoll(api.me, 60000);
+  const [selectedBuildingId, setSelectedBuildingId] = useState<number | null>(null);
+  const [buildingError, setBuildingError] = useState<string | null>(null);
+  const [isAddingBuilding, setIsAddingBuilding] = useState(false);
+  const [newBuildingSlug, setNewBuildingSlug] = useState("");
+  const [newBuildingName, setNewBuildingName] = useState("");
+  const [addBuildingSaving, setAddBuildingSaving] = useState(false);
+  const [addBuildingError, setAddBuildingError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (selectedBuildingId === null && buildings && buildings.length > 0) {
+      setSelectedBuildingId(buildings[0].id);
+    }
+  }, [buildings, selectedBuildingId]);
+
+  async function handleCreateBuilding(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newBuildingSlug.trim() || !newBuildingName.trim()) return;
+    setAddBuildingSaving(true);
+    setAddBuildingError(null);
+    try {
+      const created = await api.createBuilding({
+        slug: newBuildingSlug.trim().toLowerCase(),
+        name: newBuildingName.trim(),
+      });
+      setSelectedBuildingId(created.id);
+      setIsAddingBuilding(false);
+      setNewBuildingSlug("");
+      setNewBuildingName("");
+    } catch (err: any) {
+      if (err.status === 409 || err.code === "building_exists") {
+        setAddBuildingError(t("new.buildingExists"));
+      } else {
+        setAddBuildingError(err.message || "Failed to create building");
+      }
+    } finally {
+      setAddBuildingSaving(false);
+    }
+  }
+
   const [files, setFiles] = useState<Picked[]>([]);
   const [roles, setRoles] = useState<Record<string, Role>>({});
   const [areaId, setAreaId] = useState("floor10");
@@ -384,7 +426,13 @@ export default function NewSessionPage() {
   async function start() {
     setError(null);
     setServerFieldErrors({});
+    setBuildingError(null);
     setTouched({ id: true, name: true });
+
+    if (!selectedBuildingId) {
+      setBuildingError(t("new.buildingRequired"));
+      return;
+    }
 
     const idCheck = validateAreaId(areaId);
     const nameCheck = validateAreaName(areaName);
@@ -402,9 +450,14 @@ export default function NewSessionPage() {
     setBusy(true);
     try {
       const videos = files.map((f, i) => ({ name: f.name, size: f.size, role: roleOf(f, i) }));
-      const key = JSON.stringify([area, name, videos]);
+      const key = JSON.stringify([area, name, selectedBuildingId, videos]);
       if (last.current?.key !== key) {
-        const job = await api.createJob({ area_id: area, area_name: name, videos });
+        const job = await api.createJob({
+          area_id: area,
+          area_name: name,
+          building_id: selectedBuildingId,
+          videos,
+        });
         last.current = { id: job.id, key };
         clearSession();
         for (const file of uppy.getFiles()) {
@@ -442,11 +495,14 @@ export default function NewSessionPage() {
       sessionRef.current = null;
       router.push(`/job/?id=${job.id}`);
     } catch (e) {
-      if (e instanceof ApiError && (e.fields.area_id || e.fields.area_name)) {
+      if (e instanceof ApiError && (e.fields.area_id || e.fields.area_name || (e.fields as any).building_id)) {
         setServerFieldErrors({
           area_id: e.fields.area_id,
           area_name: e.fields.area_name,
         });
+        if ((e.fields as any).building_id) {
+          setBuildingError((e.fields as any).building_id);
+        }
         focusField(e.fields.area_id ? "area-id" : "area-name");
       } else {
         setError((e as Error).message);
@@ -465,6 +521,112 @@ export default function NewSessionPage() {
       <Panel>
         <h2>{t("new.areaCard")}</h2>
         <div className="grid gap-3.5">
+          <div className="grid gap-1.5">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="building-select">{t("new.buildingLabel")}</Label>
+              {me?.is_admin && !isAddingBuilding && (
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-xs text-forest cursor-pointer"
+                  onClick={() => setIsAddingBuilding(true)}
+                >
+                  + {t("new.addBuilding")}
+                </Button>
+              )}
+            </div>
+            {buildings && buildings.length > 0 ? (
+              <Select
+                value={selectedBuildingId ? String(selectedBuildingId) : ""}
+                onValueChange={(val) => {
+                  setSelectedBuildingId(Number(val));
+                  setBuildingError(null);
+                }}
+              >
+                <SelectTrigger id="building-select" className="w-full text-xs">
+                  <SelectValue placeholder={t("new.buildingSelectPlaceholder")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {buildings.map((b) => (
+                    <SelectItem key={b.id} value={String(b.id)}>
+                      {b.name} ({b.slug})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <p className="text-xs text-muted-foreground">{t("generic.loading")}</p>
+            )}
+            <p id="building-msg" className="min-h-5" aria-live="polite">
+              {buildingError ? (
+                <span className="text-destructive">{buildingError}</span>
+              ) : (
+                <span className="muted">{t("new.buildingHint")}</span>
+              )}
+            </p>
+            {isAddingBuilding && (
+              <div className="rounded-lg border border-line/70 p-3 bg-muted/30 space-y-2.5 mt-1">
+                <div className="text-xs font-semibold text-foreground">
+                  {t("new.addBuildingTitle")}
+                </div>
+                <div className="grid gap-1">
+                  <Label htmlFor="new-building-slug" className="text-xs">
+                    {t("new.buildingSlugLabel")}
+                  </Label>
+                  <Input
+                    id="new-building-slug"
+                    value={newBuildingSlug}
+                    onChange={(e) => setNewBuildingSlug(e.target.value)}
+                    placeholder="pens"
+                    className="h-8 text-xs"
+                    pattern="[a-z0-9][a-z0-9-]{0,39}"
+                  />
+                </div>
+                <div className="grid gap-1">
+                  <Label htmlFor="new-building-name" className="text-xs">
+                    {t("new.buildingNameLabel")}
+                  </Label>
+                  <Input
+                    id="new-building-name"
+                    value={newBuildingName}
+                    onChange={(e) => setNewBuildingName(e.target.value)}
+                    placeholder="PENS Pascasarjana"
+                    className="h-8 text-xs"
+                  />
+                </div>
+                {addBuildingError && (
+                  <p className="text-xs text-destructive">{addBuildingError}</p>
+                )}
+                <div className="flex items-center gap-2 pt-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-7 text-xs rounded-full cursor-pointer"
+                    disabled={addBuildingSaving || !newBuildingSlug.trim() || !newBuildingName.trim()}
+                    onClick={handleCreateBuilding}
+                  >
+                    {addBuildingSaving ? t("new.saving") : t("new.saveBuilding")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs rounded-full cursor-pointer"
+                    disabled={addBuildingSaving}
+                    onClick={() => {
+                      setIsAddingBuilding(false);
+                      setAddBuildingError(null);
+                      setNewBuildingSlug("");
+                      setNewBuildingName("");
+                    }}
+                  >
+                    {t("new.cancel")}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
           <div className="grid gap-1.5">
             <Label htmlFor="area-id">{t("new.areaIdLabel")}</Label>
             <Input

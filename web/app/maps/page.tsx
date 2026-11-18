@@ -55,6 +55,7 @@ export default function MapsPage() {
   const reloading = service.data?.reloading ?? false;
   // Versi baru ditulis aktif setelah selesai dimuat: muat ulang daftar saat status memuat berubah.
   const versions = usePoll(api.versions, 10000, [tick, reloading]);
+  const buildings = usePoll(api.buildings, 30000);
   const jobs = usePoll(api.jobs, 10000);
   const { data: me } = usePoll(api.me, 60000);
   const [error, setError] = useState<string | null>(null);
@@ -104,6 +105,7 @@ export default function MapsPage() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [buildingFilter, setBuildingFilter] = useState("all");
   const [areaFilter, setAreaFilter] = useState("all");
   const [sortKey, setSortKey] = useState<string | null>("version");
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
@@ -117,6 +119,14 @@ export default function MapsPage() {
     ],
     [t]
   );
+
+  const buildingOptions = useMemo(() => {
+    if (!buildings.data) return [];
+    return buildings.data.map((b) => ({
+      value: String(b.id),
+      label: b.name,
+    }));
+  }, [buildings.data]);
 
   const areaOptions = useMemo(() => {
     if (!localVersions) return [];
@@ -137,6 +147,7 @@ export default function MapsPage() {
   const handleReset = () => {
     setSearch("");
     setStatusFilter("all");
+    setBuildingFilter("all");
     setAreaFilter("all");
     setSortKey("version");
     setSortDir("desc");
@@ -147,15 +158,17 @@ export default function MapsPage() {
     const q = search.trim().toLowerCase();
     const filtered = localVersions.filter((v) => {
       if (statusFilter !== "all" && v.status !== statusFilter) return false;
+      if (buildingFilter !== "all" && String(v.building_id) !== buildingFilter) return false;
       if (areaFilter !== "all" && v.area_id !== areaFilter) return false;
       if (q) {
         const matchVersion = v.version.toString().includes(q);
         const matchArea = v.area_id.toLowerCase().includes(q);
+        const matchBuilding = v.building_name ? v.building_name.toLowerCase().includes(q) : false;
         const statusLabel = t(`status.${v.status}` as TranslationKey).toLowerCase();
         const matchStatus = v.status.toLowerCase().includes(q) || statusLabel.includes(q);
         const matchJob = v.job_id ? v.job_id.toString().includes(q) : false;
         const matchPublished = v.published_by ? v.published_by.toLowerCase().includes(q) : false;
-        return matchVersion || matchArea || matchStatus || matchJob || matchPublished;
+        return matchVersion || matchArea || matchBuilding || matchStatus || matchJob || matchPublished;
       }
       return true;
     });
@@ -180,7 +193,7 @@ export default function MapsPage() {
       }
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [localVersions, jobs.data, search, statusFilter, areaFilter, sortKey, sortDir]);
+  }, [localVersions, jobs.data, search, statusFilter, buildingFilter, areaFilter, sortKey, sortDir]);
 
   async function publish(id: number, version: number) {
     if (!window.confirm(t("maps.publishConfirm", { version }))) return;
@@ -279,6 +292,9 @@ export default function MapsPage() {
               statusFilter={statusFilter}
               onStatusChange={setStatusFilter}
               statusOptions={statusOptions}
+              buildingFilter={buildingFilter}
+              onBuildingChange={setBuildingFilter}
+              buildingOptions={buildingOptions}
               areaFilter={areaFilter}
               onAreaChange={setAreaFilter}
               areaOptions={areaOptions}
@@ -298,7 +314,7 @@ export default function MapsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-16 max-sm:hidden"><span className="sr-only">{t("table.previewSr")}</span></TableHead>
-                    <SortableHead column="area_id" label={t("jobs.colArea")} activeKey={sortKey} direction={sortDir} onSort={handleSort} />
+                    <SortableHead column="area_id" label={t("maps.colBuildingArea")} activeKey={sortKey} direction={sortDir} onSort={handleSort} />
                     <SortableHead column="version" label={t("maps.colVersion")} activeKey={sortKey} direction={sortDir} onSort={handleSort} />
                     <SortableHead column="status" label={t("jobs.colStatus")} activeKey={sortKey} direction={sortDir} onSort={handleSort} />
                     <SortableHead column="job_id" label={t("maps.colJob")} activeKey={sortKey} direction={sortDir} onSort={handleSort} className="max-[959px]:hidden" />
@@ -336,11 +352,21 @@ export default function MapsPage() {
                             onClick={() => setSelectedVersion(v)}
                           />
                         </TableCell>
-                        <TableCell className="text-left max-sm:whitespace-normal max-sm:break-words">{v.area_id}</TableCell>
+                        <TableCell className="text-left max-sm:whitespace-normal max-sm:break-words">
+                          {v.building_name ? `${v.building_name} / ${v.area_id}` : v.area_id}
+                        </TableCell>
                         <TableCell className="text-left">{v.version}</TableCell>
                         <TableCell className="text-left">
                           <div className="flex flex-col gap-1 items-start">
-                            <VersionBadge status={effectiveStatus} />
+                            {effectiveStatus === "published" ? (
+                              v.navigation_ready ? (
+                                <StatusBadge status="published">{t("maps.statusNavReady")}</StatusBadge>
+                              ) : (
+                                <StatusBadge status="queued">{t("maps.statusNavNotReady")}</StatusBadge>
+                              )
+                            ) : (
+                              <VersionBadge status={effectiveStatus} />
+                            )}
                             {v.splat_status &&
                               (v.splat_status === "queued" ||
                                 v.splat_status === "running" ||
@@ -514,7 +540,15 @@ export default function MapsPage() {
                     <SheetTitle className="text-base font-semibold text-foreground">
                       {t("maps.sheetTitle", { version: selectedVersion.version })}
                     </SheetTitle>
-                    <VersionBadge status={selectedVersion.status} />
+                    {selectedVersion.status === "published" ? (
+                      selectedVersion.navigation_ready ? (
+                        <StatusBadge status="published">{t("maps.statusNavReady")}</StatusBadge>
+                      ) : (
+                        <StatusBadge status="queued">{t("maps.statusNavNotReady")}</StatusBadge>
+                      )
+                    ) : (
+                      <VersionBadge status={selectedVersion.status} />
+                    )}
                   </div>
                   <SheetDescription className="sr-only">{t("maps.properties", { version: selectedVersion.version })}</SheetDescription>
                   <p className="mt-1 text-xs text-muted-foreground truncate" title={selectedVersion.area_id}>
@@ -550,6 +584,11 @@ export default function MapsPage() {
                         {selectedVersion.id}
                       </dd>
 
+                      <dt className="text-muted-foreground">{t("maps.colBuilding")}</dt>
+                      <dd className="text-foreground min-w-0 break-words">
+                        {selectedVersion.building_name || "-"}
+                      </dd>
+
                       <dt className="text-muted-foreground">{t("jobs.colArea")}</dt>
                       <dd className="text-foreground min-w-0 break-words">
                         {selectedVersion.area_id}
@@ -562,7 +601,15 @@ export default function MapsPage() {
 
                       <dt className="text-muted-foreground">{t("jobs.colStatus")}</dt>
                       <dd>
-                        <VersionBadge status={selectedVersion.status} />
+                        {selectedVersion.status === "published" ? (
+                          selectedVersion.navigation_ready ? (
+                            <StatusBadge status="published">{t("maps.statusNavReady")}</StatusBadge>
+                          ) : (
+                            <StatusBadge status="queued">{t("maps.statusNavNotReady")}</StatusBadge>
+                          )
+                        ) : (
+                          <VersionBadge status={selectedVersion.status} />
+                        )}
                       </dd>
 
                       <dt className="text-muted-foreground">{t("maps.colCreated")}</dt>
