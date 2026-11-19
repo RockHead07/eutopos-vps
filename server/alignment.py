@@ -22,6 +22,9 @@ from server.navgraph import _number
 log = logging.getLogger("eutopos")
 
 
+MIN_ARCORE_FRAMES = 10
+
+
 def validate_align(data) -> dict:
     m = data.get("meter_from_model") if isinstance(data, dict) else None
     if not isinstance(m, dict):
@@ -35,12 +38,45 @@ def validate_align(data) -> dict:
         raise ValueError("rotation_xyzw harus kuaternion satuan")
     if not (isinstance(t, list) and len(t) == 3 and all(_number(v) for v in t)):
         raise ValueError("translation harus 3 angka")
-    rp = data.get("reference_points")
-    if not isinstance(rp, int) or isinstance(rp, bool) or rp < 4:
-        raise ValueError("reference_points harus bilangan bulat >= 4")
-    if not _number(data.get("residual_median_m")):
-        raise ValueError("residual_median_m tidak ada")
+    method = data.get("method", "survey")
+    if method == "survey":
+        rp = data.get("reference_points")
+        if not isinstance(rp, int) or isinstance(rp, bool) or rp < 4:
+            raise ValueError("reference_points harus bilangan bulat >= 4")
+        if not _number(data.get("residual_median_m")):
+            raise ValueError("residual_median_m tidak ada")
+    elif method == "arcore_pose":
+        matched = data.get("matched_frames")
+        if not isinstance(matched, int) or isinstance(matched, bool) or matched < MIN_ARCORE_FRAMES:
+            raise ValueError(f"matched_frames harus bilangan bulat >= {MIN_ARCORE_FRAMES}")
+        for field in ("residual_median_m", "residual_max_m"):
+            if not _number(data.get(field)):
+                raise ValueError(f"{field} harus angka berhingga")
+    elif method == "known_distance":
+        _validate_known_distances(data)
+    else:
+        raise ValueError(f"method penyelarasan tidak dikenal: {method!r}")
     return data
+
+
+def _validate_known_distances(data: dict) -> None:
+    pairs = data.get("known_distances")
+    if not isinstance(pairs, list) or not 1 <= len(pairs) <= 2:
+        raise ValueError("known_distances harus daftar 1 atau 2 pasangan")
+    for pair in pairs:
+        if not isinstance(pair, dict):
+            raise ValueError("entri known_distances harus objek JSON")
+        for field in ("frame_a", "frame_b"):
+            if not isinstance(pair.get(field), str) or not pair[field].strip():
+                raise ValueError(f"{field} harus nama frame")
+        for field in ("distance_m", "model_distance"):
+            distance = pair.get(field)
+            if not _number(distance) or distance <= 0:
+                raise ValueError(f"{field} harus angka positif berhingga")
+    if not _number(data.get("gravity_spread_deg")):
+        raise ValueError("gravity_spread_deg harus angka berhingga")
+    if len(pairs) == 2 and not _number(data.get("scale_spread_percent")):
+        raise ValueError("scale_spread_percent harus angka berhingga untuk dua pasangan")
 
 
 class AlignFile:

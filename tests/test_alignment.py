@@ -322,3 +322,182 @@ def test_cli_warns_when_a_dashboard_alignment_takes_precedence(tmp_path, monkeyp
     manage.main()
     out = capsys.readouterr().out
     assert "didahulukan" in out and "tanpa restart" not in out
+
+
+def test_validate_align_accepts_legacy_survey_without_method():
+    assert alignment.validate_align(copy.deepcopy(GOOD_ALIGN)) == GOOD_ALIGN
+
+
+def test_validate_align_preserves_survey_point_minimum():
+    with pytest.raises(ValueError, match="reference_points"):
+        alignment.validate_align(dict(GOOD_ALIGN, method="survey", reference_points=3))
+
+
+QUICK_ALIGN = {
+    "known_distance": {
+        "known_distances": [
+            {"frame_a": "a.jpg", "frame_b": "b.jpg", "distance_m": 10, "model_distance": 5}
+        ],
+        "gravity_spread_deg": 1.5,
+    },
+    "arcore_pose": {"matched_frames": 10, "residual_median_m": 0.1, "residual_max_m": 0.42},
+}
+
+
+@pytest.mark.parametrize("method", QUICK_ALIGN)
+def test_valid_quick_align_is_used_by_localizer(method, tmp_path):
+    import pycolmap
+
+    from server.localizer import Localizer
+
+    data = {"method": method, "meter_from_model": GOOD_ALIGN["meter_from_model"]}
+    data.update(QUICK_ALIGN[method])
+    assert alignment.validate_align(data) is data
+    path = tmp_path / "align.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    localizer = object.__new__(Localizer)
+    localizer._align = alignment.AlignFile(path)
+    localizer._align_source = None
+    center, _ = localizer.to_building(pycolmap.Rigid3d())
+    assert center == pytest.approx([1, 2, 0.5])
+
+
+@pytest.mark.parametrize(
+    "method, field, value",
+    [
+        ("known_distance", "known_distances", None),
+        ("known_distance", "known_distances", []),
+        ("known_distance", "gravity_spread_deg", math.inf),
+        ("arcore_pose", "matched_frames", 9),
+        ("arcore_pose", "matched_frames", True),
+        ("arcore_pose", "matched_frames", 10.0),
+        ("arcore_pose", "residual_max_m", math.inf),
+        ("arcore_pose", "residual_median_m", False),
+    ],
+)
+def test_validate_align_rejects_bad_quick_method_fields(method, field, value):
+    data = {"method": method, "meter_from_model": GOOD_ALIGN["meter_from_model"]}
+    data.update(QUICK_ALIGN[method])
+    if value is None:
+        del data[field]
+    else:
+        data[field] = value
+    with pytest.raises(ValueError, match=field):
+        alignment.validate_align(data)
+
+
+@pytest.mark.parametrize("field", ["distance_m", "model_distance"])
+def test_validate_align_requires_positive_known_distances(field):
+    pairs = copy.deepcopy(QUICK_ALIGN["known_distance"]["known_distances"])
+    pairs[0][field] = 0
+    data = dict(GOOD_ALIGN, method="known_distance", known_distances=pairs, gravity_spread_deg=0)
+    with pytest.raises(ValueError, match=field):
+        alignment.validate_align(data)
+
+
+def test_validate_align_rejects_an_unknown_method():
+    with pytest.raises(ValueError, match="method"):
+        alignment.validate_align(dict(GOOD_ALIGN, method="other"))
+
+
+@pytest.fixture
+def quick_align_cli(tmp_path, monkeypatch):
+    from server.pipeline import run_dir
+    from tests.conftest import make_building
+
+    map_dir = tmp_path / "maps" / "floor10" / "job-1"
+    run = run_dir(map_dir)
+    sfm = run / "sfm"
+    sfm.mkdir(parents=True)
+    (sfm / "cameras.txt").write_text("1 PINHOLE 640 480 500 500 320 240\n", encoding="utf-8")
+    (sfm / "images.txt").write_text(
+        "1 1 0 0 0 0 0 0 1 mapping/000001.jpg\n\n2 1 0 0 0 -4 0 0 1 mapping/000002.jpg\n\n",
+        encoding="utf-8",
+    )
+    (sfm / "points3D.txt").touch()
+    engine = create_engine("sqlite://")
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as s:
+        vid = register(s, "floor10", "Lantai 10", str(map_dir), building_id=make_building(s).id).id
+    monkeypatch.setattr(manage, "engine_from_env", lambda: engine)
+    monkeypatch.setenv("EUTOPOS_MAPS_ROOT", str(tmp_path / "maps"))
+    argv = [
+        "manage",
+        "quick-align",
+        "--version",
+        str(vid),
+        "--method",
+        "distance",
+        "--pair",
+        "mapping/000001.jpg",
+        "000002.jpg",
+        "10",
+    ]
+    yield engine, vid, run / "align.json", argv
+    engine.dispose()
+
+
+@pytest.mark.parametrize("existing", ["legacy-file", "survey-file", "survey-db"])
+def test_quick_align_cli_replaces_survey_only_with_flag(
+    quick_align_cli, monkeypatch, capsys, existing, tmp_path
+):
+    from server.db import Alignment
+
+    engine, vid, destination, args = quick_align_cli
+    if existing == "survey-db":
+        with Session(engine) as s:
+            applied = Alignment(
+                map_version_id=vid,
+                params=GOOD_ALIGN,
+                stats={},
+                status="applied",
+                source="fit",
+                created_by="a",
+            )
+            s.add(applied)
+            s.commit()
+            dashboard_id = applied.id
+    else:
+        prior = GOOD_ALIGN if existing == "legacy-file" else dict(GOOD_ALIGN, method="survey")
+        destination.write_text(json.dumps(prior), encoding="utf-8")
+
+    exported = tmp_path / "result.json"
+    before = destination.read_bytes() if destination.exists() else None
+    argv = [*args, "--install", "--out", str(exported)]
+    monkeypatch.setattr("sys.argv", argv)
+    with pytest.raises(SystemExit, match="--replace-survey"):
+        manage.main()
+    assert (destination.read_bytes() if destination.exists() else None) == before
+    assert not exported.exists()
+
+    monkeypatch.setattr("sys.argv", [*argv, "--replace-survey"])
+    manage.main()
+    out = capsys.readouterr().out
+    installed = alignment.AlignFile(destination).get()
+    assert installed == json.loads(exported.read_text(encoding="utf-8"))
+    assert installed["method"] == "known_distance"
+    assert installed["meter_from_model"]["scale"] == pytest.approx(2.5)
+    assert "PERINGATAN:" in out
+    if existing == "survey-db":
+        assert f"dashboard (id {dashboard_id})" in out and "didahulukan" in out
+        with Session(engine) as s:
+            assert s.get(Alignment, dashboard_id).params == GOOD_ALIGN
+
+
+def test_quick_align_cli_exports_without_installing(quick_align_cli, monkeypatch, tmp_path):
+    _, _, destination, argv = quick_align_cli
+    export = tmp_path / "export.json"
+    monkeypatch.setattr("sys.argv", [*argv, "--out", str(export)])
+    manage.main()
+    assert json.loads(export.read_text(encoding="utf-8"))["method"] == "known_distance"
+    assert not destination.exists()
+
+
+def test_quick_align_cli_requires_install_even_if_out_points_to_align(quick_align_cli, monkeypatch):
+    _, _, destination, argv = quick_align_cli
+    destination.write_text(json.dumps(GOOD_ALIGN), encoding="utf-8")
+    before = destination.read_bytes()
+    monkeypatch.setattr("sys.argv", [*argv, "--out", str(destination)])
+    with pytest.raises(SystemExit, match="--install"):
+        manage.main()
+    assert destination.read_bytes() == before
