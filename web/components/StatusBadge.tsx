@@ -14,6 +14,7 @@ const TONE: Record<string, string> = {
   running: "bg-[var(--busy-bg)] text-[var(--busy-fg)]",
   uploading: "bg-[var(--busy-bg)] text-[var(--busy-fg)]",
   queued: "bg-[var(--busy-bg)] text-[var(--busy-fg)]",
+  ready: "bg-[var(--busy-bg)] text-[var(--busy-fg)]",
   deleting: "bg-[var(--busy-bg)] text-[var(--busy-fg)]",
 };
 const IDLE = "bg-[var(--idle-bg)] text-[var(--idle-fg)]";
