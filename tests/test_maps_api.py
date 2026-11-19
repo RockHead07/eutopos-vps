@@ -532,6 +532,56 @@ def test_splat_views_empty_reconstruction_is_404_no_sfm(client, monkeypatch):
     assert r.status_code == 404 and r.json()["detail"]["code"] == "no_sfm"
 
 
+def test_placement_200_when_align_json_is_in_the_run_folder(client):
+    """align.json yang dipasang `manage align` ada di <versi>/kp*-r*/, tempat Localizer membacanya.
+
+    Sebelumnya endpoint mencari di folder job, jadi peta yang selaras tampil "belum terkalibrasi".
+    """
+    import json
+
+    v = make_version(client)
+    run = Path(v.path) / "kp1024-r1024"
+    run.mkdir()
+    (run / "align.json").write_text(
+        json.dumps(
+            {
+                "meter_from_model": {
+                    "scale": 0.43,
+                    "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+                    "translation": [1.0, 2.0, 3.0],
+                },
+                "reference_points": 4,
+                "residual_median_m": 0.05,
+            }
+        )
+    )
+    r = client.get(f"/api/versions/{v.id}/splat/placement")
+    assert r.status_code == 200, r.text
+    assert r.json()["scale"] == 0.43
+
+
+def test_placement_404_when_align_json_is_only_in_the_job_folder(client):
+    """Folder job bukan tempat align.json: satu pemilik jalur, sama dengan Localizer."""
+    import json
+
+    v = make_version(client)
+    (Path(v.path) / "align.json").write_text(
+        json.dumps(
+            {
+                "meter_from_model": {
+                    "scale": 1.0,
+                    "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+                    "translation": [0.0, 0.0, 0.0],
+                },
+                "reference_points": 4,
+                "residual_median_m": 0.05,
+            }
+        )
+    )
+    r = client.get(f"/api/versions/{v.id}/splat/placement")
+    assert r.status_code == 404 and r.json()["detail"]["code"] == "not_aligned"
+
+
 def test_placement_200_when_aligned_in_db(client):
     v = make_version(client)
     align_params = {
@@ -894,7 +944,10 @@ def test_version_navigation_readiness_and_building(client, tmp_path):
     assert row2["navigation_ready"] is False
 
     # 3. Terbit dan selaras tanpa graf -> false
-    align_file = Path(v1.path) / "align.json"
+    from server.pipeline import run_dir
+
+    align_file = run_dir(Path(v1.path)) / "align.json"  # layout nyata: kp*-r*/align.json
+    align_file.parent.mkdir(parents=True, exist_ok=True)
     align_file.write_text(json.dumps(valid_align))
     row3 = next(r for r in client.get("/api/versions").json() if r["id"] == v1.id)
     assert row3["navigation_ready"] is False
