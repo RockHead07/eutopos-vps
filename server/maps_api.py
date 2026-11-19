@@ -105,16 +105,13 @@ def _out(s, v: MapVersion, area_buildings: dict[str, tuple[int, str]] | None = N
             built_at=summary.get("built_at"),
         )
 
-    if area_buildings and v.area_id in area_buildings:
+    if area_buildings is not None and v.area_id in area_buildings:
         building_id, building_name = area_buildings[v.area_id]
     else:
+        # area.building_id NOT NULL + FK: area dan gedung pasti ada, tanpa nilai cadangan palsu.
         area = s.get(Area, v.area_id)
-        if area is not None:
-            bld = s.get(Building, area.building_id)
-            building_id = bld.id if bld else 0
-            building_name = bld.name if bld else ""
-        else:
-            building_id, building_name = 0, ""
+        bld = s.get(Building, area.building_id)
+        building_id, building_name = bld.id, bld.name
 
     navigation_ready = (
         v.status == "published"

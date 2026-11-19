@@ -83,3 +83,21 @@ def test_create_building_invalid_slug_unprocessable(client):
     headers = {"Cf-Access-Authenticated-User-Email": "admin@x.id"}
     r = client.post("/api/buildings", json={"slug": "PENS!", "name": "PENS"}, headers=headers)
     assert r.status_code == 422
+
+
+def test_create_building_slug_length_limit(client):
+    client.app.dependency_overrides[auth.current_user] = lambda: "admin@x.id"
+    headers = {"Cf-Access-Authenticated-User-Email": "admin@x.id"}
+    ok = client.post("/api/buildings", json={"slug": "a" * 40, "name": "ok"}, headers=headers)
+    assert ok.status_code == 201
+    r = client.post("/api/buildings", json={"slug": "a" * 41, "name": "x"}, headers=headers)
+    assert r.status_code == 422
+
+
+def test_create_building_name_length_limit(client):
+    client.app.dependency_overrides[auth.current_user] = lambda: "admin@x.id"
+    headers = {"Cf-Access-Authenticated-User-Email": "admin@x.id"}
+    ok = client.post("/api/buildings", json={"slug": "n100", "name": "n" * 100}, headers=headers)
+    assert ok.status_code == 201
+    r = client.post("/api/buildings", json={"slug": "n101", "name": "n" * 101}, headers=headers)
+    assert r.status_code == 422

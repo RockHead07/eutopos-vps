@@ -1,6 +1,6 @@
 """API untuk pengelolaan gedung (Building) dan hubungan area."""
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlmodel import select
@@ -12,8 +12,8 @@ router = APIRouter()
 
 
 class BuildingIn(BaseModel):
-    slug: str = Field(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-    name: str = Field(min_length=1)
+    slug: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{0,39}$")  # sama dengan pola area di uploads.py
+    name: str = Field(min_length=1, max_length=100)
 
 
 class BuildingOut(BaseModel):
@@ -42,21 +42,17 @@ def list_buildings(user: uploads.User, s: uploads.DB) -> list[BuildingOut]:
     ]
 
 
-@router.post("/api/buildings", status_code=201)
-async def create_building(request: Request, user: uploads.User, s: uploads.DB) -> BuildingOut:
+def _admin_json(request: Request, user: uploads.User) -> None:
+    # Sama dengan endpoint tulis lain: application/json (tutup CSRF lewat preflight), admin saja.
+    # Jadi dependency agar jalan sebelum body divalidasi (non-JSON harus 415, bukan 422).
     if request.headers.get("content-type", "").split(";")[0].strip() != "application/json":
         raise HTTPException(415, "send with Content-Type: application/json")
     if not auth.is_admin(user):
         raise HTTPException(403, "only admins can create buildings")
-    try:
-        data = await request.json()
-    except Exception:
-        raise HTTPException(422, "invalid json") from None
-    try:
-        body = BuildingIn.model_validate(data)
-    except Exception as e:
-        raise HTTPException(422, str(e)) from e
 
+
+@router.post("/api/buildings", status_code=201, dependencies=[Depends(_admin_json)])
+def create_building(body: BuildingIn, s: uploads.DB) -> BuildingOut:
     default_org = s.exec(select(Organization).where(Organization.slug == DEFAULT_ORG_SLUG)).first()
     if default_org is None:
         raise HTTPException(500, "default organization not found")

@@ -135,7 +135,8 @@ export default function NewSessionPage() {
   const onRetryRef = useRef<RetryHandler | null>(null);
   onRetryRef.current = setRetryStatus;
   const [uppy] = useState(() => createUppy(onRetryRef, tRef));
-  const { data: buildings } = usePoll(api.buildings, 10000);
+  const [buildingsRev, setBuildingsRev] = useState(0); // dinaikkan setelah tambah gedung agar daftar langsung segar
+  const { data: buildings } = usePoll(api.buildings, 10000, [buildingsRev]);
   const { data: me } = usePoll(api.me, 60000);
   const [selectedBuildingId, setSelectedBuildingId] = useState<number | null>(null);
   const [buildingError, setBuildingError] = useState<string | null>(null);
@@ -161,6 +162,7 @@ export default function NewSessionPage() {
         slug: newBuildingSlug.trim().toLowerCase(),
         name: newBuildingName.trim(),
       });
+      setBuildingsRev((n) => n + 1);
       setSelectedBuildingId(created.id);
       setIsAddingBuilding(false);
       setNewBuildingSlug("");
