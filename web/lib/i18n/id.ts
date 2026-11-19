@@ -118,6 +118,7 @@ export const id: Record<TranslationKey, string> = {
   "status.deleting": "menghapus",
   "status.published": "terbit",
   "status.candidate": "kandidat",
+  "status.ready": "siap terbit",
   "status.retired": "nonaktif",
   "status.rejected": "ditolak",
   "jobs.colId": "#",
@@ -488,6 +489,9 @@ export const id: Record<TranslationKey, string> = {
   "pipeline.descBuild": "Structure-from-Motion",
   "pipeline.descInspect": "Inspeksi & evaluasi peta",
   "pipeline.descRegister": "Registrasi versi peta",
+  "pipeline.gate": "Gerbang",
+  "pipeline.publish": "Terbitkan",
+  "pipeline.descGate": "Pemeriksaan foto uji",
 
   // Version Comparison Panel
   "compare.title": "Perbandingan versi",

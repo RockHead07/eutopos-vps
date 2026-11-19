@@ -12,7 +12,7 @@ from typing import Literal
 from sqlalchemy import JSON, DateTime, Index, UniqueConstraint, func, text
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
-Status = Literal["candidate", "published", "rejected", "retired"]
+Status = Literal["candidate", "ready", "published", "rejected", "retired"]
 
 
 DEFAULT_ORG_SLUG = "default"
@@ -317,6 +317,22 @@ def register(
     session.commit()
     session.refresh(v)
     return v
+
+
+def set_status(
+    session: Session, version_id: int, status: str, *, commit: bool = True
+) -> MapVersion:
+    if status not in ("ready", "rejected", "retired", "candidate"):
+        raise ValueError(f"unsupported map status: {status}")
+    version = session.get(MapVersion, version_id)
+    if version is None:
+        raise LookupError(f"versi {version_id} tidak ada")
+    version.status = status
+    session.add(version)
+    if commit:
+        session.commit()
+        session.refresh(version)
+    return version
 
 
 def publish(session: Session, version_id: int, by: str | None = None) -> MapVersion:

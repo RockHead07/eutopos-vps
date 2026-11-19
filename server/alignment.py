@@ -16,8 +16,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session, select
 
 from server import navgraph
-from server.db import Alignment
+from server.db import Alignment, MapVersion
 from server.navgraph import _number
+from server.pipeline import run_dir
 
 log = logging.getLogger("eutopos")
 
@@ -101,6 +102,18 @@ class DbAlign:
         except (SQLAlchemyError, ValueError, RuntimeError) as e:
             log.warning("penyelarasan dari database diabaikan, yang terakhir tetap dipakai: %s", e)
         return self._data
+
+
+def version_alignment(session: Session, version: MapVersion, maps_root: Path) -> dict | None:
+    """Ambil penyelarasan versi dari database atau berkas di bawah akar peta."""
+    db_align = DbAlign(session.get_bind(), version.id).get()
+    if db_align is not None:
+        return db_align
+    # Satu pemilik jalur: sama dengan Localizer (<versi>/kp*-r*/align.json), bukan folder job.
+    p = (run_dir(Path(version.path)) / "align.json").resolve()
+    if p.is_relative_to(maps_root.resolve()) and p.is_file():
+        return AlignFile(p).get()
+    return None
 
 
 def _read(path: Path):

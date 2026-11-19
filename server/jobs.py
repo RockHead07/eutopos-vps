@@ -128,6 +128,24 @@ def fail(session: Session, job: MapJob, error: str) -> None:
     _save(session, job)
 
 
+def reject(
+    session: Session,
+    job: MapJob,
+    version: MapVersion,
+    error: str,
+    stage: str,
+    summary: dict | None = None,
+) -> None:
+    version.status = "rejected"
+    session.add(version)
+    job.map_version_id = version.id
+    job.status, job.stage, job.error = "failed", stage, error[-ERROR_MAX:]
+    job.finished_at = datetime.now(UTC)
+    if summary is not None:
+        job.summary = summary
+    _save(session, job)
+
+
 def recover_stale(session: Session) -> int:
     """Saat pekerja mulai: pekerjaan running tidak punya pemilik lagi (hanya ada satu pekerja)."""
     stale = session.exec(select(MapJob).where(MapJob.status == "running")).all()

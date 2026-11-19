@@ -9,13 +9,14 @@ export const PIPELINE_STAGES = [
   { id: "build", label: "Build", descKey: "pipeline.descBuild" as TranslationKey },
   { id: "inspect", label: "Inspect", descKey: "pipeline.descInspect" as TranslationKey },
   { id: "register", label: "Register", descKey: "pipeline.descRegister" as TranslationKey },
+  { id: "gate", labelKey: "pipeline.gate", descKey: "pipeline.descGate" },
 ] as const;
 
 export type PipelineStageId = (typeof PIPELINE_STAGES)[number]["id"];
 
 interface PipelineStageIndicatorProps {
   status: string; // uploading, queued, running, done, failed, deleting
-  currentStage: string | null; // gpu_wait, extract, build, inspect, register
+  currentStage: string | null; // gpu_wait, extract, build, inspect, register, gate, publish
   timings?: Record<string, number>; // summary.run.t_map_s
 }
 
@@ -98,10 +99,17 @@ export function PipelineStageIndicator({
   timings,
 }: PipelineStageIndicatorProps) {
   const t = useT();
-  const currentStageIndex = PIPELINE_STAGES.findIndex((s) => s.id === currentStage);
-  const currentStageLabel = currentStageIndex >= 0 ? PIPELINE_STAGES[currentStageIndex].label : null;
+  const stages = status === "done" && currentStage !== "gate"
+    ? PIPELINE_STAGES.filter((stage) => stage.id !== "gate")
+    : PIPELINE_STAGES;
+  const publishFailed = status === "failed" && currentStage === "publish";
+  const currentStageIndex = publishFailed ? stages.length : stages.findIndex((s) => s.id === currentStage);
+  const stageLabel = (stage: (typeof PIPELINE_STAGES)[number]) =>
+    "labelKey" in stage ? t(stage.labelKey) : stage.label;
+  const currentStageLabel =
+    publishFailed ? t("pipeline.publish") : currentStageIndex >= 0 ? stageLabel(stages[currentStageIndex]) : null;
 
-  const states = PIPELINE_STAGES.map((_, idx) => getStageState(status, currentStageIndex, idx));
+  const states = stages.map((_, idx) => getStageState(status, currentStageIndex, idx));
 
   const completedCount = states.filter((state) => state === "done").length;
 
@@ -112,7 +120,7 @@ export function PipelineStageIndicator({
     summary = currentStageLabel
       ? t("pipeline.stageXofY", {
           current: currentStageIndex + 1,
-          total: PIPELINE_STAGES.length,
+          total: stages.length,
           stage: currentStageLabel,
         })
       : t("pipeline.startingFirst");
@@ -137,12 +145,12 @@ export function PipelineStageIndicator({
           <p className="pipeline-summary">{summary}</p>
         </div>
         <span className="pipeline-fraction">
-          <strong>{completedCount}</strong> / {PIPELINE_STAGES.length} {t("pipeline.doneFraction")}
+          <strong>{completedCount}</strong> / {stages.length} {t("pipeline.doneFraction")}
         </span>
       </div>
 
       <ol className="pipeline-steps">
-        {PIPELINE_STAGES.map((stage, idx) => {
+        {stages.map((stage, idx) => {
           const state = states[idx];
           const timingNote = getStageTiming(stage.id, state, timings);
           const stateLabel = getStageStateLabel(state, t);
@@ -163,13 +171,13 @@ export function PipelineStageIndicator({
                   <span className="pipeline-node-number">{String(idx + 1).padStart(2, "0")}</span>
                 )}
               </span>
-              {idx < PIPELINE_STAGES.length - 1 && (
+              {idx < stages.length - 1 && (
                 <span className="pipeline-connector" aria-hidden="true" />
               )}
 
               <div className="pipeline-copy">
                 <div className="pipeline-label-row">
-                  <span className="pipeline-label">{stage.label}</span>
+                  <span className="pipeline-label">{stageLabel(stage)}</span>
                   {state === "active" && <span className="pipeline-live">{t("pipeline.running")}</span>}
                   {state === "failed" && <span className="pipeline-failed">{t("pipeline.failed")}</span>}
                 </div>

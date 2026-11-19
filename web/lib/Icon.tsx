@@ -9,6 +9,7 @@ const VERSION_ICON: Record<string, string> = {
   published: "active-map",
   candidate: "inactive-map",
   retired: "inactive-map",
+  ready: "inactive-map",
   rejected: "error-map",
 };
 

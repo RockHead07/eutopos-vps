@@ -33,7 +33,7 @@ def session():
         yield s
 
 
-def fake_runner(calls, fail_on=None):
+def fake_runner(calls, fail_on=None, inspect='{"parts": [], "accepted": 20}'):
     """Meniru alat spike: buat berkas yang biasanya ditulis tiap skrip."""
 
     def run(argv, log):
@@ -48,7 +48,7 @@ def fake_runner(calls, fail_on=None):
                 p.touch()
             (pipeline.run_dir(map_dir) / "summary.json").write_text('{"map_registered": 80}')
         if script == "inspect_map.py":
-            Path(argv[argv.index("--json") + 1]).write_text('{"parts": [], "accepted": 20}')
+            Path(argv[argv.index("--json") + 1]).write_text(inspect)
 
     return run
 
@@ -109,7 +109,16 @@ def test_process_success_registers_candidate_and_spares_cli_files(session, tmp_p
     assert calls == ["extract_frames.py", "extract_frames.py", "run.py", "inspect_map.py"]
     v = session.get(MapVersion, job.map_version_id)
     assert (v.status, v.path) == ("candidate", str(maps / "floor10" / f"job-{job.id}"))
-    assert job.summary == {"run": {"map_registered": 80}, "inspect": {"parts": [], "accepted": 20}}
+    assert job.summary == {
+        "run": {"map_registered": 80},
+        "inspect": {"parts": [], "accepted": 20},
+        "gate": {
+            "decision": "hold",
+            "reasons": [{"code": "no_test_photos", "message": "No test photos were provided"}],
+            "queries": 0,
+            "accepted": 20,
+        },
+    }
     assert not uploaded.exists()  # video unggahan dihapus setelah ekstraksi
     assert own.exists()  # berkas CLI di luar uploads tidak pernah dihapus
     assert (data / "jobs" / str(job.id) / "dataset" / "mapping" / "f_00000.jpg").exists()
@@ -591,7 +600,7 @@ def test_process_sets_gpu_wait_before_blocking_then_extract(session, tmp_path, m
         lock=lambda: gate,
     )
     assert job.status == "done", job.error
-    assert stages == ["gpu_wait", "extract", "build", "inspect", "register"]
+    assert stages == ["gpu_wait", "extract", "build", "inspect", "register", "gate"]
     assert gate.events == ["enter", "exit"]
 
 
@@ -850,3 +859,55 @@ def test_enqueue_that_breaks_the_transaction_leaves_the_session_usable(
 
     session.refresh(job)  # PendingRollbackError bila rollback hilang
     assert job.status == "done"
+
+
+INSPECT_PASS = '{"parts": [{"label": "utama"}], "queries": 10, "accepted": 8}'
+INSPECT_FAIL = '{"parts": [{"label": "utama"}], "queries": 10, "accepted": 3}'
+
+
+def run_gate_job(session, tmp_path, inspect=None):
+    data, maps, _, _, videos = make_inputs(tmp_path)
+    job = queued(session, videos)
+    runner = fake_runner([]) if inspect is None else fake_runner([], inspect=inspect)
+    worker.process(session, job, data, maps, runner=runner, free_bytes=lambda p: 10**12)
+    return job
+
+
+def test_gate_pass_marks_version_ready(session, tmp_path):
+    job = run_gate_job(session, tmp_path, INSPECT_PASS)
+    assert job.status == "done", job.error
+    assert session.get(MapVersion, job.map_version_id).status == "ready"
+    assert job.summary["gate"]["decision"] == "publish"
+
+
+def test_gate_reject_fails_job_and_rejects_version(session, tmp_path):
+    job = run_gate_job(session, tmp_path, INSPECT_FAIL)
+    assert (job.status, job.stage) == ("failed", "gate")
+    assert job.error.startswith("Rejected by the test-photo gate: ")
+    assert session.get(MapVersion, job.map_version_id).status == "rejected"
+    assert job.summary["gate"]["reasons"][0]["code"] == "low_acceptance"
+
+
+@pytest.mark.parametrize("inspect", [None, '{"queries": 4, "accepted": 4}'])
+def test_gate_hold_without_enough_test_photos_keeps_candidate(session, tmp_path, inspect):
+    job = run_gate_job(session, tmp_path, inspect)
+    assert job.status == "done"
+    assert session.get(MapVersion, job.map_version_id).status == "candidate"
+    assert job.summary["gate"]["decision"] == "hold"
+
+
+def test_gate_reject_does_not_queue_splat(session, tmp_path, monkeypatch):
+    monkeypatch.setenv("EUTOPOS_SPLAT_AUTO", "1")
+    job = run_gate_job(session, tmp_path, INSPECT_FAIL)
+    assert job.status == "failed"
+    assert splat_rows(session) == []
+
+
+def test_gate_ready_is_not_committed_if_finishing_the_job_fails(session, tmp_path, monkeypatch):
+    def fail_finish(*args):
+        raise RuntimeError("could not finish job")
+
+    monkeypatch.setattr(jobs, "finish", fail_finish)
+    job = run_gate_job(session, tmp_path, INSPECT_PASS)
+    assert job.status == "failed"
+    assert session.exec(select(MapVersion)).one().status == "candidate"
