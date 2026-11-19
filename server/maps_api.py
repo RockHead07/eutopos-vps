@@ -14,6 +14,7 @@ from server import (
     alignment,
     auth,
     jobs,
+    navgraph,
     splat_frame,
     splat_jobs,
     splat_pipeline,
@@ -21,7 +22,7 @@ from server import (
     system,
     uploads,
 )
-from server.db import MapJob, MapVersion, SplatJob, publish
+from server.db import Area, Building, MapJob, MapVersion, SplatJob, publish
 from server.pipeline import run_dir
 
 MAPS_ROOT = Path("/maps")  # jalur peta di dalam container (deploy/compose.yaml)
@@ -53,6 +54,9 @@ class VersionOut(BaseModel):
     splat_stage: str | None = None
     splat_error: str | None = None
     splat_summary: SplatSummaryOut | None = None
+    building_id: int
+    building_name: str
+    navigation_ready: bool
 
 
 def _report(v: MapVersion) -> Path | None:
@@ -86,7 +90,7 @@ def preview_path(job: MapJob) -> Path | None:
     return p if p.is_relative_to(MAPS_ROOT.resolve()) and p.is_file() else None
 
 
-def _out(s, v: MapVersion) -> VersionOut:
+def _out(s, v: MapVersion, area_buildings: dict[str, tuple[int, str]] | None = None) -> VersionOut:
     job = s.exec(select(MapJob.id).where(MapJob.map_version_id == v.id)).first()
     splat_job = s.exec(select(SplatJob).where(SplatJob.map_version_id == v.id)).first()
     splat_summary = None
@@ -102,6 +106,21 @@ def _out(s, v: MapVersion) -> VersionOut:
             train_seconds=stages.get("train"),
             built_at=summary.get("built_at"),
         )
+
+    if area_buildings is not None and v.area_id in area_buildings:
+        building_id, building_name = area_buildings[v.area_id]
+    else:
+        # area.building_id NOT NULL + FK: area dan gedung pasti ada, tanpa nilai cadangan palsu.
+        area = s.get(Area, v.area_id)
+        bld = s.get(Building, area.building_id)
+        building_id, building_name = bld.id, bld.name
+
+    navigation_ready = (
+        v.status == "published"
+        and _align(s, v) is not None
+        and navgraph.graph_exists(s, v.area_id, root=MAPS_ROOT)
+    )
+
     return VersionOut(
         **v.model_dump(
             include={"id", "area_id", "version", "status", "created_at", "published_by"}
@@ -113,13 +132,20 @@ def _out(s, v: MapVersion) -> VersionOut:
         splat_stage=splat_job.stage if splat_job else None,
         splat_error=splat_job.error if (splat_job and splat_job.status == "failed") else None,
         splat_summary=splat_summary,
+        building_id=building_id,
+        building_name=building_name,
+        navigation_ready=navigation_ready,
     )
 
 
 @router.get("/api/versions")
 def list_versions(user: uploads.User, s: uploads.DB) -> list[VersionOut]:
+    stmt_areas = select(Area.id, Building.id, Building.name).join(
+        Building, Area.building_id == Building.id
+    )
+    area_buildings = {aid: (bid, bname) for aid, bid, bname in s.exec(stmt_areas)}
     stmt = select(MapVersion).order_by(MapVersion.area_id, MapVersion.version.desc())
-    return [_out(s, v) for v in s.exec(stmt)]
+    return [_out(s, v, area_buildings=area_buildings) for v in s.exec(stmt)]
 
 
 @router.get("/api/jobs/{job_id}/preview")

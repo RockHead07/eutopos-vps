@@ -22,6 +22,9 @@ interface TableFilterBarProps {
   statusFilter: string;
   onStatusChange: (value: string) => void;
   statusOptions: Option[];
+  buildingFilter?: string;
+  onBuildingChange?: (value: string) => void;
+  buildingOptions?: Option[];
   areaFilter: string;
   onAreaChange: (value: string) => void;
   areaOptions: string[];
@@ -37,6 +40,9 @@ export function TableFilterBar({
   statusFilter,
   onStatusChange,
   statusOptions,
+  buildingFilter,
+  onBuildingChange,
+  buildingOptions,
   areaFilter,
   onAreaChange,
   areaOptions,
@@ -44,7 +50,12 @@ export function TableFilterBar({
   filteredCount,
   onReset,
 }: TableFilterBarProps) {
-  const isFiltered = Boolean(search.trim() || statusFilter !== "all" || areaFilter !== "all");
+  const isFiltered = Boolean(
+    search.trim() ||
+    statusFilter !== "all" ||
+    areaFilter !== "all" ||
+    (buildingFilter && buildingFilter !== "all")
+  );
   const t = useT();
 
   return (
@@ -68,6 +79,23 @@ export function TableFilterBar({
               <SelectContent>
                 <SelectItem value="all">{t("filter.allStatuses")}</SelectItem>
                 {statusOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {buildingOptions && buildingOptions.length > 0 && onBuildingChange && (
+          <div className="w-36">
+            <Select value={buildingFilter ?? "all"} onValueChange={onBuildingChange}>
+              <SelectTrigger className="w-full text-xs" aria-label={t("filter.byBuildingAria")}>
+                <SelectValue placeholder={t("filter.allBuildings")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("filter.allBuildings")}</SelectItem>
+                {buildingOptions.map((opt) => (
                   <SelectItem key={opt.value} value={opt.value}>
                     {opt.label}
                   </SelectItem>

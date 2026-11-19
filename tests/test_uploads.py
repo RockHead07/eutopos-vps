@@ -22,7 +22,15 @@ BODY = {
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     url = f"sqlite:///{tmp_path / 'u.db'}"
-    SQLModel.metadata.create_all(create_engine(url))
+    eng = create_engine(url)
+    SQLModel.metadata.create_all(eng)
+    with Session(eng) as s:
+        from server.db import Area
+        from tests.conftest import make_building
+
+        bld = make_building(s)
+        s.add(Area(id="floor10", name="Lantai 10", building_id=bld.id))
+        s.commit()
     monkeypatch.setenv("DATABASE_URL", url)
     monkeypatch.setenv("EUTOPOS_DEV_NO_AUTH", "1")
     monkeypatch.setenv("TUS_HOOK_SECRET", SECRET)
@@ -274,3 +282,57 @@ def test_delete_stalled_upload_flow(client, monkeypatch):
     del_res2 = client.delete(f"/api/jobs/{job['id']}")
     assert del_res2.status_code == 202
     assert del_res2.json() == {"status": "deleting"}
+
+
+def test_create_job_building_id_rules(client):
+    from server.db import Building
+    from tests.conftest import make_building
+
+    with Session(create_engine(client.db_url)) as s:
+        bld = make_building(s)
+        bld_id = bld.id
+        other_bld = Building(org_id=bld.org_id, slug="other-bld", name="Other Bld")
+        s.add(other_bld)
+        s.commit()
+        s.refresh(other_bld)
+        other_bld_id = other_bld.id
+
+    # 1. Area baru dengan building_id -> 201
+    body_new = {
+        "area_id": "new-area",
+        "area_name": "New Area",
+        "videos": [{"name": "loop.mp4", "role": "peta", "size": 100}],
+        "building_id": bld_id,
+    }
+    r1 = client.post("/api/jobs", json=body_new)
+    assert r1.status_code == 201
+
+    # 2. Area baru tanpa building_id -> 422
+    body_new_no_bld = {
+        "area_id": "new-area-no-bld",
+        "area_name": "New Area No Bld",
+        "videos": [{"name": "loop.mp4", "role": "peta", "size": 100}],
+    }
+    r2 = client.post("/api/jobs", json=body_new_no_bld)
+    assert r2.status_code == 422
+    assert "building_id is required for a new area" in r2.text
+
+    # 3. Area lama tanpa building_id -> 201 (Review Focus 2)
+    body_existing = {
+        "area_id": "floor10",
+        "area_name": "Lantai 10",
+        "videos": [{"name": "loop.mp4", "role": "peta", "size": 100}],
+    }
+    r3 = client.post("/api/jobs", json=body_existing)
+    assert r3.status_code == 201
+
+    # 4. Area lama dengan gedung lain -> 422 (Review Focus 1)
+    body_wrong_bld = {
+        "area_id": "floor10",
+        "area_name": "Lantai 10",
+        "videos": [{"name": "loop.mp4", "role": "peta", "size": 100}],
+        "building_id": other_bld_id,
+    }
+    r4 = client.post("/api/jobs", json=body_wrong_bld)
+    assert r4.status_code == 422
+    assert "belongs to another building" in r4.text

@@ -7,14 +7,20 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, SQLModel, create_engine
 
-from server.db import MapVersion, active_version, publish, register
+from server.db import Area, MapVersion, active_version, publish, register
 
 
 @pytest.fixture
 def session():
+    from tests.conftest import make_building
+
     engine = create_engine("sqlite://")
     SQLModel.metadata.create_all(engine)
     with Session(engine) as s:
+        bld = make_building(s)
+        s.add(Area(id="floor10", name="Lantai 10", building_id=bld.id))
+        s.add(Area(id="floor9", name="Lantai 9", building_id=bld.id))
+        s.commit()
         yield s
 
 
@@ -93,10 +99,15 @@ def test_service_starts_when_active_map_fails_to_load(tmp_path, monkeypatch):
     dipakai menerbitkan versi lain, bukan restart berulang."""
     from fastapi.testclient import TestClient
 
+    from tests.conftest import make_building
+
     url = f"sqlite:///{tmp_path / 's.db'}"
     engine = create_engine(url)
     SQLModel.metadata.create_all(engine)
     with Session(engine) as s:
+        bld = make_building(s)
+        s.add(Area(id="floor10", name="L10", building_id=bld.id))
+        s.commit()
         publish(s, register(s, "floor10", "L10", str(tmp_path / "tidak-ada")).id)
     monkeypatch.setenv("DATABASE_URL", url)
     monkeypatch.setenv("EUTOPOS_AREA", "floor10")
@@ -138,3 +149,158 @@ def test_missing_map_files(tmp_path):
         p.touch()
     assert missing_files(tmp_path, 1024, 1024, 512) == []
     assert missing_files(tmp_path, 512, 640, 512)  # setelan lain butuh folder lain
+
+
+def test_migration_0008_puts_existing_areas_in_hcm(tmp_path, monkeypatch):
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'mig0008.db'}"
+    monkeypatch.setenv("DATABASE_URL", url)
+    cfg = Config("server/alembic.ini")
+    command.upgrade(cfg, "0007")
+
+    engine = create_engine(url)
+    with engine.connect() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO area (id, name) VALUES ('floor10', 'Floor 10'),"
+                " ('hcm-lantai-10', 'HCM Floor 10')"
+            )
+        )
+        conn.commit()
+
+    command.upgrade(cfg, "head")
+
+    with engine.connect() as conn:
+        orgs = conn.execute(text("SELECT id, slug, name FROM organization")).fetchall()
+        assert len(orgs) == 1
+        org = orgs[0]
+        assert org[1] == "default"
+
+        buildings = conn.execute(text("SELECT id, org_id, slug, name FROM building")).fetchall()
+        assert len(buildings) == 1
+        bld = buildings[0]
+        assert bld[1] == org[0]
+        assert bld[2] == "hcm"
+
+        areas = conn.execute(text("SELECT id, building_id FROM area ORDER BY id")).fetchall()
+        assert len(areas) == 2
+        assert areas[0] == ("floor10", bld[0])
+        assert areas[1] == ("hcm-lantai-10", bld[0])
+
+
+def test_migration_0008_up_down_up(tmp_path, monkeypatch):
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import inspect
+
+    url = f"sqlite:///{tmp_path / 'updown.db'}"
+    monkeypatch.setenv("DATABASE_URL", url)
+    cfg = Config("server/alembic.ini")
+
+    command.upgrade(cfg, "head")
+    engine = create_engine(url)
+    insp = inspect(engine)
+    assert "organization" in insp.get_table_names()
+    assert "building" in insp.get_table_names()
+    col_names = [c["name"] for c in insp.get_columns("area")]
+    assert "building_id" in col_names
+
+    command.downgrade(cfg, "0007")
+    insp = inspect(create_engine(url))
+    assert "organization" not in insp.get_table_names()
+    assert "building" not in insp.get_table_names()
+    col_names = [c["name"] for c in insp.get_columns("area")]
+    assert "building_id" not in col_names
+
+    command.upgrade(cfg, "head")
+    insp = inspect(create_engine(url))
+    assert "organization" in insp.get_table_names()
+    assert "building" in insp.get_table_names()
+    col_names = [c["name"] for c in insp.get_columns("area")]
+    assert "building_id" in col_names
+
+
+def test_area_without_building_is_rejected(session):
+    from server.db import Area
+
+    session.add(Area(id="x", name="X"))
+    with pytest.raises(IntegrityError):
+        session.commit()
+
+
+def test_building_slug_unique_per_org(session):
+    from server.db import Building, Organization
+
+    org1 = Organization(slug="org1", name="Org 1")
+    org2 = Organization(slug="org2", name="Org 2")
+    session.add(org1)
+    session.add(org2)
+    session.commit()
+
+    b1 = Building(org_id=org1.id, slug="hcm", name="HCM 1")
+    session.add(b1)
+    session.commit()
+
+    b2 = Building(org_id=org1.id, slug="hcm", name="HCM Duplicate")
+    session.add(b2)
+    with pytest.raises(IntegrityError):
+        session.commit()
+    session.rollback()
+
+    b3 = Building(org_id=org2.id, slug="hcm", name="HCM in Org 2")
+    session.add(b3)
+    session.commit()
+    assert b3.id is not None
+
+
+def test_ensure_area_returns_existing(session):
+    from server.db import ensure_area
+    from tests.conftest import make_building
+
+    bld = make_building(session)
+    a1 = ensure_area(session, "test-existing", "L10", bld.id)
+    assert a1.id == "test-existing"
+    assert a1.name == "L10"
+    assert a1.building_id == bld.id
+
+    a2 = ensure_area(session, "test-existing", "Renamed", None)
+    assert a2.id == "test-existing"
+    assert a2.name == "L10"
+
+    a3 = ensure_area(session, "test-existing", "Renamed Again", bld.id)
+    assert a3.id == "test-existing"
+    assert a3.name == "L10"
+
+
+def test_ensure_area_rejects_other_building(session):
+    from server.db import Building, Organization, ensure_area
+    from tests.conftest import make_building
+
+    bld1 = make_building(session)
+    org2 = Organization(slug="other-org", name="Other Org")
+    session.add(org2)
+    session.commit()
+    bld2 = Building(org_id=org2.id, slug="other-bld", name="Other Building")
+    session.add(bld2)
+    session.commit()
+
+    ensure_area(session, "floor10", "L10", bld1.id)
+    with pytest.raises(ValueError, match="area floor10 belongs to another building"):
+        ensure_area(session, "floor10", "L10", bld2.id)
+
+
+def test_ensure_area_new_requires_building(session):
+    from server.db import ensure_area
+
+    with pytest.raises(ValueError, match="building_id is required for a new area"):
+        ensure_area(session, "brand-new", "Brand New", None)
+
+
+def test_ensure_area_unknown_building(session):
+    from server.db import ensure_area
+
+    with pytest.raises(ValueError, match="building 99999 not found"):
+        ensure_area(session, "brand-new", "Brand New", 99999)

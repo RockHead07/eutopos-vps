@@ -15,8 +15,30 @@ from sqlmodel import Field, Session, SQLModel, create_engine, select
 Status = Literal["candidate", "published", "rejected", "retired"]
 
 
+DEFAULT_ORG_SLUG = "default"
+DEFAULT_ORG_NAME = "Organisasi bawaan"
+DEFAULT_BUILDING_SLUG = "hcm"
+DEFAULT_BUILDING_NAME = "HCM"
+
+
+class Organization(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    slug: str = Field(unique=True, index=True)
+    name: str
+
+
+class Building(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("org_id", "slug"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    org_id: int = Field(foreign_key="organization.id", index=True)
+    slug: str = Field(index=True)
+    name: str
+
+
 class Area(SQLModel, table=True):
     id: str = Field(primary_key=True)  # slug, misalnya "floor10"
+    building_id: int = Field(default=None, foreign_key="building.id", nullable=False, index=True)
     name: str
 
 
@@ -264,10 +286,29 @@ def active_version(session: Session, area_id: str) -> MapVersion | None:
     return session.exec(stmt).first()
 
 
-def register(session: Session, area_id: str, name: str, path: str) -> MapVersion:
+def ensure_area(session: Session, area_id: str, name: str, building_id: int | None) -> Area:
+    """Ambil area yang ada atau buat baru dalam gedung yang ditentukan."""
+    existing = session.get(Area, area_id)
+    if existing is not None:
+        if building_id is not None and existing.building_id != building_id:
+            raise ValueError(f"area {area_id} belongs to another building")
+        return existing
+    if building_id is None:
+        raise ValueError("building_id is required for a new area")
+    building = session.get(Building, building_id)
+    if building is None:
+        raise ValueError(f"building {building_id} not found")
+    area = Area(id=area_id, name=name, building_id=building_id)
+    session.add(area)
+    session.flush()
+    return area
+
+
+def register(
+    session: Session, area_id: str, name: str, path: str, building_id: int | None = None
+) -> MapVersion:
     """Tambah versi kandidat baru untuk area (area dibuat kalau belum ada)."""
-    if session.get(Area, area_id) is None:
-        session.add(Area(id=area_id, name=name))
+    ensure_area(session, area_id, name, building_id)
     last = session.exec(
         select(func.max(MapVersion.version)).where(MapVersion.area_id == area_id)
     ).one()

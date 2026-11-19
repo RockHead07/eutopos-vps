@@ -32,8 +32,11 @@ def session():
     engine = create_engine("sqlite://")
     SQLModel.metadata.create_all(engine)
     with Session(engine) as s:
-        s.add(Area(id="floor10", name="Lantai 10"))
-        s.add(Area(id="floor9", name="Lantai 9"))
+        from tests.conftest import make_building
+
+        bld = make_building(s)
+        s.add(Area(id="floor10", name="Lantai 10", building_id=bld.id))
+        s.add(Area(id="floor9", name="Lantai 9", building_id=bld.id))
         s.commit()
         yield s
 

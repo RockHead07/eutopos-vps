@@ -11,6 +11,8 @@ Contoh (di dalam container):
     python -m server.manage thumbs      # foto kecil frame scan untuk halaman area (job lama)
     python -m server.manage align --version 7 --align /data/eval/align.json \
         --navgraph /data/eval/navgraph.json   # di container worker (/maps bisa ditulis)
+    python -m server.manage building list
+    python -m server.manage building add pens "Politeknik Elektronika"
 Setelah menerbitkan versi baru, muat ulang layanan: docker compose restart api
 """
 
@@ -21,7 +23,18 @@ from pathlib import Path
 from sqlmodel import Session, select
 
 from server import alignment, jobs, navgraph
-from server.db import Alignment, MapJob, MapVersion, engine_from_env, publish, register
+from server.db import (
+    DEFAULT_ORG_SLUG,
+    Alignment,
+    Area,
+    Building,
+    MapJob,
+    MapVersion,
+    Organization,
+    engine_from_env,
+    publish,
+    register,
+)
 from server.map_layout import missing_files
 from server.pipeline import missing_inputs
 from server.worker import DATA, MAPS, backfill_previews, backfill_thumbs
@@ -35,6 +48,7 @@ def main():
     r.add_argument("name")
     r.add_argument("path", help="folder peta di dalam container, misalnya /maps/demo")
     r.add_argument("--publish", action="store_true", help="langsung jadikan versi aktif")
+    r.add_argument("--building", default="hcm", help="slug gedung untuk area baru (bawaan hcm)")
     p = sub.add_parser("publish", help="jadikan sebuah versi aktif")
     p.add_argument("version_id", type=int)
     sub.add_parser("list", help="tampilkan semua versi peta")
@@ -44,6 +58,7 @@ def main():
     j.add_argument("--map", nargs="+", required=True, help="video atau folder frame untuk peta")
     j.add_argument("--query", nargs="*", default=[], help="video atau folder frame untuk uji")
     j.add_argument("--by", default="cli", help="dicatat sebagai pembuat pekerjaan")
+    j.add_argument("--building", default="hcm", help="slug gedung untuk area baru (bawaan hcm)")
     sub.add_parser("jobs", help="tampilkan antrean pekerjaan")
     sub.add_parser(
         "previews", help="buat pratinjau job selesai yang belum punya, dari frame tersimpan"
@@ -55,10 +70,45 @@ def main():
     al.add_argument("--version", type=int, required=True, help="id versi peta (lihat 'list')")
     al.add_argument("--align", type=Path, help="align.json dari spike/eval_meter.py")
     al.add_argument("--navgraph", type=Path, help="navgraph.json untuk area versi itu")
+    b = sub.add_parser("building", help="kelola gedung")
+    b_sub = b.add_subparsers(dest="building_cmd", required=True)
+    b_sub.add_parser("list", help="tampilkan daftar gedung")
+    b_add = b_sub.add_parser("add", help="tambah gedung baru (organisasi bawaan)")
+    b_add.add_argument("slug", help="slug unik gedung")
+    b_add.add_argument("name", help="nama gedung")
     a = ap.parse_args()
 
     with Session(engine_from_env()) as s:
-        if a.cmd == "register":
+        if a.cmd == "building":
+            if a.building_cmd == "list":
+                buildings = list(s.exec(select(Building).order_by(Building.name)))
+                stmt_areas = select(Area.id, Area.building_id)
+                counts: dict[int, int] = {}
+                for _, bld_id in s.exec(stmt_areas):
+                    counts[bld_id] = counts.get(bld_id, 0) + 1
+                for bld in buildings:
+                    print(f"{bld.slug}  {bld.name}  {counts.get(bld.id, 0)}")
+            elif a.building_cmd == "add":
+                default_org = s.exec(
+                    select(Organization).where(Organization.slug == DEFAULT_ORG_SLUG)
+                ).first()
+                if default_org is None:
+                    raise SystemExit("default organization not found")
+                existing = s.exec(
+                    select(Building).where(
+                        Building.org_id == default_org.id, Building.slug == a.slug
+                    )
+                ).first()
+                if existing is not None:
+                    raise SystemExit(f"building {a.slug} already exists")
+                bld = Building(org_id=default_org.id, slug=a.slug, name=a.name)
+                s.add(bld)
+                s.commit()
+                print(f"gedung {bld.slug} ({bld.name}) ditambahkan")
+        elif a.cmd == "register":
+            bld = s.exec(select(Building).where(Building.slug == a.building)).first()
+            if bld is None:
+                raise SystemExit(f"building {a.building} not found")
             # Setelan sama dengan layanan (server/app.py): diperiksa persis berkas yang dimuat.
             missing = missing_files(
                 Path(a.path),
@@ -71,7 +121,10 @@ def main():
                     "peta tidak lengkap, tidak didaftarkan. Berkas yang tidak ada:\n  "
                     + "\n  ".join(map(str, missing))
                 )
-            v = register(s, a.area_id, a.name, a.path)
+            try:
+                v = register(s, a.area_id, a.name, a.path, building_id=bld.id)
+            except ValueError as e:
+                raise SystemExit(str(e)) from e
             if a.publish:
                 v = publish(s, v.id)
             print(f"{v.area_id} v{v.version} (id {v.id}): {v.status}, {v.path}")
@@ -79,13 +132,18 @@ def main():
             v = publish(s, a.version_id)
             print(f"{v.area_id} v{v.version} (id {v.id}) sekarang aktif")
         elif a.cmd == "job":
+            bld = s.exec(select(Building).where(Building.slug == a.building)).first()
+            if bld is None:
+                raise SystemExit(f"building {a.building} not found")
             # Disimpan absolut: pekerja berjalan dari folder kerja lain.
             videos = [{"path": str(Path(p).resolve()), "role": "peta"} for p in a.map]
             videos += [{"path": str(Path(p).resolve()), "role": "uji"} for p in a.query]
             if missing := missing_inputs(videos):
                 raise SystemExit(f"berkas tidak ditemukan: {', '.join(missing)}")
             try:
-                job = jobs.create_job(s, a.area_id, a.name, a.by, videos, status="queued")
+                job = jobs.create_job(
+                    s, a.area_id, a.name, a.by, videos, status="queued", building_id=bld.id
+                )
             except ValueError as e:
                 raise SystemExit(str(e)) from e
             print(f"pekerjaan {job.id} diantrekan untuk {job.area_id}")

@@ -49,7 +49,10 @@ def make_case(tmp_path, file_db=False):
     (mapping / "f_0.jpg").write_bytes(b"frame")
     sfm = pipeline.sfm_dir(map_dir)
     sfm.mkdir(parents=True)
-    session.add(Area(id="floor10", name="Test floor"))
+    from tests.conftest import make_building
+
+    bld = make_building(session)
+    session.add(Area(id="floor10", name="Test floor", building_id=bld.id))
     session.commit()
     version = MapVersion(area_id="floor10", version=1, path=str(map_dir))
     session.add(version)

@@ -23,6 +23,13 @@ def session():
     engine = create_engine("sqlite://")
     SQLModel.metadata.create_all(engine)
     with Session(engine) as s:
+        from server.db import Area
+        from tests.conftest import make_building
+
+        bld = make_building(s)
+        s.add(Area(id="floor10", name="Lantai 10", building_id=bld.id))
+        s.add(Area(id="other", name="Other", building_id=bld.id))
+        s.commit()
         yield s
 
 
@@ -244,6 +251,13 @@ def test_error_keeps_message_when_log_is_long(session, tmp_path):
 def test_worker_session_holds_no_transaction_during_stage(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'w.db'}")
     SQLModel.metadata.create_all(engine)
+    with Session(engine) as s:
+        from server.db import Area
+        from tests.conftest import make_building
+
+        bld = make_building(s)
+        s.add(Area(id="floor10", name="Lantai 10", building_id=bld.id))
+        s.commit()
     with worker.worker_session(engine) as s:
         job = queued(s, [{"path": str(tmp_path), "role": "peta"}])
         jobs.set_stage(s, job, "build")

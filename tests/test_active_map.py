@@ -14,6 +14,13 @@ from server.db import MapVersion, active_version, publish, register
 def engine(tmp_path):
     e = create_engine(f"sqlite:///{tmp_path / 'a.db'}")
     SQLModel.metadata.create_all(e)
+    with Session(e) as s:
+        from server.db import Area
+        from tests.conftest import make_building
+
+        bld = make_building(s)
+        s.add(Area(id="floor10", name="L10", building_id=bld.id))
+        s.commit()
     return e
 
 

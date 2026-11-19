@@ -36,7 +36,10 @@ def test_backfill_makes_thumbs_for_finished_jobs(tmp_path):
     SQLModel.metadata.create_all(engine)
     maps, data = tmp_path / "maps", tmp_path / "data"
     with Session(engine) as s:
-        s.add(Area(id="floor10", name="L10"))
+        from tests.conftest import make_building
+
+        bld = make_building(s)
+        s.add(Area(id="floor10", name="L10", building_id=bld.id))
         s.add(MapJob(id=21, area_id="floor10", created_by="dev", status="done"))
         s.commit()
         (maps / "floor10" / "job-21").mkdir(parents=True)

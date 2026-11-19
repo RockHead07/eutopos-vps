@@ -50,7 +50,10 @@ def client(tmp_path, monkeypatch):
     engine = create_engine(url)
     SQLModel.metadata.create_all(engine)
     with Session(engine) as s:
-        s.add(Area(id="floor10", name="Lantai 10"))
+        from tests.conftest import make_building
+
+        bld = make_building(s)
+        s.add(Area(id="floor10", name="Lantai 10", building_id=bld.id))
         for n, status in ((1, "published"), (2, "candidate")):
             s.add(MapVersion(area_id="floor10", version=n, path=f"/maps/job-{n}", status=status))
         s.commit()

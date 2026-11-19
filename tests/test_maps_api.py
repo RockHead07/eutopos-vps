@@ -16,10 +16,20 @@ from server.db import Alignment, MapJob, SplatJob, publish, register
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     url = f"sqlite:///{tmp_path / 'm.db'}"
-    SQLModel.metadata.create_all(create_engine(url))
+    eng = create_engine(url)
+    SQLModel.metadata.create_all(eng)
+    with Session(eng) as s:
+        from server.db import Area
+        from tests.conftest import make_building
+
+        bld = make_building(s)
+        s.add(Area(id="floor10", name="Lantai 10", building_id=bld.id))
+        s.add(Area(id="floor9", name="Lantai 9", building_id=bld.id))
+        s.commit()
     monkeypatch.setenv("DATABASE_URL", url)
     monkeypatch.setenv("EUTOPOS_DEV_NO_AUTH", "1")
     monkeypatch.setenv("EUTOPOS_AREA", "floor10")
+    monkeypatch.setenv("EUTOPOS_MAPS_ROOT", str(tmp_path / "maps"))
     monkeypatch.delenv("CF_ACCESS_TEAM_DOMAIN", raising=False)
     monkeypatch.delenv("CF_ACCESS_AUD", raising=False)
     monkeypatch.setattr(maps_api, "MAPS_ROOT", tmp_path / "maps")
@@ -892,10 +902,7 @@ def test_rebuild_non_admin_gets_403_even_for_an_unknown_version(client, monkeypa
 
 
 def test_rebuild_maps_a_version_that_vanishes_before_queueing_to_404(client, monkeypatch):
-    from sqlmodel import select
-
     from server import splat_jobs
-    from server.db import SplatJob
 
     v = make_version(client)
 
@@ -905,4 +912,80 @@ def test_rebuild_maps_a_version_that_vanishes_before_queueing_to_404(client, mon
     monkeypatch.setattr(splat_jobs, "enqueue", vanished)
     r = client.post(f"/api/versions/{v.id}/splat/rebuild", json={})
     assert r.status_code == 404
+
+
+def test_version_navigation_readiness_and_building(client, tmp_path):
+    import json
+
+    from sqlmodel import select
+
+    from server.db import Alignment, SplatJob, publish
+
+    valid_align = {
+        "meter_from_model": {
+            "scale": 1.0,
+            "rotation_xyzw": [0.0, 0.0, 0.0, 1.0],
+            "translation": [0.0, 0.0, 0.0],
+        },
+        "reference_points": 4,
+        "residual_median_m": 0.05,
+    }
+
+    # 1. Versi kandidat -> navigation_ready false
+    v1 = make_version(client, area="floor10")
+    row1 = next(r for r in client.get("/api/versions").json() if r["id"] == v1.id)
+    assert row1["navigation_ready"] is False
+    assert row1["building_name"] == "HCM"
+    assert row1["building_id"] > 0
+
+    # 2. Terbit tanpa alignment (kasus floor10) -> false
+    publish(client.db, v1.id)
+    row2 = next(r for r in client.get("/api/versions").json() if r["id"] == v1.id)
+    assert row2["navigation_ready"] is False
+
+    # 3. Terbit dan selaras tanpa graf -> false
+    from server.pipeline import run_dir
+
+    align_file = run_dir(Path(v1.path)) / "align.json"  # layout nyata: kp*-r*/align.json
+    align_file.parent.mkdir(parents=True, exist_ok=True)
+    align_file.write_text(json.dumps(valid_align))
+    row3 = next(r for r in client.get("/api/versions").json() if r["id"] == v1.id)
+    assert row3["navigation_ready"] is False
+
+    # 4. Terbit dengan align.json dan graf di folder area -> true
+    graph_file = tmp_path / "maps" / "floor10" / "navgraph.json"
+    graph_file.parent.mkdir(parents=True, exist_ok=True)
+    graph_file.write_text(
+        json.dumps(
+            {
+                "frame": "building",
+                "units": "m",
+                "nodes": [{"id": "P01", "x": 0.0, "y": 0.0}],
+                "edges": [],
+                "targets": [],
+            }
+        )
+    )
+    row4 = next(r for r in client.get("/api/versions").json() if r["id"] == v1.id)
+    assert row4["navigation_ready"] is True
+
+    # 5. Terbit dengan alignment di DB dan graf -> true (Review Focus 4)
+    align_file.unlink()
+    row5_no_align = next(r for r in client.get("/api/versions").json() if r["id"] == v1.id)
+    assert row5_no_align["navigation_ready"] is False
+
+    client.db.add(
+        Alignment(
+            map_version_id=v1.id,
+            params=valid_align,
+            stats={},
+            status="applied",
+            source="fit",
+            created_by="admin",
+        )
+    )
+    client.db.commit()
+    row5 = next(r for r in client.get("/api/versions").json() if r["id"] == v1.id)
+    assert row5["navigation_ready"] is True
+
     assert client.db.exec(select(SplatJob)).all() == []

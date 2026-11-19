@@ -1,3 +1,6 @@
+import type { Building } from "./buildings";
+export type { Building };
+
 // size dan uploaded null: pekerjaan dari manage job (CLI), videonya tidak lewat unggahan.
 export type Video = {
   name: string;
@@ -42,6 +45,9 @@ export type Job = {
 export type Version = {
   id: number;
   area_id: string;
+  building_id: number;
+  building_name: string;
+  navigation_ready: boolean;
   version: number;
   status: string;
   created_at: string;
@@ -86,6 +92,7 @@ export type ServiceStatus = {
 export type NewJob = {
   area_id: string;
   area_name: string;
+  building_id?: number;
   videos: { name: string; role: "peta" | "uji"; size: number }[];
 };
 export type Me = {
@@ -426,6 +433,9 @@ export const calibrationApi = {
 
 export const api = {
   me: () => call<Me>("/api/me"),
+  buildings: () => call<Building[]>("/api/buildings"),
+  createBuilding: (body: { slug: string; name: string }) =>
+    call<Building>("/api/buildings", post(body)),
   jobs: () => call<Job[]>("/api/jobs"),
   job: (id: number) => call<Job>(`/api/jobs/${id}`),
   createJob: (body: NewJob) => call<Job>("/api/jobs", { method: "POST", body: JSON.stringify(body) }),

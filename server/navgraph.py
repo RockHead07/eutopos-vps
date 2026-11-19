@@ -37,6 +37,19 @@ def graph_path(root: Path, area_id: str) -> Path:
     return root / area_id / FILE_NAME
 
 
+def graph_exists(session, area_id: str, root: Path | None = None) -> bool:
+    """Periksa apakah graf navigasi untuk area ini ada (di DB atau di berkas)."""
+    from server.db import PublishedGraph
+
+    if session.get(PublishedGraph, area_id) is not None:
+        return True
+    try:
+        r = root if root is not None else maps_root()
+        return graph_path(r, area_id).exists()
+    except ValueError:
+        return False
+
+
 def _number(v) -> bool:
     if isinstance(v, bool) or not isinstance(v, int | float):
         return False

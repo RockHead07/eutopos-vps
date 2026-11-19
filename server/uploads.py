@@ -58,6 +58,7 @@ class JobIn(BaseModel):
     area_id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{0,39}$")
     area_name: str = Field(min_length=1, max_length=100)
     videos: list[VideoIn] = Field(min_length=1, max_length=MAX_VIDEOS)
+    building_id: int | None = None
 
 
 class VideoOut(BaseModel):
@@ -116,7 +117,9 @@ def create(body: JobIn, user: User, s: DB) -> JobOut:
         {**v.model_dump(), "upload_id": None, "path": None, "uploaded": False} for v in body.videos
     ]
     try:
-        job = jobs.create_job(s, body.area_id, body.area_name, user, videos)
+        job = jobs.create_job(
+            s, body.area_id, body.area_name, user, videos, building_id=body.building_id
+        )
     except ValueError as e:
         raise HTTPException(422, str(e)) from e
     return _job_out(job)
