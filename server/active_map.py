@@ -8,12 +8,15 @@ mati di tengah), database tidak berubah, peta lama tetap dipakai, galatnya ditam
 import logging
 import os
 import threading
+from collections.abc import Callable
+from itertools import groupby
 from pathlib import Path
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
+from server import alignment, jobs, navgraph
 from server.alignment import DbAlign
-from server.db import MapVersion, publish
+from server.db import MapJob, MapVersion, publish, set_status
 from server.localizer import MIN_INLIERS, Localizer
 
 log = logging.getLogger("eutopos")
@@ -40,7 +43,13 @@ def load_localizer(map_dir: Path, align_source=None) -> Localizer:
     )
 
 
-def reload_in_background(state, engine, version_id: int, by: str | None):
+def reload_in_background(
+    state,
+    engine,
+    version_id: int,
+    by: str | None,
+    on_error: Callable[[Exception], None] | None = None,
+) -> threading.Thread:
     """Muat versi peta, terbitkan atas nama `by`, lalu tukar peta yang dilayani.
 
     ponytail: memuat ulang seluruh model untuk peta baru (beberapa detik, memori sementara dua
@@ -62,9 +71,79 @@ def reload_in_background(state, engine, version_id: int, by: str | None):
         except Exception as e:
             log.exception("gagal menerbitkan %s", label)
             state.reload_error = f"{label} failed to publish ({e}); still serving the previous map"
+            if on_error is not None:
+                try:
+                    on_error(e)
+                except Exception:
+                    log.exception("gagal mencatat penolakan %s", label)
         finally:
             state.reloading = False
 
     t = threading.Thread(target=run, daemon=True)
     t.start()
     return t
+
+
+PUBLISH_POLL_S = 10
+
+
+def auto_publish_enabled() -> bool:
+    return os.environ.get("EUTOPOS_AUTO_PUBLISH", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _reject_failed_publish(engine, version_id: int, error: Exception) -> None:
+    with Session(engine) as session:
+        version = session.get(MapVersion, version_id)
+        if version is None or version.status != "ready":
+            return
+        job = session.exec(select(MapJob).where(MapJob.map_version_id == version_id)).first()
+        if job is None:
+            set_status(session, version_id, "rejected")
+        else:
+            jobs.reject(session, job, version, f"Map could not be loaded: {error}", "publish")
+
+
+def publish_ready(state, engine) -> list[threading.Thread]:
+    threads = []
+    with Session(engine) as session:
+        ready = session.exec(
+            select(MapVersion.area_id, MapVersion.id)
+            .where(MapVersion.status == "ready")
+            .order_by(MapVersion.area_id, MapVersion.version.desc())
+        ).all()
+        for area, rows in groupby(ready, key=lambda row: row[0]):
+            serving = area == serving_area()
+            if serving and state.reloading:
+                continue
+            newest_id, *older_ids = (version_id for _, version_id in rows)
+            for older_id in older_ids:
+                set_status(session, older_id, "retired")
+            if serving:
+                version = session.get(MapVersion, newest_id)
+                if (
+                    version is None
+                    or alignment.version_alignment(session, version, navgraph.maps_root()) is None
+                ):
+                    continue
+                threads.append(
+                    reload_in_background(
+                        state,
+                        engine,
+                        newest_id,
+                        by="system",
+                        on_error=lambda error, version_id=newest_id: _reject_failed_publish(
+                            engine, version_id, error
+                        ),
+                    )
+                )
+            else:
+                publish(session, newest_id, by="system")
+    return threads
+
+
+def publish_loop(state, engine, stop: threading.Event, interval: float = PUBLISH_POLL_S) -> None:
+    while not stop.wait(interval):
+        try:
+            publish_ready(state, engine)
+        except Exception:
+            log.exception("gagal memeriksa versi peta untuk publish otomatis")

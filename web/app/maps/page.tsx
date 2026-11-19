@@ -115,6 +115,7 @@ export default function MapsPage() {
     () => [
       { value: "published", label: t("status.published") },
       { value: "candidate", label: t("status.candidate") },
+      { value: "ready", label: t("status.ready") },
       { value: "retired", label: t("status.retired") },
       { value: "rejected", label: t("status.rejected") },
     ],

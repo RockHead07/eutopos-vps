@@ -114,6 +114,7 @@ export const en = {
   "status.deleting": "deleting",
   "status.published": "published",
   "status.candidate": "candidate",
+  "status.ready": "ready",
   "status.retired": "retired",
   "status.rejected": "rejected",
   "jobs.colId": "#",
@@ -484,6 +485,9 @@ export const en = {
   "pipeline.descBuild": "Structure-from-Motion",
   "pipeline.descInspect": "Map inspection & evaluation",
   "pipeline.descRegister": "Map version registration",
+  "pipeline.gate": "Gate",
+  "pipeline.publish": "Publish",
+  "pipeline.descGate": "Test-photo check",
 
   // Version Comparison Panel
   "compare.title": "Version Comparison",

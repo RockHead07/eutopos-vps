@@ -66,6 +66,7 @@ async def lifespan(app: FastAPI):
     # ponytail: satu lokalisasi dalam satu waktu. Model torch dipakai bersama dan server kecil
     # (2 vCPU). Kalau antrean permintaan jadi masalah, jalankan beberapa proses pekerja.
     st.lock = threading.Lock()
+    stop = None
     if os.environ.get("DATABASE_URL"):
         engine = engine_from_env()
         with Session(engine) as s:
@@ -81,9 +82,19 @@ async def lifespan(app: FastAPI):
                 # versi lain. Tanpa ini api restart berulang dan dashboard ikut mati.
                 logging.getLogger("eutopos").exception("gagal memuat peta aktif")
                 st.reload_error = f"version {v.version} failed to load at startup ({e})"
+        if active_map.auto_publish_enabled():
+            stop = threading.Event()
+            publisher = threading.Thread(
+                target=active_map.publish_loop, args=(st, engine, stop), daemon=True
+            )
+            publisher.start()
     else:
         st.localizer = active_map.load_localizer(Path(os.environ["EUTOPOS_MAP_DIR"]))
-    yield
+    try:
+        yield
+    finally:
+        if stop is not None:
+            stop.set()
 
 
 app = FastAPI(title="eutopos-vps", lifespan=lifespan)

@@ -3,7 +3,7 @@
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
-from server import jobs
+from server import db, jobs
 from server.db import Area, MapJob, publish, register
 
 MAP = {"path": "/data/inbox/v1.mp4", "role": "peta"}
@@ -327,3 +327,46 @@ def test_create_job_new_area_in_building(session):
     assert area.building_id == bld.id
     assert area.name == "New Area"
     assert job.status == "queued"
+
+
+def test_reject_marks_version_and_fails_job(session):
+    jobs.create_job(session, "floor10", "L10", "a@x.id", [MAP], "queued")
+    job = jobs.claim_next(session)
+    version = register(session, "floor10", "L10", "/maps/test")
+    summary = {"gate": {"decision": "reject"}}
+
+    jobs.reject(session, job, version, "Rejected: x", "gate", summary)
+
+    assert (job.status, job.stage, job.map_version_id, job.error) == (
+        "failed",
+        "gate",
+        version.id,
+        "Rejected: x",
+    )
+    assert job.finished_at is not None
+    assert job.summary == summary
+    session.expire_all()
+    assert session.get(db.MapVersion, version.id).status == "rejected"
+
+
+def test_set_status_moves_between_allowed_states(session):
+    version = register(session, "floor10", "L10", "/maps/test")
+    for status in ("ready", "rejected", "retired", "candidate"):
+        assert db.set_status(session, version.id, status).status == status
+
+
+@pytest.mark.parametrize("status", ["published", "bogus"])
+def test_set_status_refuses_published_and_unknown(session, status):
+    version = register(session, "floor10", "L10", "/maps/test")
+    with pytest.raises(ValueError):
+        db.set_status(session, version.id, status)
+
+
+@pytest.mark.parametrize("status", ["ready", "rejected"])
+def test_publish_works_from_ready_and_rejected(session, status):
+    old = register(session, "floor10", "L10", "/maps/old")
+    publish(session, old.id)
+    version = register(session, "floor10", "L10", "/maps/new")
+    db.set_status(session, version.id, status)
+    assert publish(session, version.id).status == "published"
+    assert session.get(db.MapVersion, old.id).status == "retired"
