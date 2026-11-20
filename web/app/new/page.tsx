@@ -4,7 +4,7 @@ import Dashboard from "@uppy/react/dashboard";
 import Tus from "@uppy/tus";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { ApiError, api, mb, ROLE } from "@/lib/api";
+import { ApiError, api, mb, ROLE, type NewJob } from "@/lib/api";
 import {
   AREA_ID_MAX,
   AREA_NAME_MAX,
@@ -52,7 +52,7 @@ async function explainUnreadable(uppy: Uppy, say: RetryHandler, tRef: TranslateR
       say(
         tRef.current
           ? tRef.current("new.cannotReadFile", { bad })
-          : `Cannot read the video file (${bad}). Copy it to the Downloads folder, select it again and press Start upload.`,
+          : bad,
       );
       return;
     }
@@ -62,7 +62,7 @@ async function explainUnreadable(uppy: Uppy, say: RetryHandler, tRef: TranslateR
 function createUppy(onRetryRef: React.RefObject<RetryHandler | null>, tRef: TranslateRef) {
   const uppy = new Uppy({
     autoProceed: false,
-    restrictions: { allowedFileTypes: ["video/*"], maxNumberOfFiles: 4, maxFileSize: 2 * 1024 ** 3 },
+    restrictions: { allowedFileTypes: ["video/*", ".zip", "application/zip"], maxNumberOfFiles: 4, maxFileSize: 2 * 1024 ** 3 },
   });
   uppy.use(Tus, {
     endpoint: "/files/",
@@ -451,8 +451,13 @@ export default function NewSessionPage() {
 
     setBusy(true);
     try {
-      const videos = files.map((f, i) => ({ name: f.name, size: f.size, role: roleOf(f, i) }));
-      const key = JSON.stringify([area, name, selectedBuildingId, videos]);
+      const selectedFiles = files.map((f, i) => ({ name: f.name, size: f.size, role: roleOf(f, i) }));
+      // Kind diturunkan dari nama. Kunci lama harus tetap cocok untuk melanjutkan unggahan video.
+      const key = JSON.stringify([area, name, selectedBuildingId, selectedFiles]);
+      const videos: NewJob["videos"] = selectedFiles.map((file) => ({
+        ...file,
+        kind: file.name.toLowerCase().endsWith(".zip") ? "frames" : "video",
+      }));
       if (last.current?.key !== key) {
         const job = await api.createJob({
           area_id: area,

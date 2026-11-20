@@ -52,6 +52,7 @@ class VideoIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     role: Literal["peta", "uji"]
     size: int = Field(gt=0, le=MAX_VIDEO_BYTES)
+    kind: Literal["video", "frames"] = "video"
 
 
 class JobIn(BaseModel):
@@ -65,6 +66,7 @@ class VideoOut(BaseModel):
     # Tanpa upload_id dan path: dengan ID unggahan orang bisa mengganggu unggahan milik orang lain.
     name: str
     role: str
+    kind: Literal["video", "frames"] = "video"
     size: int | None = None  # None: pekerjaan dari manage job (CLI), videonya tidak diunggah
     uploaded: bool | None = None
     # Waktu rekam dari dalam berkas video (server/video_meta.py). None: tidak diketahui, termasuk
@@ -113,6 +115,12 @@ def create(body: JobIn, user: User, s: DB) -> JobOut:
     names = [v.name for v in body.videos]
     if len(set(names)) != len(names):
         raise HTTPException(422, "duplicate video names in one job")
+    for role in ("peta", "uji"):
+        kinds = [v.kind for v in body.videos if v.role == role]
+        if kinds.count("frames") > 1:
+            raise HTTPException(422, f"only one frame package is allowed for role {role}")
+        if "frames" in kinds and "video" in kinds:
+            raise HTTPException(422, f"frame package and video cannot share role {role}")
     videos = [
         {**v.model_dump(), "upload_id": None, "path": None, "uploaded": False} for v in body.videos
     ]

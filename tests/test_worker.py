@@ -112,6 +112,7 @@ def test_process_success_registers_candidate_and_spares_cli_files(session, tmp_p
     assert job.summary == {
         "run": {"map_registered": 80},
         "inspect": {"parts": [], "accepted": 20},
+        "align": {"status": "skipped", "reason": "no_frames"},
         "gate": {
             "decision": "hold",
             "reasons": [{"code": "no_test_photos", "message": "No test photos were provided"}],
@@ -600,7 +601,7 @@ def test_process_sets_gpu_wait_before_blocking_then_extract(session, tmp_path, m
         lock=lambda: gate,
     )
     assert job.status == "done", job.error
-    assert stages == ["gpu_wait", "extract", "build", "inspect", "register", "gate"]
+    assert stages == ["gpu_wait", "extract", "build", "inspect", "register", "align", "gate"]
     assert gate.events == ["enter", "exit"]
 
 
@@ -911,3 +912,105 @@ def test_gate_ready_is_not_committed_if_finishing_the_job_fails(session, tmp_pat
     job = run_gate_job(session, tmp_path, INSPECT_PASS)
     assert job.status == "failed"
     assert session.exec(select(MapVersion)).one().status == "candidate"
+
+
+@pytest.mark.parametrize("residual", [0.1, 0.25, 0.251, None])
+def test_frame_packages_align_or_continue_with_recorded_result(
+    session, tmp_path, monkeypatch, residual
+):
+    from zipfile import ZipFile
+
+    from server import quick_align
+
+    data, maps = tmp_path / "data", tmp_path / "maps"
+    (data / "uploads").mkdir(parents=True)
+    videos = []
+    poses = '{"file":"000001.jpg","position":[0,1,2]}\n'
+    _, jpeg = cv2.imencode(".jpg", np.zeros((8, 8, 3), dtype=np.uint8))
+    for role in ("peta", "uji"):
+        path = data / "uploads" / f"job1-{role}"
+        with ZipFile(path, "w") as archive:
+            archive.writestr("images/000001.jpg", jpeg.tobytes())
+            archive.writestr("meta.json", "{}")
+            if role == "peta":
+                archive.writestr("frames.jsonl", poses)
+        videos.append({"path": str(path), "role": role, "kind": "frames"})
+    job = queued(session, videos)
+    map_dir = maps / "floor10" / f"job-{job.id}"
+    run_dir = pipeline.run_dir(map_dir)
+
+    def load(path):
+        assert path == run_dir / "sfm"
+        return {"synthetic": None}, {}
+
+    def solve(centers, frames):
+        assert "synthetic" in centers
+        assert frames == [json.loads(poses)]
+        if residual is None:
+            raise ValueError("synthetic fit failed")
+        return {
+            "method": "arcore_pose",
+            "meter_from_model": {
+                "scale": 2,
+                "rotation_xyzw": [0, 0, 0, 1],
+                "translation": [0, 0, 0],
+            },
+            "matched_frames": 10,
+            "residual_median_m": residual,
+            "residual_max_m": 0.4,
+            "phone_height_m": 1.3,
+        }
+
+    def no_video_metadata(_):
+        pytest.fail("frame package was treated as a video")
+
+    monkeypatch.setattr(worker, "recorded_at", no_video_metadata)
+    monkeypatch.setattr(quick_align, "load_model", load)
+    monkeypatch.setattr(quick_align, "from_arcore", solve)
+    calls = []
+    worker.process(session, job, data, maps, runner=fake_runner(calls), free_bytes=lambda _: 10**12)
+
+    assert job.status == "done", job.error
+    assert calls == ["run.py", "inspect_map.py"]
+    dataset = data / "jobs" / str(job.id) / "dataset"
+    for sub in ("mapping", "query"):
+        assert (dataset / sub / "000001.jpg").read_bytes() == jpeg.tobytes()
+        assert not (dataset / sub / "meta.json").exists()
+    assert (map_dir / "capture" / "frames.jsonl").read_text() == poses
+    assert (map_dir / "capture" / "meta.json").read_text() == "{}"
+    assert not list((data / "uploads").iterdir())
+    result = job.summary["align"]
+    if residual is None:
+        assert result == {"status": "failed", "reason": "synthetic fit failed"}
+    else:
+        assert result["scale"] == 2
+        assert result["matched_frames"] == 10
+        assert result["residual_median_m"] == residual
+        assert result["residual_max_m"] == 0.4
+        if residual <= 0.25:
+            assert result["status"] == "applied"
+            assert result["warnings"] == []
+        else:
+            assert result["status"] == "skipped"
+            assert result["reason"] == "residual_too_high" and result["warnings"]
+    installed = run_dir / "align.json"
+    assert installed.exists() == (residual is not None and residual <= 0.25)
+    if installed.exists():
+        assert json.loads(installed.read_text())["method"] == "arcore_pose"
+
+
+def test_bad_frame_package_fails_at_extract_and_deletes_upload(session, tmp_path):
+    from zipfile import ZipFile
+
+    data, maps = tmp_path / "data", tmp_path / "maps"
+    (data / "uploads").mkdir(parents=True)
+    source = data / "uploads" / "job1-peta"
+    with ZipFile(source, "w") as archive:
+        archive.writestr("../unsafe.jpg", b"bad")
+    job = queued(session, [{"path": str(source), "role": "peta", "kind": "frames"}])
+    calls = []
+    worker.process(session, job, data, maps, runner=fake_runner(calls), free_bytes=lambda _: 10**12)
+    assert (job.status, job.stage) == ("failed", "extract")
+    assert "unsafe_path" in job.error
+    assert calls == []
+    assert not source.exists()

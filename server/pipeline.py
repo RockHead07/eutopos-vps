@@ -23,14 +23,18 @@ def copy_frame_dirs(videos: list[dict], dataset: Path) -> None:
     """Masukan berupa folder frame (misalnya hasil ekstraksi lama) disalin apa adanya."""
     for v in videos:
         src = Path(v["path"])
-        if src.is_dir():
+        if v.get("kind") != "frames" and src.is_dir():
             shutil.copytree(src, dataset / ROLES[v["role"]][0], dirs_exist_ok=True)
 
 
 def extract_commands(videos: list[dict], dataset: Path) -> list[list[str]]:
     cmds = []
     for role, (sub, fps) in ROLES.items():
-        files = [v["path"] for v in videos if v["role"] == role and Path(v["path"]).is_file()]
+        files = [
+            v["path"]
+            for v in videos
+            if v["role"] == role and v.get("kind") != "frames" and Path(v["path"]).is_file()
+        ]
         if files:
             script = str(SPIKE / "extract_frames.py")
             out = ["--out", str(dataset / sub), "--fps", str(fps)]

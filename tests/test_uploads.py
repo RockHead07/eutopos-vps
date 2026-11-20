@@ -96,7 +96,8 @@ def test_full_upload_flow_queues_after_last_video(client):
     assert out["status"] == "queued"
     # ID unggahan dan path tidak dibocorkan ke klien: dengan ID itu orang bisa mengganggu unggahan
     assert all(
-        set(v) == {"name", "role", "size", "uploaded", "recorded_at", "received", "activity_at"}
+        set(v)
+        == {"name", "role", "size", "uploaded", "recorded_at", "received", "activity_at", "kind"}
         for v in out["videos"]
     )
 
@@ -336,3 +337,38 @@ def test_create_job_building_id_rules(client):
     r4 = client.post("/api/jobs", json=body_wrong_bld)
     assert r4.status_code == 422
     assert "belongs to another building" in r4.text
+
+
+def test_kind_defaults_to_video_in_api_and_existing_job(client):
+    created = client.post("/api/jobs", json=BODY)
+    assert created.status_code == 201
+    job_id = created.json()["id"]
+    assert [video["kind"] for video in created.json()["videos"]] == ["video", "video"]
+    row = job_row(client, job_id)
+    assert [video["kind"] for video in row.videos] == ["video", "video"]
+    with Session(create_engine(client.db_url)) as s:
+        job = s.get(MapJob, job_id)
+        job.videos = [{k: v for k, v in video.items() if k != "kind"} for video in job.videos]
+        s.commit()
+    assert [v["kind"] for v in client.get(f"/api/jobs/{job_id}").json()["videos"]] == [
+        "video",
+        "video",
+    ]
+
+
+@pytest.mark.parametrize("other_kind", ["frames", "video"])
+def test_one_role_cannot_mix_or_duplicate_frame_packages(client, other_kind):
+    videos = [
+        {"name": "scan.zip", "role": "peta", "size": 10, "kind": "frames"},
+        {"name": "other", "role": "peta", "size": 10, "kind": other_kind},
+    ]
+    response = client.post("/api/jobs", json={**BODY, "videos": videos})
+    assert response.status_code == 422
+    assert client.get("/api/jobs").json() == []
+
+
+def test_roles_can_use_different_upload_kinds(client):
+    videos = [dict(BODY["videos"][0], name="scan.zip", kind="frames"), BODY["videos"][1]]
+    response = client.post("/api/jobs", json={**BODY, "videos": videos})
+    assert response.status_code == 201
+    assert [v["kind"] for v in response.json()["videos"]] == ["frames", "video"]
