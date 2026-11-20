@@ -91,6 +91,7 @@ function JobDetail() {
 
   const run = job.summary?.run;
   const ins = job.summary?.inspect;
+  const align = job.summary?.align;
   const isRunning = job.status === "running";
   const durationStr = formatDuration(job.started_at, job.finished_at, {
     isRunning,
@@ -109,7 +110,7 @@ function JobDetail() {
           {job.stalled && <StatusBadge status="stalled" />}
           {job.stage && job.status !== "done" && (
             <span className="text-muted-foreground">
-              {t("job.stage", { stage: job.stage })}
+              {t("job.stage", { stage: job.stage === "align" ? t("pipeline.align") : job.stage })}
             </span>
           )}
           <span className="text-muted-foreground">· {t("job.createdBy", { name: job.created_by })}</span>
@@ -182,8 +183,45 @@ function JobDetail() {
       <PipelineStageIndicator
         status={job.status}
         currentStage={job.stage}
+        hasAlignmentSummary={align !== undefined}
         timings={run?.t_map_s}
       />
+
+      {align && (
+        <Panel className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold">{t("job.alignTitle")}</h2>
+          <p className="text-sm font-medium">{t(`job.alignStatus.${align.status}`)}</p>
+          {align.reason && (
+            <p className="break-words text-sm text-muted-foreground">
+              {align.reason === "no_frames" ? t("job.alignNoFrames")
+                : align.reason === "residual_too_high" ? t("job.alignHighResidual")
+                : align.reason}
+            </p>
+          )}
+          {align.method && (
+            <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+              <div><dt>{t("job.alignMethod")}</dt><dd>{t("job.alignArcore")}</dd></div>
+              {align.scale !== undefined && (
+                <div><dt>{t("job.alignScale")}</dt><dd>{align.scale}</dd></div>
+              )}
+              {align.matched_frames !== undefined && (
+                <div><dt>{t("job.alignMatched")}</dt><dd>{align.matched_frames}</dd></div>
+              )}
+              {align.residual_median_m !== undefined && (
+                <div><dt>{t("job.alignMedian")}</dt><dd>{t("job.alignMeters", { value: align.residual_median_m })}</dd></div>
+              )}
+              {align.residual_max_m !== undefined && (
+                <div><dt>{t("job.alignMax")}</dt><dd>{t("job.alignMeters", { value: align.residual_max_m })}</dd></div>
+              )}
+            </dl>
+          )}
+          {!!align.warnings?.length && (
+            <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+              {align.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+            </ul>
+          )}
+        </Panel>
+      )}
 
       {/* Failure Diagnosis Panel */}
       {job.error && (

@@ -217,6 +217,7 @@ def test_jobs_from_cli_are_listed(client):
         {
             "name": "a.mp4",
             "role": "peta",
+            "kind": "video",
             "size": None,
             "uploaded": None,
             "recorded_at": None,

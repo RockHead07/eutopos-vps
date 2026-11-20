@@ -9,6 +9,7 @@ export const PIPELINE_STAGES = [
   { id: "build", label: "Build", descKey: "pipeline.descBuild" as TranslationKey },
   { id: "inspect", label: "Inspect", descKey: "pipeline.descInspect" as TranslationKey },
   { id: "register", label: "Register", descKey: "pipeline.descRegister" as TranslationKey },
+  { id: "align", labelKey: "pipeline.align", descKey: "pipeline.descAlign" },
   { id: "gate", labelKey: "pipeline.gate", descKey: "pipeline.descGate" },
 ] as const;
 
@@ -16,7 +17,8 @@ export type PipelineStageId = (typeof PIPELINE_STAGES)[number]["id"];
 
 interface PipelineStageIndicatorProps {
   status: string; // uploading, queued, running, done, failed, deleting
-  currentStage: string | null; // gpu_wait, extract, build, inspect, register, gate, publish
+  currentStage: string | null; // gpu_wait, extract, build, inspect, register, align, gate, publish
+  hasAlignmentSummary?: boolean;
   timings?: Record<string, number>; // summary.run.t_map_s
 }
 
@@ -96,12 +98,16 @@ function CrossMark() {
 export function PipelineStageIndicator({
   status,
   currentStage,
+  hasAlignmentSummary,
   timings,
 }: PipelineStageIndicatorProps) {
   const t = useT();
-  const stages = status === "done" && currentStage !== "gate"
-    ? PIPELINE_STAGES.filter((stage) => stage.id !== "gate")
-    : PIPELINE_STAGES;
+  const legacyAlign = !hasAlignmentSummary &&
+    (status === "done" || (status === "failed" && (currentStage === "gate" || currentStage === "publish")));
+  const legacyGate = status === "done" && currentStage !== "gate";
+  const stages = PIPELINE_STAGES.filter(
+    (stage) => !(legacyAlign && stage.id === "align") && !(legacyGate && stage.id === "gate"),
+  );
   const publishFailed = status === "failed" && currentStage === "publish";
   const currentStageIndex = publishFailed ? stages.length : stages.findIndex((s) => s.id === currentStage);
   const stageLabel = (stage: (typeof PIPELINE_STAGES)[number]) =>

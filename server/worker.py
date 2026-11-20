@@ -16,10 +16,11 @@ import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager as ContextManager
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from sqlmodel import Session, select
 
-from server import gate, jobs, splat_jobs, splat_pipeline
+from server import alignment, frame_package, gate, jobs, splat_jobs, splat_pipeline
 from server.db import Area, MapJob, MapVersion, engine_from_env, register, set_status
 from server.gpu_lock import gpu_lock
 from server.map_layout import missing_files
@@ -27,6 +28,7 @@ from server.pipeline import (
     GLOBAL_RESIZE,
     MAX_KP,
     RESIZE,
+    ROLES,
     build_command,
     copy_frame_dirs,
     extract_commands,
@@ -108,7 +110,7 @@ def stamp_recorded(session: Session, job: MapJob) -> None:
     stamped = []
     for v in job.videos:
         p = Path(v["path"])
-        when = recorded_at(p) if p.is_file() else None
+        when = recorded_at(p) if v.get("kind") != "frames" and p.is_file() else None
         stamped.append({**v, "recorded_at": when.isoformat() if when else None})
     jobs.set_videos(session, job, stamped)
 
@@ -176,6 +178,52 @@ def queue_splat(session: Session, version_id: int) -> None:
         )
 
 
+def extract_frame_packages(videos: list[dict], dataset: Path, map_dir: Path) -> None:
+    for video in videos:
+        if video.get("kind") != "frames":
+            continue
+        mapping = video["role"] == "peta"
+        try:
+            frame_package.extract(
+                Path(video["path"]),
+                dataset / ROLES[video["role"]][0],
+                map_dir / "capture" if mapping else None,
+                require_frames=mapping,
+            )
+        except frame_package.PackageError as exc:
+            raise StageError(f"frame package ({video['role']}): {exc}") from exc
+
+
+def align_capture(map_dir: Path) -> dict:
+    try:
+        frames = map_dir / "capture" / "frames.jsonl"
+        if not frames.exists():
+            return {"status": "skipped", "reason": "no_frames"}
+        from server import quick_align
+
+        run = run_dir(map_dir)
+        centers, _ = quick_align.load_model(run / "sfm")
+        result = quick_align.from_arcore(centers, quick_align.read_frames(frames))
+        median = result["residual_median_m"]
+        summary = {
+            "method": result["method"],
+            "scale": result["meter_from_model"]["scale"],
+            "matched_frames": result["matched_frames"],
+            "residual_median_m": median,
+            "residual_max_m": result["residual_max_m"],
+            "warnings": quick_align.warnings(result),
+        }
+        if median > quick_align.MAX_ARCORE_MEDIAN_RESIDUAL_M:
+            return {**summary, "status": "skipped", "reason": "residual_too_high"}
+        with TemporaryDirectory() as temporary:
+            source = Path(temporary) / "align.json"
+            source.write_text(json.dumps(result, allow_nan=False), encoding="utf-8")
+            alignment.install(map_dir, run.name, map_dir.parent, source, None)
+        return {**summary, "status": "applied"}
+    except Exception as exc:
+        return {"status": "failed", "reason": str(exc)}
+
+
 def process(
     session: Session,
     job: MapJob,
@@ -210,6 +258,7 @@ def process(
             stamp_recorded(session, job)
             for sub in ("mapping", "query"):
                 (dataset / sub).mkdir(parents=True, exist_ok=True)
+            extract_frame_packages(job.videos, dataset, map_dir)
             copy_frame_dirs(job.videos, dataset)
             for argv in extract_commands(job.videos, dataset):
                 runner(argv, log)
@@ -233,6 +282,8 @@ def process(
             version = register(
                 session, job.area_id, session.get(Area, job.area_id).name, str(map_dir)
             )
+            jobs.set_stage(session, job, "align")
+            summary["align"] = align_capture(map_dir)
             jobs.set_stage(session, job, "gate")
             verdict = gate.evaluate(summary)
             summary["gate"] = gate.as_dict(verdict)

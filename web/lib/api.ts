@@ -5,13 +5,26 @@ export type { Building };
 export type Video = {
   name: string;
   role: "peta" | "uji";
+  kind: "video" | "frames";
   size: number | null;
   uploaded: boolean | null;
   recorded_at?: string | null;
   received?: number | null;
   activity_at?: string | null;
 };
+export type AlignmentSummary = {
+  status: "applied" | "skipped" | "failed";
+  reason?: string;
+  method?: "arcore_pose";
+  scale?: number;
+  matched_frames?: number;
+  residual_median_m?: number;
+  residual_max_m?: number;
+  warnings?: string[];
+};
+
 export type Summary = {
+  align?: AlignmentSummary;
   run?: {
     map_images?: number;
     map_registered?: number;
@@ -93,7 +106,7 @@ export type NewJob = {
   area_id: string;
   area_name: string;
   building_id?: number;
-  videos: { name: string; role: "peta" | "uji"; size: number }[];
+  videos: { name: string; role: "peta" | "uji"; size: number; kind?: Video["kind"] }[];
 };
 export type Me = {
   email: string;
