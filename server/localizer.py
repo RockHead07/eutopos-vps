@@ -10,6 +10,8 @@ hloc.localize_sfm.main(): saat PnP gagal, fungsi itu menulis pose foto peta tera
 melaporkan gagal (docs/multi-map-localization-research.md).
 """
 
+import json
+import math
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -34,6 +36,31 @@ MIN_INLIERS = 50
 MEGALOC = extract_features.confs["megaloc"]
 ALIKED = extract_features.confs["aliked-n16"]
 LIGHTGLUE = match_features.confs["aliked+lightglue"]
+LEGACY_DETECTION_THRESHOLD = 0.2
+
+
+def map_detection_threshold(run_dir: Path) -> float:
+    path = run_dir / "summary.json"
+    try:
+        summary = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return LEGACY_DETECTION_THRESHOLD
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"{path}: cannot read map metadata: {exc}") from exc
+    if not isinstance(summary, dict):
+        raise ValueError(f"{path}: expected a JSON object")
+
+    value = summary.get("detection_threshold", LEGACY_DETECTION_THRESHOLD)
+    message = f"{path}: detection_threshold must be a positive finite number"
+    if type(value) not in (int, float):
+        raise ValueError(message)
+    try:
+        threshold = float(value)
+    except OverflowError as exc:
+        raise ValueError(message) from exc
+    if not 0 < threshold < math.inf:
+        raise ValueError(message)
+    return threshold
 
 
 def half(x):
@@ -83,11 +110,20 @@ class Localizer:
         self.dev = torch.device(device)
         self.resize, self.global_resize, self.k = resize, global_resize, k
         self.min_inliers = min_inliers
-        aliked = {**ALIKED, "model": {**ALIKED["model"], "max_num_keypoints": max_kp}}
         # Periksa peta dulu: pesan yang jelas, dan tidak membuang waktu memuat model.
         if missing := missing_files(map_dir, max_kp, resize, global_resize):
             raise FileNotFoundError(f"map is incomplete in {map_dir}: {[str(p) for p in missing]}")
 
+        run_dir = map_dir / f"kp{max_kp}-r{resize}"
+        self.detection_threshold = map_detection_threshold(run_dir)
+        aliked = {
+            **ALIKED,
+            "model": {
+                **ALIKED["model"],
+                "max_num_keypoints": max_kp,
+                "detection_threshold": self.detection_threshold,
+            },
+        }
         t0 = time.perf_counter()
         trust_megaloc_hub_repo()
         self.megaloc = self._load(extractors, MEGALOC)
@@ -96,7 +132,6 @@ class Localizer:
         self.t_load_models = time.perf_counter() - t0
 
         t0 = time.perf_counter()
-        run_dir = map_dir / f"kp{max_kp}-r{resize}"
         self.model = pycolmap.Reconstruction(run_dir / "sfm")
         self.db = self._load_db(run_dir / "features.h5", map_dir / f"global-r{global_resize}.h5")
         self.db_names = list(self.db)

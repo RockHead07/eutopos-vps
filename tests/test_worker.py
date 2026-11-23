@@ -94,6 +94,7 @@ def test_build_command_matches_service_settings(tmp_path):
     for flag, value in [("--max-kp", "1024"), ("--resize", "1024"), ("--global-resize", "512")]:
         assert cmd[cmd.index(flag) + 1] == value
     assert cmd[cmd.index("--seq") + 1] == "10"
+    assert cmd[cmd.index("--detection-threshold") + 1] == "0.01"
     # retrieval selalu, supaya global-r512.h5 ada juga untuk peta kecil (<= 30 frame)
     assert cmd[cmd.index("--exhaustive-max") + 1] == "0"
 

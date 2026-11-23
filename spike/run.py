@@ -14,10 +14,12 @@ extract_features -> pairs -> match_features -> reconstruction -> QueryLocalizer 
 import argparse
 import csv
 import json
+import math
 import re
 import time
 from pathlib import Path
 
+import h5py
 import pycolmap
 from env_info import env
 from fix_orientation import orientation
@@ -53,6 +55,25 @@ MATCHERS = {
 DEFAULT_MATCHER = {"aliked": "lightglue", "sift": "nn-ratio"}
 GLOBAL = extract_features.confs["megaloc"]
 EXHAUSTIVE_MAX = 30  # bawaan --exhaustive-max: di bawahnya semua pasangan, di atasnya retrieval
+DEFAULT_DETECTION_THRESHOLD = 0.2
+
+
+def check_detection_threshold_cache(threshold: float, *paths: Path) -> None:
+    # hloc memakai ulang fitur dan pasangan. Tandai cache baru sebelum ekstraksi agar
+    # pengulangan build yang terputus juga mengetahui ambang cache tersebut.
+    for path in paths:
+        if path.exists():
+            with h5py.File(path, "r") as cache:
+                stored = cache.attrs.get("detection_threshold", DEFAULT_DETECTION_THRESHOLD)
+            if stored != threshold:
+                raise SystemExit(
+                    f"{path}: cached detection_threshold is {stored}, requested {threshold}. "
+                    "Use a different --out."
+                )
+    for path in paths:
+        if not path.exists():
+            with h5py.File(path, "x", libver="latest") as cache:
+                cache.attrs["detection_threshold"] = threshold
 
 
 def sift_orientations_in_radians():
@@ -163,6 +184,12 @@ def main():
     ap.add_argument(
         "--max-kp", type=int, default=1024, help="batas keypoint ALIKED, -1 = tanpa batas"
     )
+    ap.add_argument(
+        "--detection-threshold",
+        type=float,
+        default=DEFAULT_DETECTION_THRESHOLD,
+        help="ambang deteksi keypoint ALIKED",
+    )
     ap.add_argument("--resize", type=int, default=1024, help="sisi terpanjang foto saat ekstraksi")
     # MegaLoc berbasis ViT (patch 14): biaya naik kuadratik terhadap jumlah token. Di data contoh,
     # 512 hampir 6x lebih cepat dari 1024 dengan kandidat teratas yang sama (docs/spike-plan.md).
@@ -183,6 +210,8 @@ def main():
         help="frame video: tambah pasangan dengan N frame berikutnya (0 = mati). Pakai --out lain",
     )
     a = ap.parse_args()
+    if not 0 < a.detection_threshold < math.inf:
+        ap.error("--detection-threshold must be a positive finite number")
 
     global GLOBAL
     GLOBAL = {**GLOBAL, "preprocessing": {**GLOBAL["preprocessing"], "resize_max": a.global_resize}}
@@ -204,6 +233,7 @@ def main():
         model["options"] = {"max_num_features": a.max_kp if a.max_kp > 0 else 8192}
     else:
         model["max_num_keypoints"] = a.max_kp
+        model["detection_threshold"] = a.detection_threshold
     LOCAL = {
         **LOCAL,
         "model": model,
@@ -231,6 +261,8 @@ def main():
             f"    python spike/fix_orientation.py {root} {root}-upright"
         )
     feats, matches = run_dir / "features.h5", run_dir / "matches.h5"
+    if a.features == "aliked":
+        check_detection_threshold_cache(a.detection_threshold, feats, matches)
     feats_global = out / f"global-r{a.global_resize}.h5"  # per resolusi, supaya tidak tercampur
     t_map, t_q = {}, {}
 
@@ -296,6 +328,8 @@ def main():
         "map_points3D": model.num_points3D(),
         "t_map_s": t_map,
     }
+    if a.features == "aliked":
+        base["detection_threshold"] = a.detection_threshold
     if not queries:  # peta produksi: semua video berperan peta, tidak ada foto uji
         summary = {**base, "queries": 0, "env": env()}
         (run_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
@@ -402,6 +436,15 @@ def main():
         w.writeheader()
         w.writerows(rows)
     (run_dir / f"summary{sfx}.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    if a.covis and a.features == "aliked":
+        # Metadata untuk Localizer selalu ada di summary.json. Pertahankan hasil query
+        # non-covis jika run sebelumnya sudah menulisnya.
+        canonical = run_dir / "summary.json"
+        metadata = (
+            json.loads(canonical.read_text(encoding="utf-8")) if canonical.exists() else summary
+        )
+        metadata["detection_threshold"] = a.detection_threshold
+        canonical.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     print(json.dumps(summary, indent=2))
 
 
