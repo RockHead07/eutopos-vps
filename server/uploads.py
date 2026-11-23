@@ -12,17 +12,16 @@ import json
 import os
 import secrets
 from datetime import UTC, datetime
-from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import create_engine
 from sqlmodel import Session, select
 
-from server import auth, jobs
-from server.db import MapJob
+from server import app_tokens, auth, jobs
+from server.db import DB, MapJob
+from server.db import get_session as get_session
 
 UPLOADS = Path("/data/uploads")  # -upload-dir tusd, dilihat dari container api
 MAX_VIDEOS = 4
@@ -31,20 +30,6 @@ MAX_VIDEO_BYTES = 2 * 1024**3  # sama dengan -max-size tusd
 router = APIRouter()
 
 
-@lru_cache
-def _engine(url: str):
-    return create_engine(url)
-
-
-def get_session():
-    url = os.environ.get("DATABASE_URL")
-    if not url:
-        raise HTTPException(503, "service is running without a database (EUTOPOS_MAP_DIR)")
-    with Session(_engine(url)) as s:
-        yield s
-
-
-DB = Annotated[Session, Depends(get_session)]
 User = Annotated[str, Depends(auth.current_user)]
 
 
@@ -111,7 +96,7 @@ def _job_out(job: MapJob) -> JobOut:
 
 
 @router.post("/api/jobs", status_code=201)
-def create(body: JobIn, user: User, s: DB) -> JobOut:
+def create(body: JobIn, user: app_tokens.CaptureUser, s: DB) -> JobOut:
     names = [v.name for v in body.videos]
     if len(set(names)) != len(names):
         raise HTTPException(422, "duplicate video names in one job")
@@ -140,9 +125,9 @@ def list_jobs(user: User, s: DB, limit: int = Query(50, ge=1, le=200)) -> list[J
 
 
 @router.get("/api/jobs/{job_id}")
-def get(job_id: int, user: User, s: DB) -> JobOut:
+def get(job_id: int, user: app_tokens.CaptureUser, s: DB) -> JobOut:
     job = s.get(MapJob, job_id)
-    if job is None:
+    if job is None or (app_tokens.is_app_identity(user) and job.created_by != user):
         raise HTTPException(404, "job not found")
     return _job_out(job)
 
@@ -168,14 +153,6 @@ class HookReject(Exception):
         self.status, self.message = status, message
 
 
-def _header(headers: dict, name: str) -> str | None:
-    """tusd (Go) mengirim nama header dalam bentuk kanonik. Cocokkan tanpa peka huruf."""
-    for k, v in headers.items():
-        if k.lower() == name.lower():
-            return v[0] if v else None
-    return None
-
-
 def _locked_job(s: Session, meta) -> MapJob:
     if not isinstance(meta, dict):
         raise HookReject(400, "invalid metadata")
@@ -193,12 +170,14 @@ def _locked_job(s: Session, meta) -> MapJob:
 
 def _pre_create(s: Session, upload: dict, headers: dict) -> dict:
     try:
-        email = auth.email_from_token(_header(headers, auth.HEADER))
+        identity = app_tokens.capture_identity(
+            s, {key: values[0] for key, values in headers.items() if values}
+        )
     except auth.AuthError as e:
         raise HookReject(e.status, e.message) from e
     meta = upload.get("MetaData") or {}
     job = _locked_job(s, meta)
-    if job.created_by != email:
+    if job.created_by != identity:
         raise HookReject(403, "this job belongs to another user")
     if job.status != "uploading":
         raise HookReject(409, f"job is {job.status}; it no longer accepts uploads")

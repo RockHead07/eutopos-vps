@@ -20,7 +20,7 @@ from tempfile import TemporaryDirectory
 
 from sqlmodel import Session, select
 
-from server import alignment, frame_package, gate, jobs, splat_jobs, splat_pipeline
+from server import alignment, app_tokens, frame_package, gate, jobs, splat_jobs, splat_pipeline
 from server.db import Area, MapJob, MapVersion, engine_from_env, register, set_status
 from server.gpu_lock import gpu_lock
 from server.map_layout import missing_files
@@ -290,7 +290,7 @@ def process(
             if verdict.decision == "reject":
                 jobs.reject(session, job, version, gate.reject_text(verdict), "gate", summary)
                 return
-            if verdict.decision == "publish":
+            if verdict.decision == "publish" and not app_tokens.is_app_identity(job.created_by):
                 set_status(session, version.id, "ready", commit=False)
             jobs.finish(session, job, version.id, summary)
             queue_splat(session, version.id)

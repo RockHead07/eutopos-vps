@@ -372,3 +372,75 @@ def test_roles_can_use_different_upload_kinds(client):
     response = client.post("/api/jobs", json={**BODY, "videos": videos})
     assert response.status_code == 201
     assert [v["kind"] for v in response.json()["videos"]] == ["frames", "video"]
+
+
+@pytest.fixture
+def capture_bearer(client):
+    from server.app_tokens import create_token
+
+    engine = create_engine(client.db_url)
+    try:
+        with Session(engine) as session:
+            return {
+                "Authorization": f"Bearer {create_token(session, 'rekam-1', 'admin@example.test')}"
+            }
+    finally:
+        engine.dispose()
+
+
+def test_app_token_creates_job_and_uploads(client, capture_bearer):
+    response = client.post("/api/jobs", json=BODY, headers=capture_bearer)
+    assert response.status_code == 201
+    job = response.json()
+    assert job["created_by"] == "app:rekam-1"
+    for name, size in [("loop.mp4", 100), ("uji.mp4", 50)]:
+        upload = {"MetaData": {"job_id": str(job["id"]), "name": name}, "Size": size}
+        response = post_hook(
+            client, "pre-create", upload, headers={"authorization": list(capture_bearer.values())}
+        )
+        assert response.status_code == 200
+        assert "RejectUpload" not in response.json()
+        upload_id = response.json()["ChangeFileInfo"]["ID"]
+        finish(client, job["id"], name, size, upload_id)
+    assert job_row(client, job["id"]).status == "queued"
+
+
+def test_app_token_cannot_read_other_jobs(client, capture_bearer, monkeypatch):
+    monkeypatch.setattr(uploads.auth, "email_from_token", lambda _: "a@x.id")
+    other = client.post("/api/jobs", json=BODY).json()
+    own = client.post("/api/jobs", json=BODY, headers=capture_bearer).json()
+    assert client.get(f"/api/jobs/{other['id']}", headers=capture_bearer).status_code == 404
+    assert client.get(f"/api/jobs/{own['id']}", headers=capture_bearer).status_code == 200
+
+
+@pytest.mark.parametrize("with_access_config", [True, False], ids=["access", "dev"])
+def test_app_token_rejected_on_non_capture_routes(
+    client, capture_bearer, monkeypatch, with_access_config
+):
+    from server.app import app
+
+    job = client.post("/api/jobs", json=BODY).json()
+    if with_access_config:
+        monkeypatch.setenv("CF_ACCESS_TEAM_DOMAIN", "https://team.invalid")
+        monkeypatch.setenv("CF_ACCESS_AUD", "synthetic")
+    actual = TestClient(app)
+    for method, path in [
+        ("GET", "/api/jobs"),
+        ("DELETE", f"/api/jobs/{job['id']}"),
+        ("GET", "/api/me"),
+        ("GET", "/api/areas/floor10/graph"),
+        ("GET", "/api/app-tokens"),
+        ("POST", "/localize"),
+    ]:
+        assert actual.request(method, path, headers=capture_bearer).status_code == 401
+
+
+def test_pre_create_rejects_app_token_for_email_job(client, capture_bearer):
+    job = client.post("/api/jobs", json=BODY).json()
+    upload = {"MetaData": {"job_id": str(job["id"]), "name": "loop.mp4"}, "Size": 100}
+    response = post_hook(
+        client, "pre-create", upload, headers={"Authorization": list(capture_bearer.values())}
+    )
+    assert response.status_code == 200
+    assert response.json()["RejectUpload"] is True
+    assert response.json()["HTTPResponse"]["StatusCode"] == 403

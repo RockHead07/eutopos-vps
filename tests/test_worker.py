@@ -72,8 +72,8 @@ def make_inputs(tmp_path):
     return data, maps, uploaded, own, videos
 
 
-def queued(session, videos):
-    job = jobs.create_job(session, "floor10", "Lantai 10", "cli", videos, "queued")
+def queued(session, videos, created_by="cli"):
+    job = jobs.create_job(session, "floor10", "Lantai 10", created_by, videos, "queued")
     jobs.claim_next(session)
     return job
 
@@ -867,9 +867,9 @@ INSPECT_PASS = '{"parts": [{"label": "utama"}], "queries": 10, "accepted": 8}'
 INSPECT_FAIL = '{"parts": [{"label": "utama"}], "queries": 10, "accepted": 3}'
 
 
-def run_gate_job(session, tmp_path, inspect=None):
+def run_gate_job(session, tmp_path, inspect=None, created_by="cli"):
     data, maps, _, _, videos = make_inputs(tmp_path)
-    job = queued(session, videos)
+    job = queued(session, videos, created_by=created_by)
     runner = fake_runner([]) if inspect is None else fake_runner([], inspect=inspect)
     worker.process(session, job, data, maps, runner=runner, free_bytes=lambda p: 10**12)
     return job
@@ -1015,3 +1015,10 @@ def test_bad_frame_package_fails_at_extract_and_deletes_upload(session, tmp_path
     assert "unsafe_path" in job.error
     assert calls == []
     assert not source.exists()
+
+
+def test_gate_pass_from_app_stays_candidate(session, tmp_path):
+    job = run_gate_job(session, tmp_path, INSPECT_PASS, created_by="app:rekam-1")
+    assert job.status == "done", job.error
+    assert session.get(MapVersion, job.map_version_id).status == "candidate"
+    assert job.summary["gate"]["decision"] == "publish"

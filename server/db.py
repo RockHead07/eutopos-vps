@@ -7,9 +7,11 @@ proses yang menerbitkan bersamaan.
 
 import os
 from datetime import UTC, datetime
-from typing import Literal
+from functools import lru_cache
+from typing import Annotated, Literal
 
-from sqlalchemy import JSON, DateTime, Index, UniqueConstraint, func, text
+from fastapi import Depends, HTTPException
+from sqlalchemy import JSON, Boolean, Column, DateTime, Index, UniqueConstraint, false, func, text
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
 Status = Literal["candidate", "ready", "published", "rejected", "retired"]
@@ -170,6 +172,9 @@ class LocalizeRequest(SQLModel, table=True):
     )
     result: str  # ok, failed (200), rejected (4xx/503), error (500)
     http_status: int
+    candidate: bool = Field(
+        default=False, sa_column=Column(Boolean, nullable=False, server_default=false())
+    )
     reason: str | None = None  # alasan penolakan
     area_id: str | None = None
     map_version: int | None = None
@@ -180,6 +185,20 @@ class LocalizeRequest(SQLModel, table=True):
     wall_s: float | None = None  # seluruh permintaan: decode, antre kunci, lokalisasi
     image_w: int | None = None
     image_h: int | None = None
+
+
+class AppToken(SQLModel, table=True):
+    __tablename__ = "app_token"
+
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(unique=True, index=True)
+    token_hash: str = Field(unique=True, index=True)
+    created_by: str
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC), sa_type=DateTime(timezone=True)
+    )
+    last_used_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
+    revoked_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
 
 
 class CalibrationSet(SQLModel, table=True):
@@ -279,6 +298,22 @@ def iso_utc(at: datetime) -> str:
 
 def engine_from_env():
     return create_engine(os.environ["DATABASE_URL"])
+
+
+@lru_cache
+def _engine(url: str):
+    return create_engine(url)
+
+
+def get_session():
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        raise HTTPException(503, "service is running without a database (EUTOPOS_MAP_DIR)")
+    with Session(_engine(url)) as s:
+        yield s
+
+
+DB = Annotated[Session, Depends(get_session)]
 
 
 def active_version(session: Session, area_id: str) -> MapVersion | None:
