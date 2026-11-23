@@ -7,6 +7,7 @@ from pathlib import Path
 SPIKE = Path(__file__).resolve().parents[1] / "spike"
 # Sama dengan bawaan layanan (server/app.py), supaya peta hasil langsung bisa dimuat /localize.
 MAX_KP, RESIZE, GLOBAL_RESIZE = 1024, 1024, 512
+DETECTION_THRESHOLD = 0.01
 SEQ = 10  # pasangan berurutan untuk video (docs/spike-plan.md, uji video lantai 10)
 ROLES = {"peta": ("mapping", 2.0), "uji": ("query", 0.5)}  # subfolder, fps ekstraksi
 
@@ -51,6 +52,8 @@ def build_command(dataset: Path, map_dir: Path) -> list[str]:
         str(map_dir),
         "--max-kp",
         str(MAX_KP),
+        "--detection-threshold",
+        str(DETECTION_THRESHOLD),
         "--resize",
         str(RESIZE),
         "--global-resize",
