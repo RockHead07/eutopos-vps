@@ -112,6 +112,13 @@ export type Me = {
   email: string;
   is_admin: boolean;
 };
+export type AppToken = {
+  name: string;
+  created_by: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+};
 
 export type StorageLocation = {
   total_bytes: number;
@@ -446,6 +453,10 @@ export const calibrationApi = {
 
 export const api = {
   me: () => call<Me>("/api/me"),
+  appTokens: () => call<AppToken[]>("/api/app-tokens"),
+  createAppToken: (name: string) => call<{ name: string; token: string }>("/api/app-tokens", post({ name })),
+  revokeAppToken: (name: string) =>
+    call<{ name: string; revoked: true }>(`/api/app-tokens/${encodeURIComponent(name)}`, { method: "DELETE" }),
   buildings: () => call<Building[]>("/api/buildings"),
   createBuilding: (body: { slug: string; name: string }) =>
     call<Building>("/api/buildings", post(body)),

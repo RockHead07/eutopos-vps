@@ -1,6 +1,7 @@
 """Catatan tiap permintaan /localize: bukti latensi dan penolakan koreksi (roadmap M1-6).
 
-Yang dicatat: hasil, kode HTTP, inlier, waktu per tahap, ukuran foto, area dan versi peta.
+Yang dicatat: hasil, kode HTTP, inlier, waktu per tahap, ukuran foto, area, versi peta, dan penanda
+uji kandidat.
 Yang TIDAK dicatat: gambar, pose atau posisi pengguna, alamat IP, identitas. Posisi hanya sah
 selama sesi AR aktif (ADR-007, ADR-011); log operasi tidak boleh menjadi jejak lokasi.
 

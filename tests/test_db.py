@@ -304,3 +304,25 @@ def test_ensure_area_unknown_building(session):
 
     with pytest.raises(ValueError, match="building 99999 not found"):
         ensure_area(session, "brand-new", "Brand New", 99999)
+
+
+def test_record_keeps_candidate_flag(tmp_path, monkeypatch):
+    from sqlmodel import select
+
+    from server import localize_log
+    from server.db import LocalizeRequest
+
+    url = f"sqlite:///{tmp_path / 'candidate-log.db'}"
+    engine = create_engine(url)
+    SQLModel.metadata.create_all(engine)
+    monkeypatch.setenv("DATABASE_URL", url)
+    try:
+        localize_log.record({"result": "ok", "http_status": 200, "candidate": True})
+        localize_log.record({"result": "ok", "http_status": 200})
+        with Session(engine) as session:
+            first, second = session.exec(select(LocalizeRequest).order_by(LocalizeRequest.id)).all()
+            assert first.candidate is True
+            assert second.candidate is False
+    finally:
+        localize_log._engine(url).dispose()
+        engine.dispose()
