@@ -110,7 +110,12 @@ async def lifespan(app: FastAPI):
 
 
 def _restrict_app_bearer(request: Request) -> None:
-    if request.scope.get("endpoint") in (uploads.create, uploads.get, candidate_localize):
+    if request.scope.get("endpoint") in (
+        uploads.create,
+        uploads.get,
+        candidate_localize,
+        buildings_api.list_buildings,
+    ):
         return
     if any(app_tokens.has_app_bearer(value) for value in request.headers.getlist("authorization")):
         raise HTTPException(401, "app token is not allowed on this route")

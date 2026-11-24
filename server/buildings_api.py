@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlmodel import select
 
-from server import auth, uploads
+from server import app_tokens, auth, uploads
 from server.db import DEFAULT_ORG_SLUG, Area, Building, Organization
 
 router = APIRouter()
@@ -24,7 +24,7 @@ class BuildingOut(BaseModel):
 
 
 @router.get("/api/buildings")
-def list_buildings(user: uploads.User, s: uploads.DB) -> list[BuildingOut]:
+def list_buildings(user: app_tokens.CaptureUser, s: uploads.DB) -> list[BuildingOut]:
     stmt = select(Building).order_by(Building.name)
     buildings = list(s.exec(stmt))
     stmt_areas = select(Area.id, Area.building_id).order_by(Area.id)
