@@ -444,3 +444,39 @@ def test_pre_create_rejects_app_token_for_email_job(client, capture_bearer):
     assert response.status_code == 200
     assert response.json()["RejectUpload"] is True
     assert response.json()["HTTPResponse"]["StatusCode"] == 403
+
+
+def _real_app_with_access(monkeypatch):
+    from server.app import app
+
+    monkeypatch.setenv("CF_ACCESS_TEAM_DOMAIN", "https://team.invalid")
+    monkeypatch.setenv("CF_ACCESS_AUD", "synthetic")
+    return TestClient(app)
+
+
+def test_app_token_can_list_buildings(client, capture_bearer, monkeypatch):
+    actual = _real_app_with_access(monkeypatch)
+    response = actual.get("/api/buildings", headers=capture_bearer)
+    assert response.status_code == 200
+    body = response.json()
+    assert {"id", "slug", "name", "area_ids"} <= set(body[0])
+    assert any("floor10" in b["area_ids"] for b in body)
+
+
+def test_app_token_cannot_create_building(client, capture_bearer, monkeypatch):
+    actual = _real_app_with_access(monkeypatch)
+    payload = {"slug": "gedung-x", "name": "Gedung X"}
+    assert actual.post("/api/buildings", json=payload, headers=capture_bearer).status_code == 401
+
+
+def test_revoked_app_token_cannot_list_buildings(client, capture_bearer, monkeypatch):
+    from server import app_tokens
+
+    engine = create_engine(client.db_url)
+    try:
+        with Session(engine) as session:
+            assert app_tokens.revoke_token(session, "rekam-1")
+    finally:
+        engine.dispose()
+    actual = _real_app_with_access(monkeypatch)
+    assert actual.get("/api/buildings", headers=capture_bearer).status_code == 403
