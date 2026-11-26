@@ -23,7 +23,9 @@ Menjalankan tanpa database:
 Dengan database: deploy/README.md.
 """
 
+import json
 import logging
+import math
 import os
 import threading
 import time
@@ -41,6 +43,7 @@ from sqlmodel import Session
 
 from server import (
     active_map,
+    align4dof,
     app_tokens,
     area_api,
     buildings_api,
@@ -58,6 +61,8 @@ from server.localizer import Localizer
 from server.photo import decode_upright, exif_camera, pinhole
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+MULTI_MIN_FRAMES = 2
+MULTI_MAX_FRAMES = 6
 
 
 def _sweep_candidates(state, stop: threading.Event) -> None:
@@ -142,11 +147,53 @@ class LocalizeResponse(BaseModel):
     status: Literal["ok", "failed"]
     inliers: int
     correspondences: int
+    inlier_ratio: float | None = None
+    reprojection_error_px_median: float | None = None
+    retrieval_top1: float | None = None
+    ambiguous: bool = False
+    prior_used: bool = False
+    outside_prior: bool = False
+    deep_search: bool = False
     intrinsics_source: Literal["client", "map", "exif"]
     pose_model: Pose | None  # kerangka model SfM, tanpa skala meter
     pose_building: Pose | None  # kerangka gedung (meter), kalau peta sudah diselaraskan
     area_id: str | None  # None kalau layanan berjalan tanpa database
     map_version: int | None
+    t_s: dict[str, float]
+
+
+class Alignment4DofResponse(BaseModel):
+    yaw_deg: float
+    translation: list[float]
+
+
+class MultiFrameResult(BaseModel):
+    status: Literal["ok", "failed"]
+    inliers: int
+    inlier_ratio: float | None = None
+    pose_building: Pose | None = None
+
+
+class MultiLocalizeResponse(BaseModel):
+    contract_version: int = CONTRACT_VERSION
+    status: Literal["ok", "not_found"]
+    reason: str | None = None
+    alignment: Alignment4DofResponse | None = None
+    frames_agreeing: int
+    frames_total: int
+    frames: list[MultiFrameResult]
+    # Bidang single-frame terbaik agar klien lama tetap dapat membaca bentuk yang dikenal
+    inliers: int
+    correspondences: int
+    inlier_ratio: float | None = None
+    reprojection_error_px_median: float | None = None
+    retrieval_top1: float | None = None
+    ambiguous: bool = False
+    intrinsics_source: Literal["client", "map", "exif"]
+    pose_model: Pose | None = None
+    pose_building: Pose | None = None
+    area_id: str | None = None
+    map_version: int | None = None
     t_s: dict[str, float]
 
 
@@ -173,6 +220,19 @@ def health(request: Request) -> HealthResponse:
     )
 
 
+def _parse_prior(
+    prior_x: float | None, prior_y: float | None, prior_radius_m: float | None
+) -> tuple[tuple[float, float] | None, float | None]:
+    if (prior_x is None) != (prior_y is None):
+        raise HTTPException(422, "send both prior_x and prior_y or neither")
+    if prior_x is not None and not (math.isfinite(prior_x) and math.isfinite(prior_y)):
+        raise HTTPException(422, "prior_x and prior_y must be finite numbers")
+    if prior_radius_m is not None and not math.isfinite(prior_radius_m):
+        raise HTTPException(422, "prior_radius_m must be a finite number")
+    prior_xy = (prior_x, prior_y) if prior_x is not None else None
+    return prior_xy, prior_radius_m
+
+
 @app.post("/localize")
 def localize(
     request: Request,
@@ -181,12 +241,38 @@ def localize(
     fy: Annotated[float | None, Form(gt=0)] = None,
     cx: Annotated[float | None, Form(gt=0)] = None,
     cy: Annotated[float | None, Form(gt=0)] = None,
+    prior_x: Annotated[float | None, Form()] = None,
+    prior_y: Annotated[float | None, Form()] = None,
+    prior_radius_m: Annotated[float | None, Form()] = None,
 ) -> LocalizeResponse:
     """Intrinsik (fx, fy, cx, cy) opsional, untuk foto yang SUDAH tegak. Kalau tidak dikirim,
     dipakai intrinsik peta (resolusi sama) atau taksiran dari EXIF."""
     st = request.app.state
     entry = {"area_id": st.area_id, "map_version": st.map_version}
-    return _logged_localize(entry, lambda: _localize(request, image, fx, fy, cx, cy, entry))
+    return _logged_localize(
+        entry,
+        lambda: _localize(request, image, fx, fy, cx, cy, prior_x, prior_y, prior_radius_m, entry),
+    )
+
+
+@app.post("/localize-multi")
+def localize_multi(
+    request: Request,
+    frames: Annotated[str, Form(description="Daftar JSON metadata 2 sampai 6 frame")],
+    image_0: Annotated[UploadFile | None, File()] = None,
+    image_1: Annotated[UploadFile | None, File()] = None,
+    image_2: Annotated[UploadFile | None, File()] = None,
+    image_3: Annotated[UploadFile | None, File()] = None,
+    image_4: Annotated[UploadFile | None, File()] = None,
+    image_5: Annotated[UploadFile | None, File()] = None,
+) -> MultiLocalizeResponse:
+    """Lokalisasi multi-frame (2-6 foto) dengan konsensus penyelarasan 4-DoF (R5)."""
+    st = request.app.state
+    entry = {"area_id": st.area_id, "map_version": st.map_version}
+    uploads_list = [image_0, image_1, image_2, image_3, image_4, image_5]
+    return _logged_localize_multi(
+        entry, lambda: _localize_multi(request, uploads_list, frames, entry)
+    )
 
 
 @app.post("/versions/{version_id}/localize")
@@ -200,12 +286,18 @@ def candidate_localize(
     fy: Annotated[float | None, Form(gt=0)] = None,
     cx: Annotated[float | None, Form(gt=0)] = None,
     cy: Annotated[float | None, Form(gt=0)] = None,
+    prior_x: Annotated[float | None, Form()] = None,
+    prior_y: Annotated[float | None, Form()] = None,
+    prior_radius_m: Annotated[float | None, Form()] = None,
 ) -> LocalizeResponse:
     entry = {"candidate": True}
     if app_tokens.is_app_identity(user):
         logging.getLogger("eutopos").info("candidate localization requested by %s", user)
     return _logged_localize(
-        entry, lambda: _candidate_pose(request, s, version_id, image, fx, fy, cx, cy, entry)
+        entry,
+        lambda: _candidate_pose(
+            request, s, version_id, image, fx, fy, cx, cy, prior_x, prior_y, prior_radius_m, entry
+        ),
     )
 
 
@@ -222,18 +314,281 @@ def _logged_localize(
         entry.update(result="error", http_status=500)
         raise
     else:
+        log_json = {
+            **resp.t_s,
+            "inlier_ratio": resp.inlier_ratio,
+            "ambiguous": resp.ambiguous,
+        }
         entry.update(
             result=resp.status,
             http_status=200,
             inliers=resp.inliers,
             correspondences=resp.correspondences,
             intrinsics_source=resp.intrinsics_source,
-            t_s=resp.t_s,
+            t_s=log_json,
         )
         return resp
     finally:
         entry["wall_s"] = round(time.perf_counter() - t0, 3)
         localize_log.record(entry)
+
+
+def _logged_localize_multi(
+    entry: dict, run_multi: Callable[[], tuple[MultiLocalizeResponse, int, int]]
+) -> MultiLocalizeResponse:
+    t0 = time.perf_counter()
+    try:
+        resp, total_inliers, total_correspondences = run_multi()
+    except HTTPException as e:
+        entry.update(result="rejected", http_status=e.status_code, reason=str(e.detail))
+        raise
+    except Exception:
+        entry.update(result="error", http_status=500)
+        raise
+    else:
+        log_json = {
+            **resp.t_s,
+            "inlier_ratio": resp.inlier_ratio,
+            "ambiguous": resp.ambiguous,
+            "frames_agreeing": resp.frames_agreeing,
+            "frames_total": resp.frames_total,
+            "multi": True,
+        }
+        entry.update(
+            result=resp.status,
+            http_status=200,
+            reason=resp.reason,
+            inliers=total_inliers,
+            correspondences=total_correspondences,
+            intrinsics_source=resp.intrinsics_source,
+            t_s=log_json,
+        )
+        return resp
+    finally:
+        entry["wall_s"] = round(time.perf_counter() - t0, 3)
+        localize_log.record(entry)
+
+
+def _parse_multi_frames(raw_frames: str, expected_count: int) -> list[dict]:
+    try:
+        parsed = json.loads(raw_frames)
+    except ValueError as e:
+        raise HTTPException(422, f"frames harus JSON valid: {e}") from e
+    if not isinstance(parsed, list) or len(parsed) != expected_count:
+        raise HTTPException(
+            422, f"frames harus daftar JSON berisi {expected_count} objek sesuai jumlah gambar"
+        )
+    validated = []
+    for idx, item in enumerate(parsed):
+        if not isinstance(item, dict):
+            raise HTTPException(422, f"frames[{idx}] harus objek JSON")
+        pos = item.get("ar_position")
+        rot = item.get("ar_rotation")
+        if not (
+            isinstance(pos, list)
+            and len(pos) == 3
+            and all(
+                isinstance(v, int | float) and not isinstance(v, bool) and math.isfinite(v)
+                for v in pos
+            )
+        ):
+            raise HTTPException(422, f"frames[{idx}].ar_position harus 3 angka berhingga")
+        if not (
+            isinstance(rot, list)
+            and len(rot) == 4
+            and all(
+                isinstance(v, int | float) and not isinstance(v, bool) and math.isfinite(v)
+                for v in rot
+            )
+            and math.hypot(*rot) > 1e-6
+        ):
+            raise HTTPException(422, f"frames[{idx}].ar_rotation harus 4 angka tak nol")
+        intr = [item.get(k) for k in ("fx", "fy", "cx", "cy")]
+        given = [v is not None for v in intr]
+        if any(given) and not all(given):
+            raise HTTPException(422, f"frames[{idx}]: send all of fx, fy, cx, cy or none of them")
+        if all(given):
+            if not all(
+                isinstance(v, int | float)
+                and not isinstance(v, bool)
+                and math.isfinite(v)
+                and v > 0
+                for v in intr
+            ):
+                raise HTTPException(422, f"frames[{idx}]: fx, fy, cx, cy harus positif berhingga")
+        validated.append(
+            {
+                "fx": float(intr[0]) if all(given) else None,
+                "fy": float(intr[1]) if all(given) else None,
+                "cx": float(intr[2]) if all(given) else None,
+                "cy": float(intr[3]) if all(given) else None,
+                "given": given,
+                "ar_position": [float(v) for v in pos],
+                "ar_rotation": [float(v) for v in rot],
+            }
+        )
+    return validated
+
+
+def _localize_multi(
+    request: Request,
+    uploads_list: list[UploadFile | None],
+    raw_frames: str,
+    entry: dict,
+) -> tuple[MultiLocalizeResponse, int, int]:
+    # Gambar harus berurutan mulai image_0 tanpa celah, 2 sampai 6 gambar
+    images: list[UploadFile] = []
+    seen_none = False
+    for idx, up in enumerate(uploads_list):
+        if up is None:
+            seen_none = True
+        else:
+            if seen_none:
+                raise HTTPException(
+                    422, f"image_{idx} tidak boleh melompati nomor gambar sebelumnya"
+                )
+            images.append(up)
+    if not (MULTI_MIN_FRAMES <= len(images) <= MULTI_MAX_FRAMES):
+        raise HTTPException(
+            422, f"kirim {MULTI_MIN_FRAMES} sampai {MULTI_MAX_FRAMES} gambar (image_0..image_5)"
+        )
+
+    meta = _parse_multi_frames(raw_frames, len(images))
+
+    rgbs: list[np.ndarray] = []
+    raw_bytes: list[bytes] = []
+    for idx, up in enumerate(images):
+        m = meta[idx]
+        rgb, data, _ = _read_photo(up, m["fx"], m["fy"], m["cx"], m["cy"], entry)
+        rgbs.append(rgb)
+        raw_bytes.append(data)
+
+    st = request.app.state
+    with st.lock:
+        loc, area_id, map_version = st.localizer, st.area_id, st.map_version
+        if loc is None:
+            raise HTTPException(503, "no published map version for this area")
+        if loc.align is None:
+            raise HTTPException(409, "multi-frame localization requires an aligned map")
+        entry.update(area_id=area_id, map_version=map_version)
+
+        cameras = []
+        sources: list[Literal["client", "map", "exif"]] = []
+        for idx, rgb in enumerate(rgbs):
+            h, w = rgb.shape[:2]
+            m = meta[idx]
+            if all(m["given"]):
+                cam, src = pinhole(m["fx"], m["fy"], m["cx"], m["cy"], w, h), "client"
+            elif loc.same_size_as_map(w, h):
+                cam, src = loc.map_camera, "map"
+            else:
+                cam, src = exif_camera(raw_bytes[idx], w, h), "exif"
+            cameras.append(cam)
+            sources.append(src)
+
+        t_batch = time.perf_counter()
+        if hasattr(loc, "localize_batch"):
+            results = loc.localize_batch(rgbs, cameras)
+        else:
+            results = [loc.localize(rgb, cam) for rgb, cam in zip(rgbs, cameras, strict=True)]
+        batch_s = time.perf_counter() - t_batch
+
+    per_frame: list[MultiFrameResult] = []
+    poses_model: list[Pose | None] = []
+    poses_building: list[Pose | None] = []
+    candidates: list[align4dof.FrameAlignment] = []
+    for idx, r in enumerate(results):
+        p_model = p_building = None
+        if r.ok and r.cam_from_world is not None:
+            wfc = r.cam_from_world.inverse()
+            p_model = Pose(position=r.center_model, rotation_xyzw=wfc.rotation.quat.tolist())
+            if building := loc.to_building(r.cam_from_world):
+                p_building = Pose(position=building[0], rotation_xyzw=building[1])
+                solved = align4dof.solve_from_poses(
+                    meta[idx]["ar_position"],
+                    meta[idx]["ar_rotation"],
+                    building[0],
+                    building[1],
+                )
+                if solved is not None:
+                    candidates.append(align4dof.FrameAlignment(idx, solved, r.inliers))
+        poses_model.append(p_model)
+        poses_building.append(p_building)
+        per_frame.append(
+            MultiFrameResult(
+                status="ok" if r.ok else "failed",
+                inliers=r.inliers,
+                inlier_ratio=round(r.inlier_ratio, 4) if r.inlier_ratio is not None else None,
+                pose_building=p_building,
+            )
+        )
+
+    cons = align4dof.consensus(candidates)
+    total_inliers = sum(r.inliers for r in results)
+    total_correspondences = sum(r.correspondences for r in results)
+
+    if cons is not None:
+        best_idx = max(cons.agreeing_indices, key=lambda i: results[i].inliers)
+        best = results[best_idx]
+        resp = MultiLocalizeResponse(
+            status="ok",
+            reason=None,
+            alignment=Alignment4DofResponse(
+                yaw_deg=round(cons.alignment.yaw_deg, 4),
+                translation=[round(float(v), 4) for v in cons.alignment.translation],
+            ),
+            frames_agreeing=len(cons.agreeing_indices),
+            frames_total=len(results),
+            frames=per_frame,
+            inliers=best.inliers,
+            correspondences=best.correspondences,
+            inlier_ratio=round(best.inlier_ratio, 4) if best.inlier_ratio is not None else None,
+            reprojection_error_px_median=(
+                round(best.reprojection_error_px_median, 3)
+                if best.reprojection_error_px_median is not None
+                else None
+            ),
+            retrieval_top1=(
+                round(best.retrieval_top1, 4) if best.retrieval_top1 is not None else None
+            ),
+            ambiguous=bool(best.ambiguous),
+            intrinsics_source=sources[best_idx],
+            pose_model=poses_model[best_idx],
+            pose_building=poses_building[best_idx],
+            area_id=area_id,
+            map_version=map_version,
+            t_s={"total": round(batch_s, 3)},
+        )
+    else:
+        best_idx = max(range(len(results)), key=lambda i: results[i].inliers)
+        best = results[best_idx]
+        resp = MultiLocalizeResponse(
+            status="not_found",
+            reason="no_consensus",
+            alignment=None,
+            frames_agreeing=0,
+            frames_total=len(results),
+            frames=per_frame,
+            inliers=best.inliers,
+            correspondences=best.correspondences,
+            inlier_ratio=round(best.inlier_ratio, 4) if best.inlier_ratio is not None else None,
+            reprojection_error_px_median=(
+                round(best.reprojection_error_px_median, 3)
+                if best.reprojection_error_px_median is not None
+                else None
+            ),
+            retrieval_top1=(
+                round(best.retrieval_top1, 4) if best.retrieval_top1 is not None else None
+            ),
+            ambiguous=bool(best.ambiguous),
+            intrinsics_source=sources[best_idx],
+            pose_model=None,
+            pose_building=None,
+            area_id=area_id,
+            map_version=map_version,
+            t_s={"total": round(batch_s, 3)},
+        )
+    return resp, total_inliers, total_correspondences
 
 
 def _localize(
@@ -243,8 +598,12 @@ def _localize(
     fy: float | None,
     cx: float | None,
     cy: float | None,
+    prior_x: float | None,
+    prior_y: float | None,
+    prior_radius_m: float | None,
     entry: dict,
 ) -> LocalizeResponse:
+    prior_xy, prior_radius_m = _parse_prior(prior_x, prior_y, prior_radius_m)
     rgb, data, given = _read_photo(image, fx, fy, cx, cy, entry)
     st = request.app.state
     with st.lock:
@@ -252,10 +611,38 @@ def _localize(
     if loc is None:
         raise HTTPException(503, "no published map version for this area")
     entry.update(area_id=area_id, map_version=map_version)
-    return _pose_response(loc, rgb, data, fx, fy, cx, cy, given, area_id, map_version, st.lock)
+    return _pose_response(
+        loc,
+        rgb,
+        data,
+        fx,
+        fy,
+        cx,
+        cy,
+        given,
+        area_id,
+        map_version,
+        st.lock,
+        prior_xy=prior_xy,
+        prior_radius_m=prior_radius_m,
+    )
 
 
-def _candidate_pose(request, session, version_id, image, fx, fy, cx, cy, entry) -> LocalizeResponse:
+def _candidate_pose(
+    request,
+    session,
+    version_id,
+    image,
+    fx,
+    fy,
+    cx,
+    cy,
+    prior_x,
+    prior_y,
+    prior_radius_m,
+    entry,
+) -> LocalizeResponse:
+    prior_xy, prior_radius_m = _parse_prior(prior_x, prior_y, prior_radius_m)
     st = request.app.state
     cache = getattr(st, "candidates", None)
     if cache is None:
@@ -271,7 +658,19 @@ def _candidate_pose(request, session, version_id, image, fx, fy, cx, cy, entry) 
             )
         if served is not None:
             return _pose_response(
-                served, rgb, data, fx, fy, cx, cy, given, area_id, map_version, st.lock
+                served,
+                rgb,
+                data,
+                fx,
+                fy,
+                cx,
+                cy,
+                given,
+                area_id,
+                map_version,
+                st.lock,
+                prior_xy=prior_xy,
+                prior_radius_m=prior_radius_m,
             )
 
         # Pemuatan hanya memakai kunci cache. Inferensi mengambil st.lock dari dalam kunci cache.
@@ -279,7 +678,19 @@ def _candidate_pose(request, session, version_id, image, fx, fy, cx, cy, entry) 
             entry.update(area_id=area_id, map_version=map_version)
             try:
                 return _pose_response(
-                    loc, rgb, data, fx, fy, cx, cy, given, area_id, map_version, st.lock
+                    loc,
+                    rgb,
+                    data,
+                    fx,
+                    fy,
+                    cx,
+                    cy,
+                    given,
+                    area_id,
+                    map_version,
+                    st.lock,
+                    prior_xy=prior_xy,
+                    prior_radius_m=prior_radius_m,
                 )
             finally:
                 del loc
@@ -310,7 +721,20 @@ def _read_photo(
 
 
 def _pose_response(
-    loc, rgb, data, fx, fy, cx, cy, given, area_id, map_version, lock
+    loc,
+    rgb,
+    data,
+    fx,
+    fy,
+    cx,
+    cy,
+    given,
+    area_id,
+    map_version,
+    lock,
+    *,
+    prior_xy: tuple[float, float] | None = None,
+    prior_radius_m: float | None = None,
 ) -> LocalizeResponse:
     h, w = rgb.shape[:2]
     if all(given):
@@ -321,7 +745,10 @@ def _pose_response(
         camera, source = exif_camera(data, w, h), "exif"
 
     with lock:
-        r = loc.localize(rgb, camera)
+        if prior_xy is not None:
+            r = loc.localize(rgb, camera, prior_xy=prior_xy, prior_radius_m=prior_radius_m)
+        else:
+            r = loc.localize(rgb, camera)
 
     pose_model = pose_building = None
     if r.ok:
@@ -335,6 +762,17 @@ def _pose_response(
         status="ok" if r.ok else "failed",
         inliers=r.inliers,
         correspondences=r.correspondences,
+        inlier_ratio=round(r.inlier_ratio, 4) if r.inlier_ratio is not None else None,
+        reprojection_error_px_median=(
+            round(r.reprojection_error_px_median, 3)
+            if r.reprojection_error_px_median is not None
+            else None
+        ),
+        retrieval_top1=round(r.retrieval_top1, 4) if r.retrieval_top1 is not None else None,
+        ambiguous=bool(r.ambiguous),
+        prior_used=bool(r.prior_used),
+        outside_prior=bool(r.outside_prior),
+        deep_search=bool(r.deep_search),
         intrinsics_source=source,
         pose_model=pose_model,
         pose_building=pose_building,

@@ -113,7 +113,11 @@ def test_failed_localization_is_logged(client, db):
     [r] = rows(db)
     assert (r.result, r.http_status, r.area_id, r.map_version) == ("failed", 200, "floor10", 2)
     assert (r.inliers, r.correspondences, r.intrinsics_source) == (7, 30, "client")
-    assert (r.image_w, r.image_h) == (64, 48) and r.t_s == {"total": 0.2}
+    assert (r.image_w, r.image_h) == (64, 48) and r.t_s == {
+        "total": 0.2,
+        "inlier_ratio": round(7 / 30, 4),
+        "ambiguous": False,
+    }
     assert r.wall_s >= 0
 
 
