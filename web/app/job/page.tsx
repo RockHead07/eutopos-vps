@@ -7,6 +7,8 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { PipelineStageIndicator } from "@/components/PipelineStageIndicator";
 import { JobFailureDiagnosis } from "@/components/JobFailureDiagnosis";
 import { DeleteConsentDialog } from "@/components/DeleteConsentDialog";
+import { ScanReportPanel } from "@/components/ScanReportPanel";
+import { MapUsagePanel } from "@/components/MapUsagePanel";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Icon } from "@/lib/Icon";
@@ -254,6 +256,10 @@ function JobDetail() {
           />
         </section>
       )}
+
+      {/* Scan Report & Live Map Usage */}
+      <ScanReportPanel report={job.summary?.report} />
+      {job.map_version_id != null && <MapUsagePanel jobId={job.id} />}
 
       {/* Videos List */}
       <Panel>

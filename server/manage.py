@@ -39,7 +39,7 @@ from server.db import (
 )
 from server.map_layout import missing_files
 from server.pipeline import missing_inputs, run_dir
-from server.worker import DATA, MAPS, backfill_previews, backfill_thumbs
+from server.worker import DATA, MAPS, backfill_previews, backfill_reports, backfill_thumbs
 
 
 def _warn_dashboard_alignment(version_id: int, dashboard_id: int) -> None:
@@ -149,6 +149,9 @@ def main():
         "previews", help="buat pratinjau job selesai yang belum punya, dari frame tersimpan"
     )
     sub.add_parser("thumbs", help="buat foto kecil frame scan untuk job selesai yang belum punya")
+    rep = sub.add_parser("report", help="isi ulang kartu laporan scan untuk job selesai")
+    rep.add_argument("--job", type=int, default=None, help="hanya satu id job tertentu")
+    rep.add_argument("--force", action="store_true", help="hitung ulang walau versi laporan sama")
     al = sub.add_parser(
         "align", help="pasang align.json (versi peta) dan/atau navgraph.json (area) terukur"
     )
@@ -257,6 +260,9 @@ def main():
         elif a.cmd == "thumbs":
             made, skipped = backfill_thumbs(s, DATA, MAPS)
             print(f"foto kecil dibuat untuk {made} job, {skipped} dilewati (frame tidak ditemukan)")
+        elif a.cmd == "report":
+            made, skipped = backfill_reports(s, MAPS, job_id=a.job, force=a.force)
+            print(f"{made} laporan dibuat, {skipped} dilewati")
         elif a.cmd == "quick-align":
             _quick_align(a, s)
         elif a.cmd == "align":

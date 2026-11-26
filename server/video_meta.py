@@ -66,3 +66,40 @@ def recorded_at(path: Path) -> datetime | None:
     except OverflowError:
         return None
     return when if EARLIEST <= when <= datetime.now(UTC) + timedelta(days=1) else None
+
+
+def duration_s(path: Path) -> float | None:
+    """Durasi video dalam detik dari kotak mvhd (timescale dan duration), atau None."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            moov = _find(f, 0, size, b"moov")
+            if moov is None:
+                return None
+            mvhd = _find(f, moov[0], moov[1], b"mvhd")
+            if mvhd is None:
+                return None
+            f.seek(mvhd[0])
+            head = f.read(4)
+            if len(head) < 4:
+                return None
+            version = head[:1]
+            if version == b"\x01":
+                skip, fmt, need = 16, ">IQ", 12
+            elif version == b"\x00":
+                skip, fmt, need = 8, ">II", 8
+            else:
+                return None
+            if mvhd[0] + 4 + skip + need > mvhd[1]:
+                return None
+            f.seek(mvhd[0] + 4 + skip)
+            body = f.read(need)
+            if len(body) < need:
+                return None
+            timescale, duration = struct.unpack(fmt, body)
+    except (OSError, struct.error, ValueError):
+        return None
+    if timescale == 0 or duration == 0:
+        return None
+    return duration / timescale

@@ -11,6 +11,7 @@ api terbuka di jaringan lab, dan hook palsu bisa mengantrekan atau merusak peker
 import json
 import os
 import secrets
+import statistics
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Literal
@@ -20,7 +21,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlmodel import Session, select
 
 from server import app_tokens, auth, jobs
-from server.db import DB, MapJob
+from server.db import DB, LocalizeRequest, MapJob, MapVersion, iso_utc
 from server.db import get_session as get_session
 
 UPLOADS = Path("/data/uploads")  # -upload-dir tusd, dilihat dari container api
@@ -132,6 +133,75 @@ def get(job_id: int, user: app_tokens.CaptureUser, s: DB) -> JobOut:
     return _job_out(job)
 
 
+def _usage_group(rows: list[tuple[str, float | None, int | None, datetime | None]]) -> dict:
+    if not rows:
+        return {
+            "requests": 0,
+            "ok_ratio": None,
+            "wall_s_p50": None,
+            "wall_s_p95": None,
+            "inliers_median": None,
+            "first_at": None,
+            "last_at": None,
+        }
+    count = len(rows)
+    ok_count = sum(1 for result, _, _, _ in rows if result == "ok")
+    walls = [float(w) for _, w, _, _ in rows if w is not None]
+    if not walls:
+        wall_p50 = wall_p95 = None
+    elif len(walls) == 1:
+        wall_p50 = wall_p95 = walls[0]
+    else:
+        qs = statistics.quantiles(walls, n=100, method="inclusive")
+        wall_p50, wall_p95 = qs[49], qs[94]
+    inliers = [float(inl) for _, _, inl, _ in rows if inl is not None]
+    inliers_med = statistics.median(inliers) if inliers else None
+    times = [ts for _, _, _, ts in rows if ts is not None]
+    return {
+        "requests": count,
+        "ok_ratio": ok_count / count,
+        "wall_s_p50": wall_p50,
+        "wall_s_p95": wall_p95,
+        "inliers_median": inliers_med,
+        "first_at": iso_utc(min(times)) if times else None,
+        "last_at": iso_utc(max(times)) if times else None,
+    }
+
+
+@router.get("/api/jobs/{job_id}/usage")
+def usage(job_id: int, user: User, s: DB) -> dict:
+    """Statistik pemakaian peta (lokalisasi) untuk versi hasil job ini; khusus staf."""
+    job = s.get(MapJob, job_id)
+    if job is None:
+        raise HTTPException(404, "job not found")
+    version = s.get(MapVersion, job.map_version_id) if job.map_version_id is not None else None
+    if version is None:
+        return {"map_version": None, "served": _usage_group([]), "candidate": _usage_group([])}
+    stmt = select(
+        LocalizeRequest.candidate,
+        LocalizeRequest.result,
+        LocalizeRequest.wall_s,
+        LocalizeRequest.inliers,
+        LocalizeRequest.created_at,
+    ).where(
+        LocalizeRequest.area_id == job.area_id,
+        LocalizeRequest.map_version == version.version,
+    )
+    served_rows = []
+    candidate_rows = []
+    for is_candidate, result, wall_s, inliers, created_at in s.exec(stmt):
+        entry = (result, wall_s, inliers, created_at)
+        if is_candidate:
+            candidate_rows.append(entry)
+        else:
+            served_rows.append(entry)
+    return {
+        "map_version": version.version,
+        "served": _usage_group(served_rows),
+        "candidate": _usage_group(candidate_rows),
+    }
+
+
 @router.delete("/api/jobs/{job_id}", status_code=202)
 def delete(job_id: int, user: User, s: DB) -> dict:
     """Minta penghapusan: hanya admin. Berkasnya dihapus pekerja, bukan api (/maps hanya-baca)."""
@@ -192,7 +262,12 @@ def _pre_create(s: Session, upload: dict, headers: dict) -> dict:
     upload_id = f"job{job.id}-v{idx}-{secrets.token_hex(8)}"
     old = video.get("upload_id")
     videos = list(job.videos)  # JSON tidak dilacak per elemen: ganti seluruh daftar
-    videos[idx] = {**video, "upload_id": upload_id, "path": str(UPLOADS / upload_id)}
+    videos[idx] = {
+        **video,
+        "upload_id": upload_id,
+        "path": str(UPLOADS / upload_id),
+        "upload_started_at": _utc_now().isoformat(),
+    }
     job.videos = videos
     s.add(job)
     s.commit()
@@ -205,6 +280,10 @@ def _pre_create(s: Session, upload: dict, headers: dict) -> dict:
 def _pre_finish(s: Session, upload: dict) -> None:
     # Path tidak pernah diambil dari hook (Storage.Path): selalu dari ID buatan server.
     job = _locked_job(s, upload.get("MetaData") or {})
+    # Hook pre-finish bisa diulang tusd setelah job sudah antre: cukup diam, jangan menolak
+    # unggahan yang sebenarnya sudah lengkap, dan jangan menimpa waktu selesai unggah.
+    if job.status != "uploading":
+        return
     videos = list(job.videos)
     uid = upload.get("ID")
     idx = next((i for i, v in enumerate(videos) if uid and v["upload_id"] == uid), None)
@@ -214,7 +293,7 @@ def _pre_finish(s: Session, upload: dict) -> None:
     data = UPLOADS / uid
     if not data.is_file() or data.stat().st_size != videos[idx]["size"]:
         raise HookReject(409, "upload is not complete yet")
-    videos[idx] = {**videos[idx], "uploaded": True}
+    videos[idx] = {**videos[idx], "uploaded": True, "uploaded_at": _utc_now().isoformat()}
     job.videos = videos
     if job.status == "uploading" and all(v["uploaded"] for v in videos):
         job.status = "queued"

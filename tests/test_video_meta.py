@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from mp4_builder import mp4
 
+from server import video_meta
 from server.video_meta import recorded_at
 
 
@@ -62,3 +63,18 @@ def test_box_with_zero_size_does_not_loop_forever(write):
     bad = struct.pack(">I4s", 0, b"free") + b"\x00" * 16
     assert recorded_at(write(bad)) is None
     assert recorded_at(write(struct.pack(">I4s", 3, b"free") + b"\x00" * 32)) is None
+
+
+@pytest.mark.parametrize("version", [0, 1])
+def test_duration_from_mvhd(write, version):
+    data = mp4(WHEN, version=version, timescale=600, duration=600 * 95)
+    assert video_meta.duration_s(write(data)) == 95.0
+
+
+def test_zero_timescale_or_duration_is_unknown(write):
+    assert video_meta.duration_s(write(mp4(WHEN, timescale=0, duration=10))) is None
+    assert video_meta.duration_s(write(mp4(WHEN, timescale=600, duration=0))) is None
+
+
+def test_duration_garbage_never_raises(write):
+    assert video_meta.duration_s(write(b"\x00" * 50)) is None

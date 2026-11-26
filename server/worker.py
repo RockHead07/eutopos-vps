@@ -15,12 +15,23 @@ import sys
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager as ContextManager
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from sqlalchemy import and_, or_
 from sqlmodel import Session, select
 
-from server import alignment, app_tokens, frame_package, gate, jobs, splat_jobs, splat_pipeline
+from server import (
+    alignment,
+    app_tokens,
+    frame_package,
+    gate,
+    jobs,
+    scan_report,
+    splat_jobs,
+    splat_pipeline,
+)
 from server.db import Area, MapJob, MapVersion, engine_from_env, register, set_status
 from server.gpu_lock import gpu_lock
 from server.map_layout import missing_files
@@ -39,7 +50,7 @@ from server.pipeline import (
 from server.previews import make_preview
 from server.system import HostDisk, get_host_disk_path, read_host_disk
 from server.thumbs import make_thumbs
-from server.video_meta import recorded_at
+from server.video_meta import duration_s, recorded_at
 
 DATA, MAPS = Path("/data"), Path("/maps")  # jalur di dalam container (deploy/compose.yaml)
 UPLOAD_MAX_AGE = jobs.UPLOAD_MAX_AGE
@@ -103,15 +114,17 @@ def delete_uploaded_videos(videos: list[dict], uploads: Path) -> None:
 
 
 def stamp_recorded(session: Session, job: MapJob) -> None:
-    """Catat waktu rekam tiap video sebelum videonya dihapus: waktu itu hanya ada di dalam berkas.
+    """Catat waktu rekam dan durasi tiap video sebelum videonya dihapus.
 
     None berarti tidak diketahui (folder frame, tanpa metadata, atau nilai tak masuk akal).
     """
     stamped = []
     for v in job.videos:
         p = Path(v["path"])
-        when = recorded_at(p) if v.get("kind") != "frames" and p.is_file() else None
-        stamped.append({**v, "recorded_at": when.isoformat() if when else None})
+        is_video = v.get("kind") != "frames" and p.is_file()
+        when = recorded_at(p) if is_video else None
+        dur = duration_s(p) if is_video else None
+        stamped.append({**v, "recorded_at": when.isoformat() if when else None, "duration_s": dur})
     jobs.set_videos(session, job, stamped)
 
 
@@ -151,6 +164,55 @@ def backfill_thumbs(session: Session, data: Path, maps: Path) -> tuple[int, int]
             made += 1
         else:
             skipped += 1
+    return made, skipped
+
+
+def backfill_reports(
+    session: Session,
+    maps: Path,
+    job_id: int | None = None,
+    force: bool = False,
+) -> tuple[int, int]:
+    """Isi ulang kartu laporan untuk job done atau ditolak gerbang yang folder petanya masih ada.
+
+    Hasil: (dibuat, dilewati). Nilai live (stage_seconds, gpu_wait_s) dipertahankan dari kartu lama.
+    """
+    made = skipped = 0
+    root = maps.resolve()
+    stmt = select(MapJob).where(
+        or_(MapJob.status == "done", and_(MapJob.status == "failed", MapJob.stage == "gate"))
+    )
+    if job_id is not None:
+        stmt = stmt.where(MapJob.id == job_id)
+    for job in session.exec(stmt.order_by(MapJob.id)).all():
+        map_dir = (maps / job.area_id / f"job-{job.id}").resolve()
+        if map_dir.parent.parent != root or not map_dir.is_dir():
+            continue
+        summary = dict(job.summary) if isinstance(job.summary, dict) else {}
+        old_report = summary.get("report")
+        if (
+            not force
+            and isinstance(old_report, dict)
+            and old_report.get("version") == scan_report.REPORT_VERSION
+        ):
+            skipped += 1
+            continue
+        old_proc = (
+            old_report.get("processing")
+            if isinstance(old_report, dict) and isinstance(old_report.get("processing"), dict)
+            else {}
+        )
+        live = {
+            "stage_seconds": old_proc.get("stage_seconds"),
+            "gpu_wait_s": old_proc.get("gpu_wait_s"),
+        }
+        report = scan_report.from_disk(
+            job, map_dir, summary, live, job.finished_at, computed_at=datetime.now(UTC)
+        )
+        job.summary = {**summary, "report": report}
+        session.add(job)
+        session.commit()
+        made += 1
     return made, skipped
 
 
@@ -224,6 +286,14 @@ def align_capture(map_dir: Path) -> dict:
         return {"status": "failed", "reason": str(exc)}
 
 
+def _safe_report(job: MapJob, map_dir: Path, summary: dict, live: dict) -> dict:
+    """Bungkus penyusun kartu agar galat laporan tidak pernah menggagalkan pekerjaan peta."""
+    try:
+        return scan_report.from_disk(job, map_dir, summary, live, datetime.now(UTC))
+    except Exception as exc:
+        return {"version": scan_report.REPORT_VERSION, "error": str(exc)}
+
+
 def process(
     session: Session,
     job: MapJob,
@@ -238,10 +308,31 @@ def process(
     job_dir = data / "jobs" / str(job.id)
     dataset, log = job_dir / "dataset", job_dir / "log.txt"
     map_dir = maps / job.area_id / f"job-{job.id}"
+    stage_times: dict[str, float] = {}
+    current_stage: tuple[str, float] | None = None
+
+    def stage(name: str) -> None:
+        nonlocal current_stage
+        now_m = time.monotonic()
+        if current_stage is not None:
+            prev_name, prev_t = current_stage
+            stage_times[prev_name] = stage_times.get(prev_name, 0.0) + (now_m - prev_t)
+        jobs.set_stage(session, job, name)
+        current_stage = (name, now_m)
+
+    def finish_stages() -> dict:
+        nonlocal current_stage
+        if current_stage is not None:
+            prev_name, prev_t = current_stage
+            stage_times[prev_name] = stage_times.get(prev_name, 0.0) + (time.monotonic() - prev_t)
+            current_stage = None
+        rounded = {k: round(v, 3) for k, v in stage_times.items()}
+        return {"stage_seconds": rounded, "gpu_wait_s": rounded.get("gpu_wait")}
+
     try:
-        jobs.set_stage(session, job, "gpu_wait")
+        stage("gpu_wait")
         with lock():
-            jobs.set_stage(session, job, "extract")
+            stage("extract")
             # di dalam try: folder tak bisa ditulis = gagal
             job_dir.mkdir(parents=True, exist_ok=True)
             if min(free_bytes(data), free_bytes(maps)) < MIN_FREE_BYTES:
@@ -264,15 +355,15 @@ def process(
                 runner(argv, log)
             delete_uploaded_videos(job.videos, data / "uploads")
 
-            jobs.set_stage(session, job, "build")
+            stage("build")
             runner(build_command(dataset, map_dir), log)
 
-            jobs.set_stage(session, job, "inspect")
+            stage("inspect")
             runner(inspect_command(map_dir), log)
             make_preview(dataset / "mapping", job.videos, map_dir / "preview.jpg")
             make_thumbs(dataset / "mapping", map_dir / "thumbs")
 
-            jobs.set_stage(session, job, "register")
+            stage("register")
             if missing := missing_files(map_dir, MAX_KP, RESIZE, GLOBAL_RESIZE):
                 raise StageError(f"map is incomplete: {', '.join(map(str, missing))}")
             summary = {
@@ -282,11 +373,13 @@ def process(
             version = register(
                 session, job.area_id, session.get(Area, job.area_id).name, str(map_dir)
             )
-            jobs.set_stage(session, job, "align")
+            stage("align")
             summary["align"] = align_capture(map_dir)
-            jobs.set_stage(session, job, "gate")
+            stage("gate")
             verdict = gate.evaluate(summary)
             summary["gate"] = gate.as_dict(verdict)
+            live = finish_stages()
+            summary["report"] = _safe_report(job, map_dir, summary, live)
             if verdict.decision == "reject":
                 jobs.reject(session, job, version, gate.reject_text(verdict), "gate", summary)
                 return
