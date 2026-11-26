@@ -142,6 +142,18 @@ class Pose(BaseModel):
     rotation_xyzw: list[float]  # rotasi kamera terhadap dunia (world_from_cam)
 
 
+def _model_pose(center_model, world_from_cam) -> Pose:
+    """Pose di kerangka model, dibulatkan 6 desimal seperti pose_building.
+
+    Digit terakhir kuaternion pycolmap berbeda antarplatform (Windows vs Linux CI), jadi angka
+    mentah membuat jawaban dan fixture kontrak tidak stabil.
+    """
+    return Pose(
+        position=[round(float(v), 6) for v in center_model],
+        rotation_xyzw=[round(float(v), 6) for v in world_from_cam.rotation.quat],
+    )
+
+
 class LocalizeResponse(BaseModel):
     contract_version: int = CONTRACT_VERSION
     status: Literal["ok", "failed"]
@@ -505,7 +517,7 @@ def _localize_multi(
         p_model = p_building = None
         if r.ok and r.cam_from_world is not None:
             wfc = r.cam_from_world.inverse()
-            p_model = Pose(position=r.center_model, rotation_xyzw=wfc.rotation.quat.tolist())
+            p_model = _model_pose(r.center_model, wfc)
             if building := loc.to_building(r.cam_from_world):
                 p_building = Pose(position=building[0], rotation_xyzw=building[1])
                 solved = align4dof.solve_from_poses(
@@ -763,9 +775,7 @@ def _pose_response(
     pose_model = pose_building = None
     if r.ok:
         world_from_cam = r.cam_from_world.inverse()
-        pose_model = Pose(
-            position=r.center_model, rotation_xyzw=world_from_cam.rotation.quat.tolist()
-        )
+        pose_model = _model_pose(r.center_model, world_from_cam)
         if building := loc.to_building(r.cam_from_world):
             pose_building = Pose(position=building[0], rotation_xyzw=building[1])
     return LocalizeResponse(
