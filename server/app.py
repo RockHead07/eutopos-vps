@@ -181,6 +181,8 @@ class MultiLocalizeResponse(BaseModel):
     alignment: Alignment4DofResponse | None = None
     frames_agreeing: int
     frames_total: int
+    view_spread_deg: float | None = None
+    view_diverse: bool = False
     frames: list[MultiFrameResult]
     # Bidang single-frame terbaik agar klien lama tetap dapat membaca bentuk yang dikenal
     inliers: int
@@ -352,6 +354,8 @@ def _logged_localize_multi(
             "ambiguous": resp.ambiguous,
             "frames_agreeing": resp.frames_agreeing,
             "frames_total": resp.frames_total,
+            "view_spread_deg": resp.view_spread_deg,
+            "view_diverse": resp.view_diverse,
             "multi": True,
         }
         entry.update(
@@ -530,6 +534,8 @@ def _localize_multi(
     if cons is not None:
         best_idx = max(cons.agreeing_indices, key=lambda i: results[i].inliers)
         best = results[best_idx]
+        headings = [align4dof.ar_heading_deg(meta[i]["ar_rotation"]) for i in cons.agreeing_indices]
+        spread = align4dof.view_spread_deg(headings)
         resp = MultiLocalizeResponse(
             status="ok",
             reason=None,
@@ -539,6 +545,8 @@ def _localize_multi(
             ),
             frames_agreeing=len(cons.agreeing_indices),
             frames_total=len(results),
+            view_spread_deg=round(spread, 2) if spread is not None else None,
+            view_diverse=align4dof.is_view_diverse(spread),
             frames=per_frame,
             inliers=best.inliers,
             correspondences=best.correspondences,
@@ -568,6 +576,8 @@ def _localize_multi(
             alignment=None,
             frames_agreeing=0,
             frames_total=len(results),
+            view_spread_deg=None,
+            view_diverse=False,
             frames=per_frame,
             inliers=best.inliers,
             correspondences=best.correspondences,
