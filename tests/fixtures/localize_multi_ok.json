@@ -1,0 +1,129 @@
+{
+  "contract_version": 1,
+  "status": "ok",
+  "reason": null,
+  "alignment": {
+    "yaw_deg": 20.0,
+    "translation": [
+      1.0,
+      0.0,
+      3.0
+    ]
+  },
+  "frames_agreeing": 3,
+  "frames_total": 4,
+  "view_spread_deg": 35.0,
+  "view_diverse": true,
+  "frames": [
+    {
+      "status": "ok",
+      "inliers": 110,
+      "inlier_ratio": 0.7333,
+      "pose_building": {
+        "position": [
+          -0.0,
+          0.0,
+          1.3
+        ],
+        "rotation_xyzw": [
+          -0.696364,
+          -0.122788,
+          0.122788,
+          0.696364
+        ]
+      }
+    },
+    {
+      "status": "ok",
+      "inliers": 160,
+      "inlier_ratio": 0.8,
+      "pose_building": {
+        "position": [
+          1.0,
+          0.0,
+          1.3
+        ],
+        "rotation_xyzw": [
+          -0.706999,
+          -0.012341,
+          0.012341,
+          0.706999
+        ]
+      }
+    },
+    {
+      "status": "ok",
+      "inliers": 130,
+      "inlier_ratio": 0.7647,
+      "pose_building": {
+        "position": [
+          2.0,
+          0.0,
+          1.3
+        ],
+        "rotation_xyzw": [
+          -0.701057,
+          0.092296,
+          -0.092296,
+          0.701057
+        ]
+      }
+    },
+    {
+      "status": "ok",
+      "inliers": 90,
+      "inlier_ratio": 0.6923,
+      "pose_building": {
+        "position": [
+          9.0,
+          0.0,
+          1.3
+        ],
+        "rotation_xyzw": [
+          -0.704416,
+          -0.061628,
+          0.061628,
+          0.704416
+        ]
+      }
+    }
+  ],
+  "inliers": 160,
+  "correspondences": 200,
+  "inlier_ratio": 0.8,
+  "reprojection_error_px_median": 1.25,
+  "retrieval_top1": 0.86,
+  "ambiguous": false,
+  "intrinsics_source": "client",
+  "pose_model": {
+    "position": [
+      1.0,
+      0.0,
+      1.3
+    ],
+    "rotation_xyzw": [
+      -0.706999,
+      -0.012341,
+      0.012341,
+      0.706999
+    ]
+  },
+  "pose_building": {
+    "position": [
+      1.0,
+      0.0,
+      1.3
+    ],
+    "rotation_xyzw": [
+      -0.706999,
+      -0.012341,
+      0.012341,
+      0.706999
+    ]
+  },
+  "area_id": "floor10",
+  "map_version": 4,
+  "t_s": {
+    "total": 0.42
+  }
+}

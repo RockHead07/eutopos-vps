@@ -20,6 +20,7 @@ MIN_HORIZONTAL_FRACTION = 0.3
 CONSENSUS_TRANSLATION_M = 0.5
 CONSENSUS_YAW_DEG = 5.0
 CONSENSUS_MIN_FRAMES = 2
+MIN_VIEW_SPREAD_DEG = 20.0
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,32 @@ def forward_b(building_from_cam_g_xyzw) -> np.ndarray:
 def ar_forward_u(ar_rotation_xyzw) -> np.ndarray:
     """Arah depan kamera AR di Unity (ar_rotation * +Z), sama seperti arCamera.transform.forward."""
     return rotate_vec_by_quat_xyzw(ar_rotation_xyzw, (0.0, 0.0, 1.0))
+
+
+def ar_heading_deg(ar_rotation_xyzw) -> float | None:
+    """Heading yaw kamera AR (derajat, +Z ke +X), None bila kamera terlalu vertikal."""
+    return yaw_deg(ar_forward_u(ar_rotation_xyzw))
+
+
+def view_spread_deg(headings_deg: list[float | None]) -> float | None:
+    """Selisih sudut berpasangan terbesar (0..180 derajat) dari heading yang sah; None jika < 2."""
+    valid = [float(h) for h in headings_deg if h is not None]
+    if len(valid) < 2:
+        return None
+    best = 0.0
+    for i in range(len(valid)):
+        for j in range(i + 1, len(valid)):
+            diff = yaw_diff_deg(valid[i], valid[j])
+            if diff > best:
+                best = diff
+    return best
+
+
+def is_view_diverse(
+    spread_deg: float | None, *, min_spread_deg: float = MIN_VIEW_SPREAD_DEG
+) -> bool:
+    """True bila rentang sudut pandang klaster pemenang >= min_spread_deg."""
+    return spread_deg is not None and spread_deg >= min_spread_deg
 
 
 def yaw_deg(f) -> float | None:

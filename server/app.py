@@ -142,6 +142,18 @@ class Pose(BaseModel):
     rotation_xyzw: list[float]  # rotasi kamera terhadap dunia (world_from_cam)
 
 
+def _model_pose(center_model, world_from_cam) -> Pose:
+    """Pose di kerangka model, dibulatkan 6 desimal seperti pose_building.
+
+    Digit terakhir kuaternion pycolmap berbeda antarplatform (Windows vs Linux CI), jadi angka
+    mentah membuat jawaban dan fixture kontrak tidak stabil.
+    """
+    return Pose(
+        position=[round(float(v), 6) for v in center_model],
+        rotation_xyzw=[round(float(v), 6) for v in world_from_cam.rotation.quat],
+    )
+
+
 class LocalizeResponse(BaseModel):
     contract_version: int = CONTRACT_VERSION
     status: Literal["ok", "failed"]
@@ -181,6 +193,8 @@ class MultiLocalizeResponse(BaseModel):
     alignment: Alignment4DofResponse | None = None
     frames_agreeing: int
     frames_total: int
+    view_spread_deg: float | None = None
+    view_diverse: bool = False
     frames: list[MultiFrameResult]
     # Bidang single-frame terbaik agar klien lama tetap dapat membaca bentuk yang dikenal
     inliers: int
@@ -352,6 +366,8 @@ def _logged_localize_multi(
             "ambiguous": resp.ambiguous,
             "frames_agreeing": resp.frames_agreeing,
             "frames_total": resp.frames_total,
+            "view_spread_deg": resp.view_spread_deg,
+            "view_diverse": resp.view_diverse,
             "multi": True,
         }
         entry.update(
@@ -501,7 +517,7 @@ def _localize_multi(
         p_model = p_building = None
         if r.ok and r.cam_from_world is not None:
             wfc = r.cam_from_world.inverse()
-            p_model = Pose(position=r.center_model, rotation_xyzw=wfc.rotation.quat.tolist())
+            p_model = _model_pose(r.center_model, wfc)
             if building := loc.to_building(r.cam_from_world):
                 p_building = Pose(position=building[0], rotation_xyzw=building[1])
                 solved = align4dof.solve_from_poses(
@@ -530,6 +546,8 @@ def _localize_multi(
     if cons is not None:
         best_idx = max(cons.agreeing_indices, key=lambda i: results[i].inliers)
         best = results[best_idx]
+        headings = [align4dof.ar_heading_deg(meta[i]["ar_rotation"]) for i in cons.agreeing_indices]
+        spread = align4dof.view_spread_deg(headings)
         resp = MultiLocalizeResponse(
             status="ok",
             reason=None,
@@ -539,6 +557,8 @@ def _localize_multi(
             ),
             frames_agreeing=len(cons.agreeing_indices),
             frames_total=len(results),
+            view_spread_deg=round(spread, 2) if spread is not None else None,
+            view_diverse=align4dof.is_view_diverse(spread),
             frames=per_frame,
             inliers=best.inliers,
             correspondences=best.correspondences,
@@ -568,6 +588,8 @@ def _localize_multi(
             alignment=None,
             frames_agreeing=0,
             frames_total=len(results),
+            view_spread_deg=None,
+            view_diverse=False,
             frames=per_frame,
             inliers=best.inliers,
             correspondences=best.correspondences,
@@ -753,9 +775,7 @@ def _pose_response(
     pose_model = pose_building = None
     if r.ok:
         world_from_cam = r.cam_from_world.inverse()
-        pose_model = Pose(
-            position=r.center_model, rotation_xyzw=world_from_cam.rotation.quat.tolist()
-        )
+        pose_model = _model_pose(r.center_model, world_from_cam)
         if building := loc.to_building(r.cam_from_world):
             pose_building = Pose(position=building[0], rotation_xyzw=building[1])
     return LocalizeResponse(
