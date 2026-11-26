@@ -538,7 +538,7 @@ class Localizer:
         prior_xy: tuple[float, float] | None = None,
         prior_radius_m: float | None = None,
     ) -> list[Result]:
-        """Lokalisasi beberapa frame sekaligus: ekstraksi MegaLoc dan ALIKED digabung per ukuran."""
+        """Lokalisasi beberapa frame sekaligus: MegaLoc digabung per ukuran, ALIKED per foto."""
         if len(images) != len(cameras):
             raise ValueError("jumlah gambar dan kamera harus sama")
         if not images:
@@ -567,21 +567,19 @@ class Localizer:
                 descs[i] = half(out_g[pos])
         global_per = (time.perf_counter() - t0) / n
 
+        # ALIKED per foto, tidak di-batch: jumlah keypoint tiap foto berbeda (foto bertekstur
+        # sedikit < max_kp) dan ALIKED menumpuknya dengan torch.stack, jadi batch campuran gagal
+        # (galat 500 di lab, 26 Nov).
         t0 = time.perf_counter()
         kps: list[np.ndarray | None] = [None] * n
         q_descs: list[np.ndarray | None] = [None] * n
-        groups_l: dict[tuple[int, int], list[int]] = defaultdict(list)
-        for idx, il in enumerate(prepped_l):
-            groups_l[(il.shape[-2], il.shape[-1])].append(idx)
-        for idxs in groups_l.values():
-            batch_l = torch.cat([prepped_l[i] for i in idxs], dim=0)
-            pred = self.aliked({"image": batch_l})
-            h_l, w_l = batch_l.shape[-2], batch_l.shape[-1]
-            for pos, i in enumerate(idxs):
-                kp = pred["keypoints"][pos].cpu().numpy()
-                scales = (sizes[i] / np.array([w_l, h_l])).astype(np.float32)
-                kps[i] = half((kp + 0.5) * scales[None] - 0.5)
-                q_descs[i] = half(pred["descriptors"][pos].cpu().numpy())
+        for i, il in enumerate(prepped_l):
+            pred = self.aliked({"image": il})
+            h_l, w_l = il.shape[-2], il.shape[-1]
+            kp = pred["keypoints"][0].cpu().numpy()
+            scales = (sizes[i] / np.array([w_l, h_l])).astype(np.float32)
+            kps[i] = half((kp + 0.5) * scales[None] - 0.5)
+            q_descs[i] = half(pred["descriptors"][0].cpu().numpy())
         local_per = (time.perf_counter() - t0) / n
 
         results = []
