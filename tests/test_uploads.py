@@ -480,3 +480,200 @@ def test_revoked_app_token_cannot_list_buildings(client, capture_bearer, monkeyp
         engine.dispose()
     actual = _real_app_with_access(monkeypatch)
     assert actual.get("/api/buildings", headers=capture_bearer).status_code == 403
+
+
+def test_upload_times_recorded(client, monkeypatch):
+    from datetime import UTC, datetime
+
+    t0 = datetime(2026, 11, 25, 10, 0, 0, tzinfo=UTC)
+    t1 = datetime(2026, 11, 25, 10, 1, 20, tzinfo=UTC)
+    job = client.post("/api/jobs", json=BODY).json()
+
+    monkeypatch.setattr(uploads, "_utc_now", lambda: t0)
+    ids = []
+    for name, size in [("loop.mp4", 100), ("uji.mp4", 50)]:
+        res = hook(client, "pre-create", job["id"], name, size)
+        ids.append(res["ChangeFileInfo"]["ID"])
+
+    monkeypatch.setattr(uploads, "_utc_now", lambda: t1)
+    finish(client, job["id"], "loop.mp4", 100, ids[0])
+    finish(client, job["id"], "uji.mp4", 50, ids[1])
+
+    row = job_row(client, job["id"])
+    assert row.status == "queued"
+    for video in row.videos:
+        assert video["upload_started_at"] == t0.isoformat()
+        assert video["uploaded_at"] == t1.isoformat()
+
+
+def test_restart_from_zero_resets_start(client, monkeypatch):
+    from datetime import UTC, datetime
+
+    t0 = datetime(2026, 11, 25, 10, 0, 0, tzinfo=UTC)
+    t2 = datetime(2026, 11, 25, 10, 5, 0, tzinfo=UTC)
+    job = client.post("/api/jobs", json=BODY).json()
+
+    monkeypatch.setattr(uploads, "_utc_now", lambda: t0)
+    hook(client, "pre-create", job["id"], "loop.mp4", 100)
+    assert job_row(client, job["id"]).videos[0]["upload_started_at"] == t0.isoformat()
+
+    monkeypatch.setattr(uploads, "_utc_now", lambda: t2)
+    hook(client, "pre-create", job["id"], "loop.mp4", 100)
+    assert job_row(client, job["id"]).videos[0]["upload_started_at"] == t2.isoformat()
+
+
+def test_upload_times_ignore_non_uploading_job(client, monkeypatch):
+    from datetime import UTC, datetime
+
+    t0 = datetime(2026, 11, 25, 10, 0, 0, tzinfo=UTC)
+    t1 = datetime(2026, 11, 25, 10, 1, 0, tzinfo=UTC)
+    t2 = datetime(2026, 11, 25, 10, 9, 0, tzinfo=UTC)
+    job = client.post("/api/jobs", json=BODY).json()
+
+    monkeypatch.setattr(uploads, "_utc_now", lambda: t0)
+    id0 = hook(client, "pre-create", job["id"], "loop.mp4", 100)["ChangeFileInfo"]["ID"]
+    id1 = hook(client, "pre-create", job["id"], "uji.mp4", 50)["ChangeFileInfo"]["ID"]
+
+    monkeypatch.setattr(uploads, "_utc_now", lambda: t1)
+    finish(client, job["id"], "loop.mp4", 100, id0)
+    finish(client, job["id"], "uji.mp4", 50, id1)
+
+    before = job_row(client, job["id"]).videos
+    assert job_row(client, job["id"]).status == "queued"
+
+    monkeypatch.setattr(uploads, "_utc_now", lambda: t2)
+    res_create = hook(client, "pre-create", job["id"], "loop.mp4", 100)
+    assert res_create["RejectUpload"] is True
+    res_finish = finish(client, job["id"], "loop.mp4", 100, id0)
+    assert res_finish == {}  # pengulangan hook untuk job yang sudah antre tidak ditolak
+    assert job_row(client, job["id"]).videos == before
+
+
+def test_usage_splits_served_and_candidate(client):
+    from datetime import UTC, datetime, timedelta
+
+    from server.db import LocalizeRequest, MapVersion
+
+    job = client.post("/api/jobs", json=BODY).json()
+    t0 = datetime(2026, 11, 25, 10, 0, 0, tzinfo=UTC)
+    engine = create_engine(client.db_url)
+    try:
+        with Session(engine) as s:
+            v = MapVersion(area_id="floor10", version=2, path="/maps/floor10/job-1")
+            s.add(v)
+            s.commit()
+            s.refresh(v)
+            row = s.get(MapJob, job["id"])
+            row.map_version_id = v.id
+            s.add(row)
+            s.add_all(
+                [
+                    LocalizeRequest(
+                        created_at=t0,
+                        result="ok",
+                        http_status=200,
+                        candidate=False,
+                        area_id="floor10",
+                        map_version=2,
+                        inliers=120,
+                        wall_s=1.0,
+                    ),
+                    LocalizeRequest(
+                        created_at=t0 + timedelta(seconds=10),
+                        result="ok",
+                        http_status=200,
+                        candidate=False,
+                        area_id="floor10",
+                        map_version=2,
+                        inliers=180,
+                        wall_s=2.0,
+                    ),
+                    LocalizeRequest(
+                        created_at=t0 + timedelta(seconds=20),
+                        result="failed",
+                        http_status=200,
+                        candidate=False,
+                        area_id="floor10",
+                        map_version=2,
+                        inliers=10,
+                        wall_s=3.0,
+                    ),
+                    LocalizeRequest(
+                        created_at=t0 + timedelta(seconds=30),
+                        result="ok",
+                        http_status=200,
+                        candidate=True,
+                        area_id="floor10",
+                        map_version=2,
+                        inliers=90,
+                        wall_s=1.5,
+                    ),
+                    # Versi lain dan area lain: tidak boleh ikut terhitung.
+                    LocalizeRequest(
+                        created_at=t0 + timedelta(seconds=40),
+                        result="ok",
+                        http_status=200,
+                        candidate=False,
+                        area_id="floor10",
+                        map_version=1,
+                        inliers=200,
+                        wall_s=9.9,
+                    ),
+                    LocalizeRequest(
+                        created_at=t0 + timedelta(seconds=50),
+                        result="ok",
+                        http_status=200,
+                        candidate=False,
+                        area_id="other",
+                        map_version=2,
+                        inliers=200,
+                        wall_s=9.9,
+                    ),
+                ]
+            )
+            s.commit()
+    finally:
+        engine.dispose()
+
+    res = client.get(f"/api/jobs/{job['id']}/usage")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["map_version"] == 2
+    served = body["served"]
+    assert served["requests"] == 3
+    assert served["ok_ratio"] == pytest.approx(2 / 3)
+    assert served["wall_s_p50"] == pytest.approx(2.0)
+    assert served["wall_s_p95"] == pytest.approx(2.9)
+    assert served["inliers_median"] == pytest.approx(120.0)
+    assert served["first_at"] == t0.isoformat()
+    assert served["last_at"] == (t0 + timedelta(seconds=20)).isoformat()
+
+    cand = body["candidate"]
+    assert cand["requests"] == 1
+    assert cand["ok_ratio"] == 1.0
+    assert cand["wall_s_p50"] == 1.5
+    assert cand["wall_s_p95"] == 1.5
+    assert cand["inliers_median"] == 90.0
+
+
+def test_usage_empty(client):
+    job = client.post("/api/jobs", json=BODY).json()
+    res = client.get(f"/api/jobs/{job['id']}/usage")
+    assert res.status_code == 200
+    empty = {
+        "requests": 0,
+        "ok_ratio": None,
+        "wall_s_p50": None,
+        "wall_s_p95": None,
+        "inliers_median": None,
+        "first_at": None,
+        "last_at": None,
+    }
+    assert res.json() == {"map_version": None, "served": empty, "candidate": empty}
+    assert client.get("/api/jobs/999999/usage").status_code == 404
+
+
+def test_usage_rejects_app_token(client, capture_bearer, monkeypatch):
+    job = client.post("/api/jobs", json=BODY).json()
+    actual = _real_app_with_access(monkeypatch)
+    assert actual.get(f"/api/jobs/{job['id']}/usage", headers=capture_bearer).status_code == 401

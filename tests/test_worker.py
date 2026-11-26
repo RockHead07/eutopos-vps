@@ -110,7 +110,7 @@ def test_process_success_registers_candidate_and_spares_cli_files(session, tmp_p
     assert calls == ["extract_frames.py", "extract_frames.py", "run.py", "inspect_map.py"]
     v = session.get(MapVersion, job.map_version_id)
     assert (v.status, v.path) == ("candidate", str(maps / "floor10" / f"job-{job.id}"))
-    assert job.summary == {
+    assert {k: v for k, v in job.summary.items() if k != "report"} == {
         "run": {"map_registered": 80},
         "inspect": {"parts": [], "accepted": 20},
         "align": {"status": "skipped", "reason": "no_frames"},
@@ -121,6 +121,7 @@ def test_process_success_registers_candidate_and_spares_cli_files(session, tmp_p
             "accepted": 20,
         },
     }
+    assert job.summary["report"]["version"] == 1
     assert not uploaded.exists()  # video unggahan dihapus setelah ekstraksi
     assert own.exists()  # berkas CLI di luar uploads tidak pernah dihapus
     assert (data / "jobs" / str(job.id) / "dataset" / "mapping" / "f_00000.jpg").exists()
@@ -1022,3 +1023,162 @@ def test_gate_pass_from_app_stays_candidate(session, tmp_path):
     assert job.status == "done", job.error
     assert session.get(MapVersion, job.map_version_id).status == "candidate"
     assert job.summary["gate"]["decision"] == "publish"
+
+
+def test_stamp_recorded_adds_duration(session, tmp_path):
+    video_path = tmp_path / "loop.mp4"
+    video_path.write_bytes(mp4(WHEN, timescale=600, duration=600 * 95))
+    frames_path = tmp_path / "scan.zip"
+    frames_path.write_bytes(b"zip")
+    videos = [
+        {"path": str(video_path), "role": "peta", "kind": "video"},
+        {"path": str(frames_path), "role": "uji", "kind": "frames"},
+    ]
+    job = jobs.create_job(session, "floor10", "Lantai 10", "cli", videos, "queued")
+
+    worker.stamp_recorded(session, job)
+
+    assert job.videos[0]["recorded_at"] == WHEN.isoformat()
+    assert job.videos[0]["duration_s"] == 95.0
+    assert job.videos[1]["recorded_at"] is None
+    assert job.videos[1]["duration_s"] is None
+
+
+def test_report_on_gate_reject(session, tmp_path):
+    job = run_gate_job(session, tmp_path, INSPECT_FAIL)
+    assert (job.status, job.stage) == ("failed", "gate")
+    report = job.summary["report"]
+    assert report["version"] == 1
+    assert report["quality"]["gate"]["decision"] == "reject"
+
+
+def test_report_error_does_not_fail_job(session, tmp_path, monkeypatch):
+    from server import scan_report
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("report failure")
+
+    monkeypatch.setattr(scan_report, "from_disk", boom)
+    data, maps, _, _, videos = make_inputs(tmp_path)
+    job = queued(session, videos)
+
+    worker.process(session, job, data, maps, runner=fake_runner([]), free_bytes=lambda p: 10**12)
+
+    assert job.status == "done", job.error
+    assert job.summary["report"] == {"version": 1, "error": "report failure"}
+
+
+def test_stage_seconds_recorded(session, tmp_path):
+    data, maps, _, _, videos = make_inputs(tmp_path)
+    job = queued(session, videos)
+
+    worker.process(session, job, data, maps, runner=fake_runner([]), free_bytes=lambda p: 10**12)
+
+    assert job.status == "done", job.error
+    proc = job.summary["report"]["processing"]
+    expected_stages = {"gpu_wait", "extract", "build", "inspect", "register", "align", "gate"}
+    assert set(proc["stage_seconds"]) == expected_stages
+    assert all(isinstance(v, float) and v >= 0 for v in proc["stage_seconds"].values())
+    assert proc["gpu_wait_s"] == proc["stage_seconds"]["gpu_wait"]
+
+
+def test_backfill_skips_same_version_unless_forced(session, tmp_path):
+    maps = tmp_path / "maps"
+    job, _, _ = finished_job(session, maps)
+    rejected = jobs.create_job(
+        session, "floor10", "L10", "a@x.id", [{"name": "a.mp4", "role": "peta", "size": 10}]
+    )
+    rej_dir = maps / "floor10" / f"job-{rejected.id}"
+    rej_dir.mkdir(parents=True)
+    rej_ver = register(session, "floor10", "L10", str(rej_dir))
+    jobs.reject(session, rejected, rej_ver, "rejected", "gate", {"run": {"map_images": 5}})
+
+    assert worker.backfill_reports(session, maps) == (2, 0)
+    assert job.summary["report"]["version"] == 1
+    assert rejected.summary["report"]["version"] == 1
+
+    # Versi sama dilewati kecuali --force.
+    assert worker.backfill_reports(session, maps) == (0, 2)
+    assert worker.backfill_reports(session, maps, job_id=job.id, force=True) == (1, 0)
+
+
+def test_backfill_force_keeps_live_fields(session, tmp_path):
+    maps = tmp_path / "maps"
+    job, _, _ = finished_job(session, maps)
+    job.summary = {
+        "run": {"map_images": 12, "map_registered": 12},
+        "report": {
+            "version": 1,
+            "processing": {"stage_seconds": {"build": 5.0}, "gpu_wait_s": 0.25},
+        },
+    }
+    session.add(job)
+    session.commit()
+
+    assert worker.backfill_reports(session, maps, force=True) == (1, 0)
+    session.refresh(job)
+    proc = job.summary["report"]["processing"]
+    assert proc["stage_seconds"] == {"build": 5.0}
+    assert proc["gpu_wait_s"] == 0.25
+
+
+def test_backfill_old_job_nulls_unrecoverable(session, tmp_path):
+    from datetime import timedelta
+
+    maps = tmp_path / "maps"
+    job, _, _ = finished_job(session, maps)
+    t_start = datetime(2026, 10, 1, 10, 0, 0, tzinfo=UTC)
+    t_finish = t_start + timedelta(seconds=120)
+    job.started_at = t_start
+    job.finished_at = t_finish
+    job.videos = [{"name": "old.mp4", "role": "peta", "size": 5000}]
+    job.summary = {"run": {"map_images": 20, "map_registered": 18}}
+    session.add(job)
+    session.commit()
+
+    assert worker.backfill_reports(session, maps) == (1, 0)
+    session.refresh(job)
+    rep = job.summary["report"]
+    assert rep["recording"]["duration_s"] is None
+    assert rep["recording"]["duration_s_reason"] == "video_deleted"
+    assert rep["network"]["uploads"] is None
+    assert rep["network"]["uploads_reason"] == "not_recorded"
+    assert rep["processing"]["queue_s"] is None
+    assert rep["processing"]["queue_s_reason"] == "not_recorded"
+    assert rep["processing"]["stage_seconds"] is None
+    assert rep["processing"]["stage_seconds_reason"] == "not_recorded"
+    assert rep["processing"]["gpu_wait_s"] is None
+    assert rep["processing"]["gpu_wait_s_reason"] == "not_recorded"
+    assert rep["processing"]["total_s"] == 120.0
+
+
+def test_backfill_manage_report_cli(tmp_path, monkeypatch, capsys):
+    from server import manage
+    from server.db import Area
+    from tests.conftest import make_building
+
+    db_url = f"sqlite:///{tmp_path / 'cli.db'}"
+    engine = create_engine(db_url)
+    SQLModel.metadata.create_all(engine)
+    maps = tmp_path / "maps"
+    with Session(engine) as s:
+        bld = make_building(s)
+        s.add(Area(id="floor10", name="Lantai 10", building_id=bld.id))
+        s.commit()
+        job, _, _ = finished_job(s, maps)
+        job_id = job.id
+    engine.dispose()
+
+    monkeypatch.setenv("DATABASE_URL", db_url)
+    monkeypatch.setattr(manage, "MAPS", maps)
+    monkeypatch.setattr(sys, "argv", ["manage", "report", "--job", str(job_id)])
+    manage.main()
+    assert capsys.readouterr().out.strip() == "1 laporan dibuat, 0 dilewati"
+
+    monkeypatch.setattr(sys, "argv", ["manage", "report", "--job", str(job_id)])
+    manage.main()
+    assert capsys.readouterr().out.strip() == "0 laporan dibuat, 1 dilewati"
+
+    monkeypatch.setattr(sys, "argv", ["manage", "report", "--job", str(job_id), "--force"])
+    manage.main()
+    assert capsys.readouterr().out.strip() == "1 laporan dibuat, 0 dilewati"

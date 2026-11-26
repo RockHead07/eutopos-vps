@@ -23,8 +23,123 @@ export type AlignmentSummary = {
   warnings?: string[];
 };
 
+export type FootprintMeta = {
+  method: string;
+  radius_m: number;
+  cell_m: number;
+  frame: "aligned_sfm" | "arcore_per_segment";
+};
+
+export type ScanReportRecording = {
+  error?: string;
+  source?: "arcore" | "video" | null;
+  map_photos?: number | null;
+  query_photos?: number | null;
+  segments?: number | null;
+  segments_reason?: string;
+  duration_s?: number | null;
+  duration_s_reason?: string;
+  path_length_m?: number | null;
+  path_length_m_reason?: string;
+  footprint_m2?: number | null;
+  footprint_m2_reason?: string;
+  footprint?: FootprintMeta | null;
+  footprint_upper_bound?: boolean;
+  mean_speed_m_s?: number | null;
+  mean_speed_m_s_reason?: string;
+  tracking_losses?: number | null;
+  tracking_losses_reason?: string;
+  device_model?: string | null;
+  device_model_reason?: string;
+  height_range_m?: number | null;
+  height_range_m_reason?: string;
+  warnings?: string[];
+};
+
+export type ScanReportUpload = {
+  role: string | null;
+  kind: string;
+  size_bytes: number;
+  seconds: number;
+  mbps: number | null;
+};
+
+export type ScanReportNetwork = {
+  error?: string;
+  uploads?: ScanReportUpload[] | null;
+  uploads_reason?: string;
+  total_bytes?: number | null;
+  seconds?: number | null;
+  mbps?: number | null;
+};
+
+export type ScanReportProcessing = {
+  error?: string;
+  queue_s?: number | null;
+  queue_s_reason?: string;
+  gpu_wait_s?: number | null;
+  gpu_wait_s_reason?: string;
+  total_s?: number | null;
+  total_s_reason?: string;
+  stage_seconds?: Record<string, number> | null;
+  stage_seconds_reason?: string;
+  map_stage_seconds?: Record<string, number> | null;
+  env?: Record<string, unknown> | null;
+};
+
+export type ScanReportQuality = {
+  error?: string;
+  registered?: number | null;
+  images?: number | null;
+  points3d?: number | null;
+  mean_reprojection_error_px?: number | null;
+  mean_track_length?: number | null;
+  mean_observations_per_image?: number | null;
+  parts?: number | null;
+  align?: {
+    status: string | null;
+    residual_median_m: number | null;
+    residual_max_m: number | null;
+    scale: number | null;
+  } | null;
+  gate?: {
+    decision: string;
+    reasons: { code: string; message: string }[];
+    queries: number;
+    accepted: number;
+  } | null;
+  params?: Record<string, unknown> | null;
+};
+
+export type ScanReport = {
+  version: number;
+  computed_at?: string | null;
+  error?: string;
+  recording?: ScanReportRecording;
+  network?: ScanReportNetwork;
+  processing?: ScanReportProcessing;
+  quality?: ScanReportQuality;
+};
+
+export type UsageGroup = {
+  requests: number;
+  ok_ratio: number | null;
+  wall_s_p50: number | null;
+  wall_s_p95: number | null;
+  inliers_median: number | null;
+  first_at: string | null;
+  last_at: string | null;
+};
+
+export type Usage = {
+  map_version: number | null;
+  served: UsageGroup;
+  candidate: UsageGroup;
+};
+
 export type Summary = {
   align?: AlignmentSummary;
+  report?: ScanReport;
   run?: {
     map_images?: number;
     map_registered?: number;
@@ -462,6 +577,7 @@ export const api = {
     call<Building>("/api/buildings", post(body)),
   jobs: () => call<Job[]>("/api/jobs"),
   job: (id: number) => call<Job>(`/api/jobs/${id}`),
+  jobUsage: (id: number) => call<Usage>(`/api/jobs/${id}/usage`),
   createJob: (body: NewJob) => call<Job>("/api/jobs", { method: "POST", body: JSON.stringify(body) }),
   deleteJob: (id: number) => call<{ status: string }>(`/api/jobs/${id}`, { method: "DELETE" }),
   deleteVersion: (id: number) =>

@@ -28,10 +28,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Icon } from "@/lib/Icon";
 import Link from "@/lib/Link";
 import { api, formatDuration, mb, ROLE, type Job } from "@/lib/api";
+import { reportCsv } from "@/lib/reportCsv";
 import { PageHead } from "@/lib/PageHead";
 import { Rows } from "@/lib/Rows";
 import { usePoll } from "@/lib/usePoll";
-import { useFormatDate, useT, type TranslationKey } from "@/lib/i18n";
+import { useFormatDate, useFormatNumber, useT, type TranslationKey } from "@/lib/i18n";
 
 function compareWithNullLast(
   valA: string | null | undefined,
@@ -50,6 +51,7 @@ function compareWithNullLast(
 function JobsContent() {
   const t = useT();
   const formatDate = useFormatDate();
+  const fmt = useFormatNumber();
   const searchParams = useSearchParams();
   const [tick, setTick] = useState(0);
   const { data: fetchedJobs, error } = usePoll(api.jobs, 5000, [tick]);
@@ -173,6 +175,31 @@ function JobsContent() {
     });
   }, [jobs, search, statusFilter, areaFilter, sortKey, sortDir]);
 
+  function formatSec(seconds: number | null | undefined): string {
+    if (seconds == null) return "-";
+    if (seconds >= 60) {
+      const mins = Math.floor(seconds / 60);
+      const rem = Math.round(seconds - mins * 60);
+      return t("report.unitMinSec", { min: fmt(mins, 0), sec: fmt(rem, 0) });
+    }
+    const digits = seconds < 10 ? 1 : 0;
+    return t("report.unitSec", { val: fmt(seconds, digits) });
+  }
+
+  function handleDownloadCsv() {
+    const csv = reportCsv(filteredAndSortedJobs);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const today = new Date().toISOString().slice(0, 10);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `laporan-scan-${today}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <>
       <PageHead crumbs={[{ label: t("nav.jobs") }]} title={t("jobs.pageTitle")}>
@@ -189,6 +216,21 @@ function JobsContent() {
         )}
         {jobs && jobs.length > 0 && (
           <>
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-1">
+              <span className="text-xs text-muted-foreground">
+                {t("jobs.csvNote", { count: filteredAndSortedJobs.length })}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="rounded-full text-xs cursor-pointer"
+                onClick={handleDownloadCsv}
+                disabled={filteredAndSortedJobs.length === 0}
+              >
+                {t("jobs.downloadCsv")}
+              </Button>
+            </div>
             <TableFilterBar
               search={search}
               onSearchChange={setSearch}
@@ -358,6 +400,109 @@ function JobsContent() {
           </>
         )}
       </Panel>
+
+      {/* Compact Scan Report Comparison Table */}
+      {jobs && filteredAndSortedJobs.length > 0 && (
+        <Panel className="flex flex-col gap-3">
+          <div className="flex flex-col gap-0.5">
+            <h2 className="text-sm font-semibold text-foreground">{t("jobs.comparisonTitle")}</h2>
+            <p className="text-xs text-muted-foreground">{t("jobs.comparisonDesc")}</p>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("jobs.cmpColJob")}</TableHead>
+                <TableHead>{t("jobs.cmpColRecDur")}</TableHead>
+                <TableHead>{t("jobs.cmpColPath")}</TableHead>
+                <TableHead>{t("jobs.cmpColFootprint")}</TableHead>
+                <TableHead>{t("jobs.cmpColMbps")}</TableHead>
+                <TableHead>{t("jobs.cmpColProcTotal")}</TableHead>
+                <TableHead>{t("jobs.cmpColRegistered")}</TableHead>
+                <TableHead>{t("jobs.cmpColReproj")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredAndSortedJobs.map((j) => {
+                const rep = j.summary?.report;
+                if (!rep) {
+                  return (
+                    <TableRow key={j.id}>
+                      <TableCell className="whitespace-nowrap">
+                        <Link href={`/job/?id=${j.id}`}>#{j.id}</Link>{" "}
+                        <span className="text-muted-foreground">{j.area_id}</span>
+                      </TableCell>
+                      <TableCell colSpan={7} className="text-xs text-muted-foreground">
+                        {t("jobs.cmpNoReport")}
+                      </TableCell>
+                    </TableRow>
+                  );
+                }
+                if (rep.error) {
+                  return (
+                    <TableRow key={j.id}>
+                      <TableCell className="whitespace-nowrap">
+                        <Link href={`/job/?id=${j.id}`}>#{j.id}</Link>{" "}
+                        <span className="text-muted-foreground">{j.area_id}</span>
+                      </TableCell>
+                      <TableCell colSpan={7} className="text-xs text-[var(--bad-fg)]">
+                        {t("jobs.cmpError")}: {rep.error}
+                      </TableCell>
+                    </TableRow>
+                  );
+                }
+                const rec = rep.recording;
+                const net = rep.network;
+                const proc = rep.processing;
+                const qual = rep.quality;
+                return (
+                  <TableRow key={j.id}>
+                    <TableCell className="whitespace-nowrap">
+                      <Link href={`/job/?id=${j.id}`}>#{j.id}</Link>{" "}
+                      <span className="text-muted-foreground">{j.area_id}</span>
+                    </TableCell>
+                    <TableCell className="num whitespace-nowrap">
+                      {formatSec(rec?.duration_s)}
+                    </TableCell>
+                    <TableCell className="num whitespace-nowrap">
+                      {rec?.path_length_m != null ? fmt(rec.path_length_m, 1) : "-"}
+                    </TableCell>
+                    <TableCell className="num whitespace-nowrap">
+                      {rec?.footprint_m2 != null ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <span>{fmt(rec.footprint_m2, 1)}</span>
+                          {rec.footprint_upper_bound && (
+                            <span className="rounded bg-[var(--busy-bg)] px-1.5 py-0.5 text-xs text-[var(--busy-fg)]">
+                              {t("jobs.cmpUpperBound")}
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        "-"
+                      )}
+                    </TableCell>
+                    <TableCell className="num whitespace-nowrap">
+                      {net?.mbps != null ? fmt(net.mbps, 1) : "-"}
+                    </TableCell>
+                    <TableCell className="num whitespace-nowrap">
+                      {formatSec(proc?.total_s)}
+                    </TableCell>
+                    <TableCell className="num whitespace-nowrap">
+                      {qual?.registered != null && qual?.images != null
+                        ? `${fmt(qual.registered, 0)} / ${fmt(qual.images, 0)}`
+                        : "-"}
+                    </TableCell>
+                    <TableCell className="num whitespace-nowrap">
+                      {qual?.mean_reprojection_error_px != null
+                        ? fmt(qual.mean_reprojection_error_px, 2)
+                        : "-"}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </Panel>
+      )}
 
       {/* Properties Sheet */}
       <Sheet open={!!selectedJob} onOpenChange={(open) => !open && setSelectedJob(null)}>
