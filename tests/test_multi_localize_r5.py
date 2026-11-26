@@ -186,7 +186,70 @@ def test_localizer_localize_batch_batches_megaloc_and_aliked():
     assert len(results) == 4
     assert all(r.ok for r in results)
     assert mega_batches == [4]
-    assert aliked_batches == [4]
+    # ALIKED per foto: jumlah keypoint berbeda antarfoto, lihat tes di bawah.
+    assert aliked_batches == [1, 1, 1, 1]
+
+
+def test_localize_batch_survives_frames_with_different_keypoint_counts():
+    """ALIKED asli menumpuk keypoint per foto (torch.stack) dan gagal bila jumlahnya berbeda.
+
+    Foto bertekstur sedikit menghasilkan < max_kp keypoint (terlihat di lab: 1024 vs 962), jadi satu
+    permintaan /localize-multi berisi foto campuran tidak boleh menjadi galat 500.
+    """
+    loc = object.__new__(Localizer)
+    loc.dev = torch.device("cpu")
+    loc.resize, loc.global_resize, loc.k, loc.min_inliers = 64, 32, 1, 50
+    loc._align_source = lambda: None
+    loc._align = type("NoAlign", (), {"get": lambda self: None})()
+    loc.model = pycolmap.Reconstruction()
+    p3d_id = loc.model.add_point3D(np.array([0.0, 0.0, 2.0]), pycolmap.Track())
+    cam = pycolmap.Camera(model="PINHOLE", width=64, height=48, params=[50.0, 50.0, 32.0, 24.0])
+    loc.map_camera = cam
+    loc.db = {
+        "a.jpg": {
+            "id": 1,
+            "keypoints": torch.zeros((1, 3, 2), dtype=torch.float32),
+            "descriptors": torch.zeros((1, 3, 2), dtype=torch.float32),
+            "size": (64, 48),
+            "global": np.array([1.0, 0.0], dtype=np.float32),
+            "center_model": np.array([0.0, 0.0, 0.0]),
+            "points3D_ids": np.array([p3d_id, -1, -1]),
+        }
+    }
+    loc.db_names = ["a.jpg"]
+    loc.db_global = np.array([[1.0, 0.0]], dtype=np.float32)
+    loc.megaloc = lambda inp: {
+        "global_descriptor": torch.tensor([[1.0, 0.0]]).repeat(inp["image"].shape[0], 1)
+    }
+
+    def realistic_aliked(inp):
+        # Jumlah keypoint bergantung isi foto (2 atau 3), lalu ditumpuk seperti ALIKED asli.
+        per_image = [2 + int(img.mean() > 0) for img in inp["image"]]
+        assert len(set(per_image)) == 1, "keypoint count differs within batch"
+        kps = torch.stack([torch.full((n, 2), 10.0) for n in per_image])
+        descs = torch.stack([torch.ones((n, 2)) for n in per_image])
+        return {"keypoints": kps, "descriptors": descs}
+
+    def fake_lightglue(inp):
+        return {"matches0": torch.tensor([[0, -1, -1][: inp["keypoints0"].shape[1]]])}
+
+    loc.aliked = realistic_aliked
+    loc.lightglue = fake_lightglue
+    loc.pnp = type(
+        "FakePnP",
+        (),
+        {
+            "localize": lambda self, pts2d, mkp, mp3d, camera: {
+                "cam_from_world": pycolmap.Rigid3d(),
+                "num_inliers": 80,
+                "inlier_mask": np.ones(len(mp3d), dtype=bool),
+            }
+        },
+    )()
+
+    rgbs = [np.full((48, 64, 3), v, dtype=np.float32) for v in (0.0, 1.0, 0.0, 1.0)]
+    results = loc.localize_batch(rgbs, [cam] * 4)
+    assert len(results) == 4
 
 
 def test_localize_multi_endpoint_consensus_no_consensus_unaligned_and_logging(
