@@ -23,10 +23,22 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="id" className={cn("font-sans", sans.variable)} suppressHydrationWarning>
       <head>
-        <meta name="theme-color" content="#f4f7ee" />
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem("eutopos-theme");var d=window.matchMedia("(prefers-color-scheme: dark)").matches;var dark=(t==="dark"||(!t&&d)||t==="system"&&d);if(dark){document.documentElement.classList.add("dark");document.documentElement.style.colorScheme="dark";var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content","#121815");}else{document.documentElement.classList.remove("dark");document.documentElement.style.colorScheme="light";}}catch(e){}})();`,
+            __html: `(function () {
+              let theme;
+              try { theme = localStorage.getItem("eutopos-theme"); } catch {}
+              const dark = theme === "dark" ||
+                (theme !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+              document.documentElement.classList.toggle("dark", dark);
+              document.documentElement.style.colorScheme = dark ? "dark" : "light";
+
+              // Bootstrap owns this tag so React does not reinsert a light version during hydration.
+              const meta = document.createElement("meta");
+              meta.name = "theme-color";
+              meta.content = dark ? "#202225" : "#f4f7ee";
+              document.head.appendChild(meta);
+            })();`,
           }}
         />
       </head>
