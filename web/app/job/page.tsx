@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Panel } from "@/components/Panel";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -14,10 +14,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Icon } from "@/lib/Icon";
 import Link from "@/lib/Link";
 import { api, formatDuration, formatRelativeTime, mb, ROLE } from "@/lib/api";
+import { matchJobVersion } from "@/lib/pipelineGraph";
 import { PageHead } from "@/lib/PageHead";
 import { Rows } from "@/lib/Rows";
 import { usePoll } from "@/lib/usePoll";
 import { useFormatDate, useT } from "@/lib/i18n";
+
+const JOB_POLL_MS = 5000;
+const STALE_AFTER_MS = 15000;
 
 function Stat({ label, value, of, note }: { label: string; value?: number; of?: number; note?: string }) {
   const pct = value !== undefined && of ? Math.round((value / of) * 100) : null;
@@ -43,21 +47,64 @@ function JobDetail() {
   const formatDate = useFormatDate();
   const router = useRouter();
   const id = Number(useSearchParams().get("id"));
-  const { data: job, error } = usePoll(() => api.job(id), 5000, [id]);
+  const validId = Number.isFinite(id) && id > 0;
+
+  const {
+    data: job,
+    error,
+    lastUpdatedAt: jobUpdatedAt,
+    refresh: refreshJob,
+  } = usePoll(() => api.job(id), JOB_POLL_MS, [id], {
+    enabled: validId,
+    resetOnDepsChange: true,
+  });
+
+  // Ambil daftar versi hanya ketika job sudah memiliki map_version_id.
+  const hasMapVersion = job?.map_version_id != null;
+  const {
+    data: versions,
+    error: versionsError,
+    loading: versionsLoading,
+    lastUpdatedAt: versionsUpdatedAt,
+    refresh: refreshVersions,
+  } = usePoll(api.versions, JOB_POLL_MS, [job?.map_version_id ?? null], {
+    enabled: hasMapVersion,
+  });
+
   const { data: me } = usePoll(api.me, 60000);
   const [message, setMessage] = useState<string | null>(null);
-  const [now, setNow] = useState(Date.now());
+  const [publishActionError, setPublishActionError] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Update clock every second while viewing a running or uploading job so elapsed duration and relative time stay fresh
+  const matchedVersion = useMemo(
+    () => (job ? matchJobVersion(job, versions) : null),
+    [job, versions],
+  );
+
+  // Perbarui jam tiap detik saat job atau Splat aktif agar durasi berjalan dan deteksi data terlambat tetap segar.
+  const needsTick =
+    job?.status === "running" ||
+    job?.status === "uploading" ||
+    job?.status === "queued" ||
+    matchedVersion?.splat_status === "running" ||
+    matchedVersion?.splat_status === "queued" ||
+    Boolean(error) ||
+    (hasMapVersion && Boolean(versionsError));
+
   useEffect(() => {
-    if (job?.status === "running" || job?.status === "uploading") {
-      const interval = setInterval(() => setNow(Date.now()), 1000);
-      return () => clearInterval(interval);
-    }
-  }, [job?.status]);
+    if (!needsTick) return;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [needsTick]);
+
+  // Reset pesan publish saat berpindah ke job lain.
+  useEffect(() => {
+    setMessage(null);
+    setPublishActionError(null);
+  }, [id]);
 
   async function handleDelete() {
     if (!job) return;
@@ -76,6 +123,7 @@ function JobDetail() {
 
   async function publish(versionId: number) {
     if (!window.confirm(t("job.publishConfirm"))) return;
+    setPublishActionError(null);
     try {
       const r = await api.publish(versionId);
       setMessage(
@@ -83,18 +131,34 @@ function JobDetail() {
           ? t("job.publishLoadingNotice", { version: r.version.version })
           : t("job.publishOtherAreaNotice", { version: r.version.version }),
       );
+      refreshVersions();
+      refreshJob();
     } catch (e) {
-      setMessage((e as Error).message);
+      const errMsg = (e as Error).message;
+      setPublishActionError(errMsg);
+      setMessage(errMsg);
     }
   }
 
-  if (!id) return <p className="error">{t("job.missingId")}</p>;
+  if (!validId) return <p className="error">{t("job.missingId")}</p>;
   if (!job) return error ? <p className="error">{error}</p> : <Loading />;
 
   const run = job.summary?.run;
   const ins = job.summary?.inspect;
   const align = job.summary?.align;
   const isRunning = job.status === "running";
+  const isPollingDelayed =
+    Boolean(error) ||
+    (jobUpdatedAt !== null &&
+      (job.status === "running" || job.status === "queued" || job.status === "uploading") &&
+      now - jobUpdatedAt > STALE_AFTER_MS);
+  const isVersionDelayed =
+    hasMapVersion &&
+    (Boolean(versionsError) ||
+      (versionsUpdatedAt !== null &&
+        (matchedVersion?.splat_status === "running" || matchedVersion?.splat_status === "queued") &&
+        now - versionsUpdatedAt > STALE_AFTER_MS));
+
   const durationStr = formatDuration(job.started_at, job.finished_at, {
     isRunning,
     nowMs: now,
@@ -181,12 +245,17 @@ function JobDetail() {
         </div>
       </Panel>
 
-      {/* Pipeline Stage Indicator */}
+      {/* Reconstruction Node Graph */}
       <PipelineStageIndicator
-        status={job.status}
-        currentStage={job.stage}
-        hasAlignmentSummary={align !== undefined}
-        timings={run?.t_map_s}
+        job={job}
+        version={matchedVersion}
+        versionLoading={hasMapVersion && versionsLoading && versions === null}
+        versionError={hasMapVersion ? versionsError : null}
+        publishActionError={publishActionError}
+        isStale={isPollingDelayed}
+        staleError={error}
+        isVersionStale={isVersionDelayed}
+        nowMs={now}
       />
 
       {align && (
