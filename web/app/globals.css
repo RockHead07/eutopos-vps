@@ -142,76 +142,591 @@ main { max-width: 1200px; margin: 0 auto; padding: 0.5rem 1rem 3rem; display: gr
 .meter { height: 10px; border-radius: 999px; overflow: hidden; background: repeating-linear-gradient(135deg, var(--line) 0 6px, var(--card) 6px 10px); }
 .meter > span { display: block; height: 100%; border-radius: 999px; background: var(--forest); }
 
-/* Reconstruction pipeline: one rail, four stages. State lives in the node and line, not in four cards. */
-.pipeline {
-  --pipeline-node: 28px;
+/* Reconstruction node graph: compact 42x42 icon boxes on theme-aware dot canvas, solid wires without arrowheads. */
+.pgraph {
+  container: pgraph / inline-size;
 }
-.pipeline-head {
-  display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;
-  padding-bottom: 0.85rem; border-bottom: 1px solid var(--line);
+.pgraph-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  min-width: 0;
 }
-.pipeline-heading { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
-.pipeline-title { font-size: 0.95rem; font-weight: 600; letter-spacing: -0.015em; }
-.pipeline-summary { display: flex; align-items: center; gap: 0.45rem; margin: 0; color: var(--slate); font-size: 0.8rem; }
-.pipeline-summary::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--slate); flex: none; }
-.pipeline[data-tone="ok"] .pipeline-summary::before,
-.pipeline[data-tone="live"] .pipeline-summary::before { background: var(--forest); }
-.pipeline[data-tone="bad"] .pipeline-summary::before { background: var(--bad-fg); }
-.pipeline-fraction { flex: none; color: var(--slate); font-size: 0.75rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.pipeline-fraction strong { color: var(--ink); font-weight: 600; }
-.pipeline-steps { list-style: none; margin: 0; padding: 0.15rem 0 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; }
-.pipeline-step { display: flex; flex-direction: column; gap: 0.7rem; min-width: 0; position: relative; padding-right: 1.25rem; }
-.pipeline-step:last-child { padding-right: 0; }
-.pipeline-node {
-  position: relative; z-index: 1; width: var(--pipeline-node); height: var(--pipeline-node); flex: none;
-  display: grid; place-items: center; border-radius: 999px;
-  border: 1px solid var(--line); background: var(--card); color: var(--slate);
-  font-size: 0.62rem; font-weight: 600; font-variant-numeric: tabular-nums;
-  transition: background 240ms var(--ease), border-color 240ms var(--ease), color 240ms var(--ease), box-shadow 240ms var(--ease);
+.pgraph-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.7rem 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--line);
 }
-.pipeline-node-number { line-height: 1; }
-.pipeline-connector {
-  position: absolute; z-index: 0; top: calc(var(--pipeline-node) / 2 - 1px);
-  left: var(--pipeline-node); right: -1px; height: 2px;
-  background: repeating-linear-gradient(90deg, var(--line) 0 5px, transparent 5px 10px);
+.pgraph-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
 }
-.pipeline-step[data-state="done"] .pipeline-connector { background: var(--forest); }
-.pipeline-step[data-state="done"] .pipeline-node { background: var(--forest); border-color: var(--forest); color: var(--card); }
-.pipeline-step[data-state="active"] .pipeline-node { border-color: var(--forest); color: var(--forest); box-shadow: 0 0 0 4px color-mix(in srgb, var(--forest) 13%, transparent); }
-.pipeline-step[data-state="active"] .pipeline-node::after {
-  content: ""; position: absolute; inset: -4px; border-radius: inherit;
-  border: 1px solid color-mix(in srgb, var(--forest) 45%, transparent); animation: pipeline-pulse 2.2s ease-out infinite;
+.pgraph-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
-.pipeline-step[data-state="failed"] .pipeline-node { background: var(--bad-fg); border-color: var(--bad-fg); color: var(--card); }
-.pipeline-step[data-state="pending"] .pipeline-node { color: color-mix(in srgb, var(--slate) 80%, var(--card)); }
-.pipeline-copy { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; padding-right: 0.5rem; }
-.pipeline-label-row { display: flex; align-items: baseline; gap: 0.5rem; min-height: 1.25rem; }
-.pipeline-label { color: var(--ink); font-size: 0.92rem; font-weight: 600; letter-spacing: -0.01em; }
-.pipeline-step[data-state="pending"] .pipeline-label { color: color-mix(in srgb, var(--slate) 90%, var(--card)); }
-.pipeline-step[data-state="failed"] .pipeline-label { color: var(--bad-fg); }
-.pipeline-desc { color: var(--slate); font-size: 0.76rem; line-height: 1.35; text-wrap: pretty; }
-.pipeline-step[data-state="pending"] .pipeline-desc { color: color-mix(in srgb, var(--slate) 80%, var(--card)); }
-.pipeline-time { margin-top: 0.3rem; color: var(--forest); font-size: 0.72rem; font-weight: 600; font-variant-numeric: tabular-nums; }
-.pipeline-live { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--forest); font-size: 0.68rem; font-weight: 600; }
-.pipeline-live::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
-.pipeline-failed { color: var(--bad-fg); font-size: 0.68rem; font-weight: 600; }
-@keyframes pipeline-pulse {
-  0% { transform: scale(1); opacity: 0.55; }
-  70%, 100% { transform: scale(1.45); opacity: 0; }
+.pgraph-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
 }
-@media (max-width: 639px) {
-  .pipeline-fraction { padding-top: 0.1rem; }
-  .pipeline-steps { grid-template-columns: 1fr; --pipeline-row-gap: 1.1rem; gap: var(--pipeline-row-gap); }
-  .pipeline-step { flex-direction: row; align-items: flex-start; gap: 0.85rem; padding-right: 0; }
-  .pipeline-connector {
-    top: var(--pipeline-node); bottom: calc(-1 * var(--pipeline-row-gap));
-    left: calc(var(--pipeline-node) / 2 - 1px); right: auto; width: 2px; height: auto;
-    background: repeating-linear-gradient(180deg, var(--line) 0 5px, transparent 5px 10px);
+.pgraph-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  color: var(--slate);
+  font-size: 0.82rem;
+}
+.pgraph-summary::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--slate);
+  flex: none;
+}
+.pgraph[data-tone="ok"] .pgraph-summary::before,
+.pgraph[data-tone="live"] .pgraph-summary::before {
+  background: var(--forest);
+}
+.pgraph[data-tone="warn"] .pgraph-summary::before {
+  background: var(--busy-fg);
+}
+.pgraph[data-tone="bad"] .pgraph-summary::before {
+  background: var(--bad-fg);
+}
+.pgraph-head-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+.pgraph-fraction {
+  flex: none;
+  color: var(--slate);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pgraph-fraction strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+.pgraph-stale-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: var(--busy-bg);
+  color: var(--busy-fg);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.pgraph-stale-note {
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border-radius: var(--radius-inner);
+  background: var(--busy-bg);
+  color: var(--busy-fg);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+.pgraph-pause-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--canvas);
+  color: var(--ink);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--ease), border-color var(--ease), color var(--ease);
+}
+.pgraph-pause-btn:hover:not(:disabled) {
+  background: var(--mist);
+  border-color: var(--field);
+}
+.pgraph-pause-btn[aria-pressed="true"] {
+  background: var(--mist);
+  border-color: var(--forest);
+  color: var(--ok-fg);
+}
+.pgraph-pause-btn:disabled {
+  opacity: 0.72;
+  cursor: default;
+}
+.pgraph-pause-btn:focus-visible {
+  outline: 2px solid var(--forest);
+  outline-offset: 2px;
+}
+
+/* Pipeline colors follow the global Eutopos theme. */
+.pgraph-canvas {
+  --pg-canvas: var(--canvas);
+  --pg-dot: color-mix(in srgb, var(--slate) 22%, var(--canvas));
+  --pg-tile: var(--card);
+  --pg-tile-active: var(--mist);
+  --pg-tile-warn: var(--busy-bg);
+  --pg-tile-failed: var(--bad-bg);
+  --pg-edge: var(--line);
+  --pg-tile-border-idle: color-mix(in srgb, var(--slate) 22%, var(--line));
+  --pg-tile-hover: var(--field);
+  --pg-tile-selected: var(--forest);
+  --pg-wire-idle: color-mix(in srgb, var(--slate) 34%, var(--canvas));
+  --pg-wire-off: color-mix(in srgb, var(--slate) 18%, var(--canvas));
+  --pg-wire-done: var(--forest);
+  --pg-wire-active: color-mix(in srgb, var(--forest) 60%, var(--canvas));
+  --pg-flow: var(--ok-fg);
+  --pg-live: var(--ok-fg);
+  --pg-focus: var(--forest);
+  --pg-done-border: var(--forest);
+  --pg-done-glyph: var(--ok-fg);
+  --pg-done-meta: var(--ok-fg);
+  --pg-active-border: var(--forest);
+  --pg-active-glyph: var(--ok-fg);
+  --pg-active-meta: var(--ok-fg);
+  --pg-warn: var(--busy-fg);
+  --pg-warn-border: color-mix(in srgb, var(--busy-fg) 56%, var(--line));
+  --pg-bad: var(--bad-fg);
+  --pg-bad-border: color-mix(in srgb, var(--bad-fg) 56%, var(--line));
+  --pg-muted-port: color-mix(in srgb, var(--slate) 44%, var(--canvas));
+  --pg-muted-border: color-mix(in srgb, var(--slate) 28%, var(--line));
+  --pg-muted-glyph: var(--slate);
+  --pg-ink: var(--ink);
+  --pg-sec: var(--slate);
+  --pg-icon: var(--slate);
+  --pg-off-opacity: 0.72;
+
+  position: relative;
+  padding: 20px 44px 20px 24px;
+  border-radius: 12px;
+  border: 1px solid var(--pg-edge);
+  background: radial-gradient(var(--pg-dot) 0.7px, transparent 0.7px) 0 0 / 18px 18px var(--pg-canvas);
+  overflow: hidden;
+}
+
+/* Dark mode uses neutral surfaces and the Eutopos green accents. */
+.dark .pgraph-canvas {
+  --pg-dot: color-mix(in srgb, var(--line) 58%, var(--canvas));
+  --pg-tile: var(--idle-bg);
+  --pg-tile-border-idle: var(--line);
+  --pg-wire-idle: color-mix(in srgb, var(--line) 75%, var(--slate));
+  --pg-wire-off: var(--line);
+  --pg-wire-active: var(--forest);
+  --pg-flow: var(--forest-hover);
+}
+
+.pgraph-wires {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+  overflow: visible;
+}
+.pgraph-wire {
+  fill: none;
+  stroke: var(--pg-wire-idle);
+  stroke-width: 1.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.pgraph-wire[data-state="off"] { stroke: var(--pg-wire-off); }
+.pgraph-wire[data-state="idle"] { stroke: var(--pg-wire-idle); }
+.pgraph-wire[data-state="done"] { stroke: var(--pg-wire-done); }
+.pgraph-wire[data-state="active"] { stroke: var(--pg-wire-active); }
+.pgraph-wire[data-state="warn"] { stroke: var(--pg-warn); }
+.pgraph-wire[data-state="failed"] { stroke: var(--pg-bad); }
+
+/* Saat animasi dijeda / reduced motion / stale, kabel aktif tetap menonjol statis */
+.pgraph[data-motion-paused="true"] .pgraph-wire[data-state="active"],
+.pgraph[data-version-stale="true"] .pgraph-wire[data-segment-id="output-trunk"][data-state="active"],
+.pgraph[data-version-stale="true"] .pgraph-wire[data-segment-id="output-splat"][data-state="active"] {
+  stroke: var(--pg-live);
+  stroke-width: 1.5;
+}
+
+/* Satu segmen terang pendek yang bergerak dari sumber ke tujuan pada kabel tahap aktif */
+.pgraph-wire-flow {
+  fill: none;
+  stroke: var(--pg-flow);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 16 105;
+  animation: pgraph-current 1.7s linear infinite;
+}
+.pgraph[data-motion-paused="true"] .pgraph-wire-flow,
+.pgraph-wire-flow[data-paused="true"] {
+  animation-play-state: paused;
+}
+@keyframes pgraph-current {
+  from { stroke-dashoffset: 18; }
+  to { stroke-dashoffset: -102; }
+}
+
+/* Wide desktop layout: 7 columns, left-to-right core chain */
+.pgraph-grid {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-auto-rows: minmax(82px, auto);
+  grid-template-areas:
+    "video   .       .     .       .        .     ."
+    ".       extract build inspect register align gate"
+    "zip     .       .     .       .        .     ."
+    ".       .       .     .       reject   hold  pass"
+    ".       .       .     .       .        splat publish";
+  gap: 22px 14px;
+  align-items: start;
+}
+
+/* Node button: >= 44x44 px hit area containing 42x42 icon tile + external label/status */
+.pgraph-node {
+  --pg-port: var(--pg-wire-idle);
+  --pg-tile-border: var(--pg-tile-border-idle);
+  --pg-tile-bg: var(--pg-tile);
+  --pg-glyph: var(--pg-icon);
+
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 6px;
+  width: 100%;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 2px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--pg-ink);
+  text-align: center;
+  cursor: pointer;
+}
+.pgraph-node:focus-visible {
+  outline: 2px solid var(--pg-focus);
+  outline-offset: 3px;
+}
+
+.pgraph-tile {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  border: 1px solid var(--pg-tile-border);
+  background: var(--pg-tile-bg);
+  transition: border-color var(--ease), background var(--ease), outline-color var(--ease);
+}
+.pgraph-node:hover .pgraph-tile {
+  border-color: var(--pg-tile-hover);
+}
+.pgraph-node[aria-pressed="true"] .pgraph-tile {
+  outline: 1.5px solid var(--pg-tile-selected);
+  outline-offset: 3px;
+}
+
+.pgraph-icon-slot {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  color: var(--pg-glyph);
+}
+.pgraph-placeholder {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1.25px dashed currentColor;
+  display: block;
+}
+
+.pgraph-port {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  border: 1.25px solid var(--pg-port);
+  background: var(--pg-canvas);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 3;
+}
+.pgraph-port[data-port="l"] { left: 0; top: 50%; }
+.pgraph-port[data-port="r"] { left: 100%; top: 50%; }
+.pgraph-port[data-port="t"] { left: 50%; top: 0; }
+.pgraph-port[data-port="b"] { left: 50%; top: 100%; }
+
+/* State styling scoped to canvas theme tokens */
+.pgraph-node[data-state="done"],
+.pgraph-node[data-state="ready"] {
+  --pg-port: var(--pg-wire-done);
+  --pg-tile-border: var(--pg-done-border);
+  --pg-glyph: var(--pg-done-glyph);
+}
+.pgraph-node[data-state="active"] {
+  --pg-port: var(--pg-live);
+  --pg-tile-border: var(--pg-active-border);
+  --pg-tile-bg: var(--pg-tile-active);
+  --pg-glyph: var(--pg-active-glyph);
+}
+.pgraph-node[data-state="warn"],
+.pgraph-node[data-state="wait"] {
+  --pg-port: var(--pg-warn);
+  --pg-tile-border: var(--pg-warn-border);
+  --pg-tile-bg: var(--pg-tile-warn);
+  --pg-glyph: var(--pg-warn);
+}
+.pgraph-node[data-state="failed"] {
+  --pg-port: var(--pg-bad);
+  --pg-tile-border: var(--pg-bad-border);
+  --pg-tile-bg: var(--pg-tile-failed);
+  --pg-glyph: var(--pg-bad);
+}
+.pgraph-node[data-state="skipped"],
+.pgraph-node[data-state="legacy"],
+.pgraph-node[data-state="optional"],
+.pgraph-node[data-state="unknown"] {
+  --pg-port: var(--pg-muted-port);
+  --pg-tile-border: var(--pg-muted-border);
+  --pg-glyph: var(--pg-muted-glyph);
+}
+.pgraph-node[data-state="off"] {
+  opacity: var(--pg-off-opacity);
+  --pg-port: var(--pg-wire-off);
+}
+
+.pgraph-node-copy {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+}
+.pgraph-label {
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--pg-ink);
+  overflow-wrap: anywhere;
+}
+.pgraph-meta {
+  font-size: 0.7rem;
+  line-height: 1.25;
+  color: var(--pg-sec);
+  overflow-wrap: anywhere;
+}
+.pgraph-meta[data-state="active"] { color: var(--pg-active-meta); font-weight: 600; }
+.pgraph-meta[data-state="done"],
+.pgraph-meta[data-state="ready"] { color: var(--pg-done-meta); }
+.pgraph-meta[data-state="warn"],
+.pgraph-meta[data-state="wait"] { color: var(--pg-warn); }
+.pgraph-meta[data-state="failed"] { color: var(--pg-bad); font-weight: 600; }
+
+/* Medium layout (480px .. 759px): 3 columns with folded row 2 reversed */
+@container pgraph (max-width: 759px) {
+  .pgraph-canvas {
+    padding: 18px 34px 18px 34px;
   }
-  .pipeline-copy { padding-right: 0; padding-top: 0.15rem; }
+  .pgraph-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-areas:
+      "video   zip     ."
+      "extract build   inspect"
+      "gate    align   register"
+      "reject  hold    pass"
+      ".       splat   publish";
+    gap: 22px 16px;
+  }
 }
+
+/* Narrow / mobile layout (< 480px): 1 column vertical stack, 42x42 tile left + label/duration right, left gutter for branches */
+@container pgraph (max-width: 479px) {
+  .pgraph-canvas {
+    padding: 16px 12px 16px 34px;
+  }
+  .pgraph-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: minmax(44px, auto);
+    grid-template-areas:
+      "video"
+      "zip"
+      "extract"
+      "build"
+      "inspect"
+      "register"
+      "align"
+      "gate"
+      "reject"
+      "hold"
+      "pass"
+      "publish"
+      "splat";
+    gap: 12px 0;
+  }
+  .pgraph-node {
+    grid-template-columns: 42px minmax(0, 1fr);
+    align-items: center;
+    justify-items: start;
+    column-gap: 10px;
+    text-align: left;
+    padding: 1px 2px;
+  }
+}
+
+/* Panel detail node terpilih (mengikuti tema terang/gelap dashboard) */
+.pgraph-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.48rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: var(--radius-inner);
+  border: 1px solid var(--line);
+  background: var(--canvas);
+}
+.pgraph-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.pgraph-detail-title-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.pgraph-detail-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.pgraph-detail-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  background: var(--idle-bg);
+  color: var(--idle-fg);
+}
+.pgraph-detail-badge[data-state="done"],
+.pgraph-detail-badge[data-state="active"],
+.pgraph-detail-badge[data-state="ready"] {
+  background: var(--ok-bg);
+  color: var(--ok-fg);
+}
+.pgraph-detail-badge[data-state="warn"],
+.pgraph-detail-badge[data-state="wait"] {
+  background: var(--busy-bg);
+  color: var(--busy-fg);
+}
+.pgraph-detail-badge[data-state="failed"] {
+  background: var(--bad-bg);
+  color: var(--bad-fg);
+}
+.pgraph-detail-time {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--slate);
+}
+.pgraph-detail-desc,
+.pgraph-detail-reason,
+.pgraph-detail-meta {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--slate);
+  overflow-wrap: anywhere;
+}
+.pgraph-detail-reason {
+  color: var(--ink);
+}
+.pgraph-substeps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.5rem 0.85rem;
+  margin: 0.15rem 0 0;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--line);
+}
+.pgraph-substeps > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.pgraph-substeps dt {
+  font-size: 0.72rem;
+  color: var(--slate);
+}
+.pgraph-substeps dd {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* Ringkasan durasi peta di bawah graph */
+.pgraph-timings {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: 0.65rem 1rem;
+  margin: 0;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--line);
+}
+.pgraph-timings > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  min-width: 0;
+}
+.pgraph-timings dt {
+  font-size: 0.74rem;
+  color: var(--slate);
+}
+.pgraph-timings dd {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.pgraph-timing-live dd {
+  color: var(--forest);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .pipeline-step[data-state="active"] .pipeline-node::after { animation: none; }
+  .pgraph-wire-flow {
+    display: none;
+    animation: none;
+  }
+  .pgraph-wire[data-state="active"] {
+    stroke: var(--pg-live);
+    stroke-width: 1.5;
+  }
 }
 
 .actions { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
@@ -325,7 +840,7 @@ iframe { width: 100%; height: min(70vh, 640px); border: 0; border-radius: var(--
   [data-slot="dropdown-menu-item"] { min-height: 44px; }
   th button { min-width: 44px; }
   .text-\[9px\], .text-\[10px\], .text-\[11px\], .text-\[0\.7rem\] { font-size: 0.75rem; }
-  .pipeline-time, .pipeline-live, .pipeline-failed, .pipeline-node-number { font-size: 0.75rem; }
+  .pgraph-meta, .pgraph-detail-badge, .pgraph-substeps dt, .pgraph-timings dt { font-size: 0.75rem; }
   main input:not([type="checkbox"]):not([type="radio"]),
   main select {
     min-height: 44px;

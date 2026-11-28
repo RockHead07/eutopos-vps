@@ -1,28 +1,103 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-/** Muat data sekarang lalu tiap `ms` milidetik. Berhenti saat komponen dilepas. */
-export function usePoll<T>(load: () => Promise<T>, ms: number, deps: unknown[] = []) {
+export type PollOptions = {
+  /** Nonaktifkan polling bila syarat belum terpenuhi (misalnya belum ada map_version_id). */
+  enabled?: boolean;
+  /** Kosongkan data lama saat deps berubah (misalnya pindah ID pekerjaan). */
+  resetOnDepsChange?: boolean;
+};
+
+/** Muat data sekarang lalu tiap `ms` milidetik tanpa permintaan tumpang tindih. Berhenti saat komponen dilepas. */
+export function usePoll<T>(
+  load: () => Promise<T>,
+  ms: number,
+  deps: unknown[] = [],
+  options?: PollOptions,
+) {
+  const enabled = options?.enabled ?? true;
+  const resetOnDepsChange = options?.resetOnDepsChange ?? false;
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
+  const [loading, setLoading] = useState<boolean>(enabled);
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  const inFlightRef = useRef(false);
+  const aliveRef = useRef(true);
+  const genRef = useRef(0);
+
+  const runTick = useCallback((gen: number) => {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+    loadRef
+      .current()
+      .then((d) => {
+        if (!aliveRef.current || gen !== genRef.current) return;
+        setData(d);
+        setError(null);
+        setLastUpdatedAt(Date.now());
+        setLoading(false);
+      })
+      .catch((e: Error) => {
+        if (!aliveRef.current || gen !== genRef.current) return;
+        setError(e.message);
+        setLoading(false);
+      })
+      .finally(() => {
+        inFlightRef.current = false;
+      });
+  }, []);
+
+  const refresh = useCallback(() => {
+    if (!enabled) return;
+    runTick(genRef.current);
+  }, [enabled, runTick]);
+
   useEffect(() => {
-    let alive = true;
-    const tick = () =>
-      load()
-        .then((d) => alive && (setData(d), setError(null)))
-        .catch((e: Error) => alive && setError(e.message));
-    tick();
-    const timer = setInterval(tick, ms);
+    aliveRef.current = true;
+    const gen = ++genRef.current;
+    inFlightRef.current = false;
+
+    if (!enabled) {
+      if (resetOnDepsChange) {
+        setData(null);
+        setError(null);
+        setLastUpdatedAt(null);
+      }
+      setLoading(false);
+      return () => {
+        aliveRef.current = false;
+      };
+    }
+
+    if (resetOnDepsChange) {
+      setData(null);
+      setError(null);
+      setLastUpdatedAt(null);
+    }
+    setLoading(true);
+
+    runTick(gen);
+    const timer = setInterval(() => runTick(gen), ms);
     return () => {
-      alive = false;
+      aliveRef.current = false;
       clearInterval(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
-  return { data, error };
+  }, [enabled, ms, resetOnDepsChange, runTick, ...deps]);
+
+  return { data, error, lastUpdatedAt, loading, refresh };
 }
 
-type Shared = { subs: Set<() => void>; data: unknown; error: string | null; timer?: ReturnType<typeof setInterval> };
+type Shared = {
+  subs: Set<() => void>;
+  data: unknown;
+  error: string | null;
+  lastUpdatedAt: number | null;
+  inFlight: boolean;
+  timer?: ReturnType<typeof setInterval>;
+};
 const shared = new Map<unknown, Shared>();
 
 /** Seperti usePoll, tapi semua pemanggil dengan fungsi `load` yang sama berbagi satu putaran. Pakai `ms` yang sama di semua tempat. */
@@ -31,12 +106,30 @@ export function useSharedPoll<T>(load: () => Promise<T>, ms: number) {
   useEffect(() => {
     let e = shared.get(load);
     if (!e) {
-      const entry: Shared = { subs: new Set(), data: null, error: null };
-      const tick = () =>
+      const entry: Shared = {
+        subs: new Set(),
+        data: null,
+        error: null,
+        lastUpdatedAt: null,
+        inFlight: false,
+      };
+      const tick = () => {
+        if (entry.inFlight) return;
+        entry.inFlight = true;
         load()
-          .then((d) => ((entry.data = d), (entry.error = null)))
-          .catch((x: Error) => (entry.error = x.message))
-          .finally(() => entry.subs.forEach((f) => f()));
+          .then((d) => {
+            entry.data = d;
+            entry.error = null;
+            entry.lastUpdatedAt = Date.now();
+          })
+          .catch((x: Error) => {
+            entry.error = x.message;
+          })
+          .finally(() => {
+            entry.inFlight = false;
+            entry.subs.forEach((f) => f());
+          });
+      };
       tick();
       entry.timer = setInterval(tick, ms);
       shared.set(load, entry);
@@ -53,5 +146,9 @@ export function useSharedPoll<T>(load: () => Promise<T>, ms: number) {
     };
   }, [load, ms]);
   const e = shared.get(load);
-  return { data: (e?.data ?? null) as T | null, error: e?.error ?? null };
+  return {
+    data: (e?.data ?? null) as T | null,
+    error: e?.error ?? null,
+    lastUpdatedAt: e?.lastUpdatedAt ?? null,
+  };
 }

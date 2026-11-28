@@ -137,15 +137,28 @@ export type Usage = {
   candidate: UsageGroup;
 };
 
+export type GateReason = {
+  code: string;
+  message: string;
+};
+
+export type GateSummary = {
+  decision: "publish" | "hold" | "reject";
+  reasons: GateReason[];
+  queries: number;
+  accepted: number;
+};
+
 export type Summary = {
   align?: AlignmentSummary;
+  gate?: GateSummary;
   report?: ScanReport;
   run?: {
     map_images?: number;
     map_registered?: number;
     queries?: number;
     queries_localized?: number;
-    t_map_s?: Record<string, number>; // detik per tahap peta (feature, pairs, matching, reconstruction)
+    t_map_s?: Record<string, number>; // detik per tahap peta (local_extract, pairs, match, reconstruction)
   };
   inspect?: {
     parts?: { label: string; frames: number; ranges: string[] }[];
