@@ -443,20 +443,21 @@ iframe { width: 100%; height: min(70vh, 640px); border: 0; border-radius: var(--
 
 /* Palet eutopos gelap. Kontras dihitung WCAG; angka di komentar = rasio ke --card. */
 .dark {
-  --canvas: #121815;
-  --card: #1a241f;
-  --ink: #edf2eb; /* 14,06 */
-  --slate: #9fb3a4; /* 7,19: judul kecil, teks sekunder */
-  --forest: #82ab8e; /* 6,20: aksen utama, tautan */
-  --forest-hover: #94bca0; /* 7,57 */
-  --field: #5d7c65; /* 3,45: tepi kolom isian */
-  --sage: #4a6350; /* 2,43: dekorasi saja, jangan untuk teks */
+  --canvas: #202225;
+  --card: #292b2f;
+  --ink: #edf2eb; /* 12,49 */
+  --slate: #9fb3a4; /* 6,39: judul kecil, teks sekunder */
+  --forest: #82ab8e; /* 5,51: aksen utama, tautan */
+  --forest-hover: #94bca0; /* 6,73 */
+  --field: #5d7c65; /* 3,06: tepi kolom isian */
+  --sage: #4a6350; /* 2,16: dekorasi saja, jangan untuk teks */
   --mist: #243329; /* latar sorotan */
   --ok-bg: #1c3224; --ok-fg: #88d89e;
   --bad-bg: #361c18; --bad-fg: #f28b76;
   --busy-bg: #352712; --busy-fg: #e9b958;
-  --idle-bg: #222c26; --idle-fg: #9fb3a4;
-  --line: #26352b;
+  --idle-bg: #2f3136; --idle-fg: #9fb3a4;
+  --line: #40444b;
+  --plot-bg: var(--canvas);
   --finder-shadow-dark: rgba(0, 0, 0, 0.55);
   --finder-shadow-light: rgba(255, 255, 255, 0.06);
   color-scheme: dark;
