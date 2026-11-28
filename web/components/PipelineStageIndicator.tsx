@@ -55,8 +55,6 @@ export interface PipelineStageIndicatorProps {
   nodeIcons?: NodeIconSlotMap;
 }
 
-const WIDE_BREAKPOINT = 760;
-const NARROW_BREAKPOINT = 480;
 
 const STATE_SYMBOL: Record<NodeVisualState, string> = {
   done: "✓",
@@ -355,9 +353,9 @@ export function PipelineStageIndicator({
     const cRect = canvas.getBoundingClientRect();
     if (cRect.width === 0 || cRect.height === 0) return;
 
-    const panelWidth = panelRef.current?.getBoundingClientRect().width ?? cRect.width;
+    const cssLayout = getComputedStyle(canvas).getPropertyValue("--pg-layout").trim();
     const nextLayout: GraphLayoutMode =
-      panelWidth < NARROW_BREAKPOINT ? "narrow" : panelWidth < WIDE_BREAKPOINT ? "medium" : "wide";
+      cssLayout === "medium" || cssLayout === "narrow" ? cssLayout : "wide";
 
     setLayoutMode((prev) => (prev === nextLayout ? prev : nextLayout));
     setSvgSize((prev) =>
