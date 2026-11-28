@@ -24,11 +24,12 @@ export function usePoll<T>(
   const loadRef = useRef(load);
   loadRef.current = load;
   const inFlightRef = useRef(false);
+  const refreshQueuedRef = useRef(false);
   const aliveRef = useRef(true);
   const genRef = useRef(0);
 
-  const runTick = useCallback((gen: number) => {
-    if (inFlightRef.current) return;
+  const runTick = useCallback(function tick(gen: number) {
+    if (!aliveRef.current || gen !== genRef.current || inFlightRef.current) return;
     inFlightRef.current = true;
     loadRef
       .current()
@@ -45,12 +46,21 @@ export function usePoll<T>(
         setLoading(false);
       })
       .finally(() => {
+        if (!aliveRef.current || gen !== genRef.current) return;
         inFlightRef.current = false;
+        if (refreshQueuedRef.current) {
+          refreshQueuedRef.current = false;
+          tick(gen);
+        }
       });
   }, []);
 
   const refresh = useCallback(() => {
     if (!enabled) return;
+    if (inFlightRef.current) {
+      refreshQueuedRef.current = true;
+      return;
+    }
     runTick(genRef.current);
   }, [enabled, runTick]);
 
@@ -58,6 +68,7 @@ export function usePoll<T>(
     aliveRef.current = true;
     const gen = ++genRef.current;
     inFlightRef.current = false;
+    refreshQueuedRef.current = false;
 
     if (!enabled) {
       if (resetOnDepsChange) {

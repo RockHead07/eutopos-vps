@@ -299,6 +299,25 @@ test("gate reject stops post-reconstruction outputs and highlights only reject b
   assert.equal(model.nodes.splat.state, "off");
 });
 
+test("a gate execution error leaves all decision branches unselected", () => {
+  const job = baseJob({
+    status: "failed",
+    stage: "gate",
+    error: "Test photo worker stopped\nTraceback",
+    summary: { align: { status: "applied" } },
+  });
+  const model = derivePipelineGraph({ job, version: null });
+  assert.equal(model.gateDecision, null);
+  assert.equal(model.outputsBlockedByGate, false);
+  assert.equal(model.defaultSelectedNode, "gate");
+  assert.equal(model.nodes.gate.statusCode, "failed");
+  assert.equal(model.nodes.gate.reasonText, "Test photo worker stopped");
+  assert.equal(model.wires.find((wire) => wire.id === "align-gate")?.state, "failed");
+  for (const id of ["reject", "hold", "pass", "splat", "publish"] as const) {
+    assert.equal(model.nodes[id].state, "off");
+  }
+});
+
 test("gate hold highlights hold branch while preserving actual version and splat status", () => {
   const job = baseJob({
     status: "done",

@@ -323,9 +323,9 @@ export function derivePipelineGraph(input: DerivePipelineGraphInput): PipelineGr
   const timings = derivePipelineTimings(job, version, nowMs);
 
   const publishFailedAtJobStage = status === "failed" && stage === "publish";
-  const failedAtGate =
-    status === "failed" && (stage === "gate" || gate?.decision === "reject");
-  const isGateRejected = failedAtGate || gate?.decision === "reject";
+  const gateDecision = gate?.decision ?? null;
+  const isGateRejected = gateDecision === "reject";
+  const rejectedAtGate = status === "failed" && isGateRejected;
   const jobFinishedWithoutReject = status === "done" && !isGateRejected;
   const coreStageIdx = isCoreStage(stage) ? CORE_STAGE_IDS.indexOf(stage) : -1;
 
@@ -337,8 +337,8 @@ export function derivePipelineGraph(input: DerivePipelineGraphInput): PipelineGr
   const reachedPastAlign =
     status === "done" ||
     publishFailedAtJobStage ||
-    failedAtGate ||
-    (status === "running" && stage === "gate");
+    rejectedAtGate ||
+    ((status === "running" || status === "failed") && stage === "gate");
 
   const reachedPastGate = status === "done" || publishFailedAtJobStage;
 
@@ -373,7 +373,7 @@ export function derivePipelineGraph(input: DerivePipelineGraphInput): PipelineGr
       if (publishFailedAtJobStage) {
         coreStates[id] = "done";
         coreStatusCodes[id] = "done";
-      } else if (failedAtGate) {
+      } else if (rejectedAtGate) {
         if (id === "gate") {
           coreStates[id] = "failed";
           coreStatusCodes[id] = "rejected";
@@ -459,7 +459,7 @@ export function derivePipelineGraph(input: DerivePipelineGraphInput): PipelineGr
   const pastExtract =
     status === "done" ||
     publishFailedAtJobStage ||
-    failedAtGate ||
+    rejectedAtGate ||
     (status === "running" && coreStageIdx >= 0) ||
     (status === "failed" && coreStageIdx >= 0);
 
@@ -484,18 +484,19 @@ export function derivePipelineGraph(input: DerivePipelineGraphInput): PipelineGr
   const zipSrc = sourceNodeState(inputs.hasFrames);
 
   // 3. Tiga cabang keputusan Gate
-  const gateDecision = gate?.decision ?? (failedAtGate ? "reject" : null);
   const gateReasonText =
     gate?.reasons.map((r) => r.message).join("; ") ||
-    (failedAtGate ? firstErrorLine(job.error) : null);
+    (rejectedAtGate ? firstErrorLine(job.error) : null);
   const gateReasonCodes = gate?.reasons.map((r) => r.code) ?? [];
+  const gateBranchesInactive =
+    gateDecision !== null || reachedPastGate || (status === "failed" && stage === "gate");
 
   const rejectState: NodeVisualState =
-    gateDecision === "reject" ? "failed" : gateDecision !== null || reachedPastGate ? "off" : "pending";
+    gateDecision === "reject" ? "failed" : gateBranchesInactive ? "off" : "pending";
   const holdState: NodeVisualState =
-    gateDecision === "hold" ? "warn" : gateDecision !== null || reachedPastGate ? "off" : "pending";
+    gateDecision === "hold" ? "warn" : gateBranchesInactive ? "off" : "pending";
   const passState: NodeVisualState =
-    gateDecision === "publish" ? "done" : gateDecision !== null || reachedPastGate ? "off" : "pending";
+    gateDecision === "publish" ? "done" : gateBranchesInactive ? "off" : "pending";
 
   // 4. Keluaran Publikasi peta (dari status aktual Version yang cocok)
   let publishState: NodeVisualState = "pending";
@@ -771,7 +772,7 @@ export function derivePipelineGraph(input: DerivePipelineGraphInput): PipelineGr
     if (
       status === "done" ||
       publishFailedAtJobStage ||
-      failedAtGate ||
+      rejectedAtGate ||
       ((status === "running" || status === "failed") && coreStageIdx > 0)
     ) {
       return { state: "done", animated: false };
@@ -796,12 +797,12 @@ export function derivePipelineGraph(input: DerivePipelineGraphInput): PipelineGr
     if (status === "running" && coreStageIdx === toIdx) {
       wState = "active";
       animated = !isStale;
-    } else if (status === "failed" && !publishFailedAtJobStage && !failedAtGate && coreStageIdx === toIdx) {
+    } else if (status === "failed" && !publishFailedAtJobStage && !rejectedAtGate && coreStageIdx === toIdx) {
       wState = "failed";
     } else if (
       status === "done" ||
       publishFailedAtJobStage ||
-      failedAtGate ||
+      rejectedAtGate ||
       ((status === "running" || status === "failed") && coreStageIdx > toIdx)
     ) {
       wState = from === "align" && coreStates.align === "warn" ? "warn" : "done";
@@ -815,21 +816,21 @@ export function derivePipelineGraph(input: DerivePipelineGraphInput): PipelineGr
       id: "gate-reject",
       from: "gate",
       to: "reject",
-      state: gateDecision === "reject" ? "failed" : gateDecision !== null || reachedPastGate ? "off" : "idle",
+      state: gateDecision === "reject" ? "failed" : gateBranchesInactive ? "off" : "idle",
       animated: false,
     },
     {
       id: "gate-hold",
       from: "gate",
       to: "hold",
-      state: gateDecision === "hold" ? "warn" : gateDecision !== null || reachedPastGate ? "off" : "idle",
+      state: gateDecision === "hold" ? "warn" : gateBranchesInactive ? "off" : "idle",
       animated: false,
     },
     {
       id: "gate-pass",
       from: "gate",
       to: "pass",
-      state: gateDecision === "publish" ? "done" : gateDecision !== null || reachedPastGate ? "off" : "idle",
+      state: gateDecision === "publish" ? "done" : gateBranchesInactive ? "off" : "idle",
       animated: false,
     },
   );
@@ -906,7 +907,7 @@ export function derivePipelineGraph(input: DerivePipelineGraphInput): PipelineGr
     }
   } else if (status === "failed") {
     summaryTone = "bad";
-    if (failedAtGate) summaryCode = "failed_gate";
+    if (rejectedAtGate) summaryCode = "failed_gate";
     else if (publishFailedAtJobStage) summaryCode = "failed_publish";
     else if (coreStageIdx >= 0) summaryCode = "failed_stage";
     else summaryCode = "failed_before_first";
@@ -935,7 +936,7 @@ export function derivePipelineGraph(input: DerivePipelineGraphInput): PipelineGr
   let defaultSelectedNode: GraphNodeId = "extract";
   if (status === "running" && isCoreStage(stage)) {
     defaultSelectedNode = stage;
-  } else if (failedAtGate) {
+  } else if (rejectedAtGate) {
     defaultSelectedNode = "reject";
   } else if (publishFailedAtJobStage) {
     defaultSelectedNode = "publish";
@@ -964,7 +965,7 @@ export function derivePipelineGraph(input: DerivePipelineGraphInput): PipelineGr
     summaryCode,
     summaryTone,
     activeCoreStage: status === "running" && isCoreStage(stage) ? stage : null,
-    failedCoreStage: status === "failed" && !failedAtGate && isCoreStage(stage) ? stage : null,
+    failedCoreStage: status === "failed" && !rejectedAtGate && isCoreStage(stage) ? stage : null,
     gateDecision,
     hasAnimatedWire: wires.some((w) => w.animated),
     isStale,

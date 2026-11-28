@@ -275,6 +275,7 @@ main { max-width: 1200px; margin: 0 auto; padding: 0.5rem 1rem 3rem; display: gr
 
 /* Pipeline colors follow the global Eutopos theme. */
 .pgraph-canvas {
+  --pg-layout: wide;
   --pg-canvas: var(--canvas);
   --pg-dot: color-mix(in srgb, var(--slate) 22%, var(--canvas));
   --pg-tile: var(--card);
@@ -541,9 +542,10 @@ main { max-width: 1200px; margin: 0 auto; padding: 0.5rem 1rem 3rem; display: gr
 .pgraph-meta[data-state="wait"] { color: var(--pg-warn); }
 .pgraph-meta[data-state="failed"] { color: var(--pg-bad); font-weight: 600; }
 
-/* Medium layout (480px .. 759px): 3 columns with folded row 2 reversed */
-@container pgraph (max-width: 759px) {
+/* Fold into 3 columns below 760px. */
+@container pgraph (width < 760px) {
   .pgraph-canvas {
+    --pg-layout: medium;
     padding: 18px 34px 18px 34px;
   }
   .pgraph-grid {
@@ -559,8 +561,9 @@ main { max-width: 1200px; margin: 0 auto; padding: 0.5rem 1rem 3rem; display: gr
 }
 
 /* Narrow / mobile layout (< 480px): 1 column vertical stack, 42x42 tile left + label/duration right, left gutter for branches */
-@container pgraph (max-width: 479px) {
+@container pgraph (width < 480px) {
   .pgraph-canvas {
+    --pg-layout: narrow;
     padding: 16px 12px 16px 34px;
   }
   .pgraph-grid {
