@@ -896,6 +896,8 @@ export const id: Record<TranslationKey, string> = {
   "pgraph.detail.testPhotos": "Foto uji diterima",
   "pgraph.detail.actualVersionStatus": "Status versi aktual",
   "pgraph.detail.splatStage": "Tahap 3D aktif",
+  "pgraph.detail.splatFailedStage": "Tahap saat gagal",
+  "pgraph.detail.splatLastStage": "Tahap 3D terakhir",
   "pgraph.detail.splatTrainTime": "Waktu training 3D",
   "pgraph.detail.previousSplatAsset": "Aset 3D sebelumnya",
   "pgraph.detail.previousSplatAssetAvailable": "Masih tersedia",

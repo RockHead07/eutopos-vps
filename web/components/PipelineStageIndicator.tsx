@@ -800,7 +800,13 @@ export function PipelineStageIndicator({
               )}
               {selectedNode.splatStage && (
                 <div>
-                  <dt>{t("pgraph.detail.splatStage")}</dt>
+                  <dt>
+                    {selectedNode.state === "failed"
+                      ? t("pgraph.detail.splatFailedStage")
+                      : selectedNode.state === "done"
+                        ? t("pgraph.detail.splatLastStage")
+                        : t("pgraph.detail.splatStage")}
+                  </dt>
                   <dd className="font-mono">{selectedNode.splatStage}</dd>
                 </div>
               )}

@@ -470,19 +470,14 @@ test("splat_status failed with has_splat true shows failed state and reason whil
     splat_status: "failed",
     splat_stage: "train",
     splat_error: "CUDA out of memory during rebuild\ntraceback...",
-    splat_summary: {
-      gaussians: 280_000,
-      psnr: 26.1,
-      ssim: 0.86,
-      lpips: 0.19,
-      train_seconds: 910,
-      built_at: "2026-11-26T10:00:00Z",
-    },
+    splat_summary: null,
   });
 
   const model = derivePipelineGraph({ job, version });
   assert.equal(model.nodes.splat.state, "failed");
   assert.equal(model.nodes.splat.statusCode, "splat_failed");
+  assert.equal(model.nodes.splat.splatStage, "train");
+  assert.equal(model.nodes.splat.splatTrainSeconds, null);
   assert.equal(model.nodes.splat.reasonText, "CUDA out of memory during rebuild");
   assert.equal(model.nodes.splat.hasExistingSplatAsset, true);
   assert.equal(model.wires.find((w) => w.id === "pass-splat")?.state, "failed");

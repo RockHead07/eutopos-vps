@@ -892,6 +892,8 @@ export const en = {
   "pgraph.detail.testPhotos": "Test photos accepted",
   "pgraph.detail.actualVersionStatus": "Actual version status",
   "pgraph.detail.splatStage": "Active 3D stage",
+  "pgraph.detail.splatFailedStage": "Stage when failed",
+  "pgraph.detail.splatLastStage": "Last 3D stage",
   "pgraph.detail.splatTrainTime": "3D training time",
   "pgraph.detail.previousSplatAsset": "Previous 3D asset",
   "pgraph.detail.previousSplatAssetAvailable": "Still available",
